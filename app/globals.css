@@ -28,9 +28,24 @@ button,input { font:inherit; } button { touch-action:manipulation; }
 .stage-orbit::before,.stage-orbit::after { content:''; position:absolute; border-radius:999px; border:1px solid #d9e1e8; }
 .stage-orbit::before { inset:32px; }
 .stage-orbit::after { inset:78px; }
+.person-0{left:4%;top:21%}.person-1{right:5%;top:24%}.person-2{left:0;top:52%}.person-3{right:1%;top:54%}
+.person-4{left:18%;top:5%}.person-5{right:17%;top:7%}.person-6{left:12%;bottom:11%}.person-7{right:14%;bottom:12%}
+.person-8{left:39%;top:0}.person-9{right:38%;bottom:2%}.person-10{left:1%;bottom:29%}.person-11{right:2%;bottom:31%}
 @media (prefers-reduced-motion:no-preference) {
   .enter { animation:enter .35s cubic-bezier(.22,1,.36,1) both; }
   .pulse-dot { animation:pulse 1.6s ease-in-out infinite; }
+  .arrival { animation:arrival .45s cubic-bezier(.22,1.5,.36,1) both; }
+  .reaction-pop { animation:reaction-pop .7s cubic-bezier(.22,1.4,.36,1) both; }
+  .mimo-breathe { animation:mimo-breathe 3.4s ease-in-out infinite; transform-origin:50% 85%; }
+  .mimo-happy { animation:mimo-happy .75s cubic-bezier(.22,1.5,.36,1) infinite alternate; transform-origin:50% 90%; }
+  .mimo-think { animation:mimo-think 2.2s ease-in-out infinite; transform-origin:50% 80%; }
+  .score-flip { animation:score-flip .5s ease-out both; }
   @keyframes enter { from { opacity:0; transform:translateY(8px) scale(.985); } }
   @keyframes pulse { 50% { opacity:.35; transform:scale(.85); } }
+  @keyframes arrival { from { opacity:0; transform:scale(.4) translateY(12px); } }
+  @keyframes reaction-pop { 0% { opacity:0; transform:translateY(8px) scale(.5); } 60% { transform:translateY(-10px) scale(1.35); } }
+  @keyframes mimo-breathe { 50% { transform:translateY(-6px) rotate(-1deg); } }
+  @keyframes mimo-happy { to { transform:translateY(-9px) rotate(2deg) scale(1.015); } }
+  @keyframes mimo-think { 50% { transform:translateY(-3px) rotate(-3deg); } }
+  @keyframes score-flip { from { opacity:.2; transform:translateY(8px); } }
 }

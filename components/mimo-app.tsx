@@ -96,24 +96,24 @@ function Invite({ next }: { next: () => void }) {
   return (
     <section className="mx-auto grid min-h-[calc(100dvh-72px)] max-w-[1120px] gap-8 px-5 pb-12 pt-5 sm:px-8 lg:grid-cols-[1.08fr_.92fr] lg:items-center">
       <div className="enter z-10">
-        <p className="text-sm font-extrabold uppercase tracking-[.16em] text-[#cf624e]">Nimiq Africa presents</p>
-        <h1 className="font-display mt-4 max-w-[670px] text-[clamp(3.4rem,8vw,7rem)] font-extrabold leading-[.86] tracking-[-.078em]">Friday night belongs to the room.</h1>
-        <p className="mt-7 max-w-[580px] text-lg leading-8 text-[#586d80]">Pick a side. Speak for your team. Solve one final challenge together. Nobody watches from the sidelines.</p>
+        <p className="text-sm font-extrabold uppercase tracking-[.16em] text-[#cf624e]">Live community games · Built for Nimiq Pay</p>
+        <h1 className="font-display mt-4 max-w-[670px] text-[clamp(3.4rem,8vw,7rem)] font-extrabold leading-[.86] tracking-[-.078em]">Make your community playable.</h1>
+        <p className="mt-7 max-w-[610px] text-lg leading-8 text-[#586d80]">Create a live game, bring your community together, and optionally reward verified skill or participation with NIM.</p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button onClick={next} className="h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold hover:bg-[#185fac]">Join the room <ArrowRight /></Button>
-          <span className="flex items-center gap-2 text-sm font-bold text-[#566d80]"><Users size={17} /> {faces + 12} people warming up</span>
+          <Button onClick={next} className="h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold hover:bg-[#185fac]">Play the live demo <ArrowRight /></Button>
+          <span className="flex items-center gap-2 text-sm font-bold text-[#566d80]"><Users size={17} /> {faces + 12} people in the sample room</span>
         </div>
         <div className="mt-10 grid max-w-[650px] grid-cols-3 border-y border-[#d3d5d3] py-5 text-sm">
-          <div><span className="text-[#788895]">Starts</span><strong className="mt-1 block">Tonight · 19:00</strong></div>
-          <div><span className="text-[#788895]">Plays in</span><strong className="mt-1 block">18 minutes</strong></div>
-          <div><span className="text-[#8a6b08]">Reward</span><strong className="mt-1 block text-[#6e5709]">250 NIM funded</strong></div>
+          <div><span className="text-[#788895]">Create</span><strong className="mt-1 block">Your own live game</strong></div>
+          <div><span className="text-[#788895]">Play</span><strong className="mt-1 block">Together in real time</strong></div>
+          <div><span className="text-[#8a6b08]">Reward</span><strong className="mt-1 block text-[#6e5709]">Skill with NIM</strong></div>
         </div>
       </div>
       <div className="relative mx-auto h-[500px] w-full max-w-[470px]">
         <div className="absolute left-1/2 top-1/2 h-[390px] w-[390px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#cad9e6] before:absolute before:inset-10 before:rounded-full before:border before:border-[#d7e1e9]" />
         <Mascot mood="happy" className="absolute bottom-1 left-1/2 z-10 w-[395px] -translate-x-1/2" />
         {roomPeople.slice(0, faces).map(([person, color], index) => <span key={person} style={{ background: color, animationDelay: `${index * 80}ms` }} className={`arrival absolute z-20 grid h-11 w-11 place-items-center rounded-full border-[3px] border-[#f6f4ef] text-xs font-extrabold text-white person-${index}`}>{person[0]}</span>)}
-        <div className="absolute bottom-2 right-0 z-30 max-w-[205px] bg-[#203752] px-4 py-3 text-sm font-bold leading-5 text-white shadow-[0_12px_30px_rgba(32,55,82,.18)]">“Bring your opinion. I’ll bring the timer.”</div>
+        <div className="absolute bottom-2 right-0 z-30 max-w-[205px] bg-[#203752] px-4 py-3 text-sm font-bold leading-5 text-white shadow-[0_12px_30px_rgba(32,55,82,.18)]">“I’ll host. Your community plays.”</div>
       </div>
     </section>
   );

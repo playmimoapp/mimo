@@ -1,5 +1,15 @@
 # Mimo implementation plan
 
+## Working milestone — shared live room
+
+- Hosts can open a persistent room and share its code or link.
+- Players join from separate devices and appear in the same lobby.
+- The server owns the timer, accepts one answer per player, and calculates scores.
+- Host actions use a hashed private key; invalid host actions are rejected.
+- Reloaded host and participant tabs restore their device session.
+- Free and proposed-NIM rooms are clearly distinguished; proposed rewards are never shown as funded.
+- A repeatable four-player room simulation verifies creation, joining, play, reveal, scoring, and completion.
+
 ## Product thesis
 
 Mimo is recurring live programming for communities. A host creates a room, people join free, Mimo runs the show, the server verifies play, and a host may attach NIM to declared skill or participation rules. Free events must feel complete; NIM events must feel more meaningful and more trustworthy.

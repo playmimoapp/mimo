@@ -2,17 +2,28 @@
 
 import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, ChevronRight, LockKeyhole, ShieldCheck, Sparkles, Trophy, Users, WalletCards } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, Coins, Gamepad2, Gift, LockKeyhole, Plus, Radio, ShieldCheck, Sparkles, Trophy, Users, WalletCards } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type Screen = 'invite' | 'join' | 'lobby' | 'pulse' | 'support' | 'skill' | 'finale' | 'results';
+type Screen = 'invite' | 'create' | 'join' | 'lobby' | 'pulse' | 'support' | 'skill' | 'finale' | 'results';
 type Side = 'help' | 'show';
+type RewardMode = 'free' | 'nim';
+
+type EventDraft = {
+  title: string;
+  community: string;
+  rewardMode: RewardMode;
+  rewardAmount: string;
+};
 
 const roomPeople = [
   ['Ama', '#d96b58'], ['Kofi', '#2374cf'], ['Zara', '#6d5bc5'], ['Theo', '#2c866c'],
   ['Maya', '#c9871d'], ['Jun', '#495f80'], ['Liv', '#b85f85'], ['Dayo', '#2f7b9c'],
   ['Noah', '#766a58'], ['Ife', '#657e3f'], ['Rae', '#a85545'], ['Sam', '#42658f'],
 ] as const;
+
+const hostLines = ['Ama just joined Team Blue', 'The room is warming up', 'Mimo is ready when you are'];
 
 declare global {
   interface Document {
@@ -37,16 +48,17 @@ function Mascot({ mood = 'calm', className = '' }: { mood?: 'calm' | 'happy' | '
   return <Image src="/mimo-host.png" alt="Mimo, the smiling blue ribbon host" width={1254} height={1254} priority className={`select-none object-contain ${mood === 'thinking' ? 'mimo-think' : mood === 'happy' ? 'mimo-happy' : 'mimo-breathe'} ${className}`} />;
 }
 
-function Header({ back, step }: { back?: () => void; step?: string }) {
+function Header({ back, step, host }: { back?: () => void; step?: string; host?: () => void }) {
   return (
     <header className="mx-auto flex h-[72px] max-w-[1120px] items-center justify-between px-5 sm:px-8">
       <div className="flex items-center gap-2">{back && <button onClick={back} aria-label="Go back" className="-ml-2 grid h-10 w-10 place-items-center rounded-full hover:bg-white"><ArrowLeft size={19} /></button>}<Logo /></div>
-      {step ? <span className="rounded-full border border-[#d5d7d7] px-3 py-1.5 text-xs font-extrabold uppercase tracking-[.12em] text-[#5d7082]">{step}</span> : <span className="flex items-center gap-2 text-sm font-bold text-[#53697c]"><span className="pulse-dot h-2 w-2 rounded-full bg-[#36a66f]" /> Demo room</span>}
+      {step ? <span className="rounded-full border border-[#d5d7d7] px-3 py-1.5 text-xs font-extrabold uppercase tracking-[.12em] text-[#5d7082]">{step}</span> : host ? <button onClick={host} className="flex h-10 items-center gap-2 rounded-full border border-[#cbd4dc] bg-white px-4 text-sm font-extrabold text-[#29445f] transition hover:-translate-y-0.5 hover:border-[#8ba9c3]"><Plus size={16}/> Host a Mimo</button> : null}
     </header>
   );
 }
 
 export function MimoApp() {
+  const reduceMotion = useReducedMotion();
   const [screen, setScreen] = useState<Screen>('invite');
   const [name, setName] = useState('');
   const [side, setSide] = useState<Side | null>(null);
@@ -55,6 +67,7 @@ export function MimoApp() {
   const [backed, setBacked] = useState<number | null>(null);
   const [order, setOrder] = useState(['Play', 'Invite', 'Drop', 'Gather']);
   const [skillScore, setSkillScore] = useState(0);
+  const [event, setEvent] = useState<EventDraft>({ title: 'Nimiq Africa Friday Night', community: 'Nimiq Africa', rewardMode: 'nim', rewardAmount: '250' });
 
   useEffect(() => {
     if (!document.modelContext?.registerTool) return;
@@ -74,49 +87,83 @@ export function MimoApp() {
     return () => lifecycle.abort();
   }, []);
 
-  const back = () => setScreen(screen === 'join' ? 'invite' : 'lobby');
+  const back = () => setScreen(screen === 'join' || screen === 'create' ? 'invite' : 'lobby');
+  const playSteps: Screen[] = ['join','lobby','pulse','support','skill','finale','results'];
   return (
     <main className="min-h-dvh overflow-hidden bg-[#f6f4ef] text-[#16283d]">
-      <Header back={screen !== 'invite' ? back : undefined} step={screen === 'invite' ? undefined : `${['join','lobby','pulse','support','skill','finale','results'].indexOf(screen) + 1} / 7`} />
-      {screen === 'invite' && <Invite next={() => setScreen('join')} />}
-      {screen === 'join' && <Join name={name} setName={setName} next={() => name.trim() && setScreen('lobby')} />}
-      {screen === 'lobby' && <Lobby name={name || 'You'} next={() => setScreen('pulse')} />}
-      {screen === 'pulse' && <Pulse side={side} setSide={setSide} next={() => setScreen('support')} />}
-      {screen === 'support' && <Support response={response} setResponse={setResponse} sent={sentResponse} send={() => setSentResponse(response.trim())} backed={backed} setBacked={setBacked} next={() => setScreen('skill')} />}
-      {screen === 'skill' && <Skill order={order} setOrder={setOrder} lock={(score) => { setSkillScore(score); setScreen('finale'); }} />}
-      {screen === 'finale' && <Finale next={() => setScreen('results')} />}
-      {screen === 'results' && <Results name={name || 'You'} skillScore={skillScore} restart={() => { setScreen('invite'); setSide(null); setResponse(''); setSentResponse(''); setBacked(null); setOrder(['Play','Invite','Drop','Gather']); }} />}
+      <Header back={screen !== 'invite' ? back : undefined} host={screen === 'invite' ? () => setScreen('create') : undefined} step={playSteps.includes(screen) ? `${playSteps.indexOf(screen) + 1} / 7` : undefined} />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={screen} initial={{ opacity: 0, y: reduceMotion ? 0 : 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduceMotion ? 0 : -8 }} transition={{ duration: reduceMotion ? 0 : .24, ease: [0.22, 1, 0.36, 1] }}>
+          {screen === 'invite' && <Invite event={event} next={() => setScreen('join')} create={() => setScreen('create')} />}
+          {screen === 'create' && <CreateEvent event={event} setEvent={setEvent} preview={() => setScreen('invite')} />}
+          {screen === 'join' && <Join name={name} setName={setName} next={() => name.trim() && setScreen('lobby')} />}
+          {screen === 'lobby' && <Lobby name={name || 'You'} next={() => setScreen('pulse')} />}
+          {screen === 'pulse' && <Pulse side={side} setSide={setSide} next={() => setScreen('support')} />}
+          {screen === 'support' && <Support response={response} setResponse={setResponse} sent={sentResponse} send={() => setSentResponse(response.trim())} backed={backed} setBacked={setBacked} next={() => setScreen('skill')} />}
+          {screen === 'skill' && <Skill order={order} setOrder={setOrder} lock={(score) => { setSkillScore(score); setScreen('finale'); }} />}
+          {screen === 'finale' && <Finale next={() => setScreen('results')} />}
+          {screen === 'results' && <Results event={event} name={name || 'You'} skillScore={skillScore} restart={() => { setScreen('invite'); setSide(null); setResponse(''); setSentResponse(''); setBacked(null); setOrder(['Play','Invite','Drop','Gather']); }} />}
+        </motion.div>
+      </AnimatePresence>
     </main>
   );
 }
 
-function Invite({ next }: { next: () => void }) {
+function Invite({ event, next, create }: { event: EventDraft; next: () => void; create: () => void }) {
   const [faces, setFaces] = useState(4);
-  useEffect(() => { const timer = window.setInterval(() => setFaces(value => Math.min(value + 1, roomPeople.length)), 850); return () => window.clearInterval(timer); }, []);
+  const [beat, setBeat] = useState(0);
+  useEffect(() => {
+    const arrivals = window.setInterval(() => setFaces(value => Math.min(value + 1, roomPeople.length)), 850);
+    const host = window.setInterval(() => setBeat(value => (value + 1) % hostLines.length), 2200);
+    return () => { window.clearInterval(arrivals); window.clearInterval(host); };
+  }, []);
   return (
-    <section className="mx-auto grid min-h-[calc(100dvh-72px)] max-w-[1120px] gap-8 px-5 pb-12 pt-5 sm:px-8 lg:grid-cols-[1.08fr_.92fr] lg:items-center">
-      <div className="enter z-10">
-        <p className="text-sm font-extrabold uppercase tracking-[.16em] text-[#cf624e]">Live community games · Built for Nimiq Pay</p>
-        <h1 className="font-display mt-4 max-w-[670px] text-[clamp(3.4rem,8vw,7rem)] font-extrabold leading-[.86] tracking-[-.078em]">Make your community playable.</h1>
-        <p className="mt-7 max-w-[610px] text-lg leading-8 text-[#586d80]">Create a live game, bring your community together, and optionally reward verified skill or participation with NIM.</p>
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button onClick={next} className="h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold hover:bg-[#185fac]">Play the live demo <ArrowRight /></Button>
-          <span className="flex items-center gap-2 text-sm font-bold text-[#566d80]"><Users size={17} /> {faces + 12} people in the sample room</span>
+    <section className="mx-auto grid min-h-[calc(100dvh-72px)] max-w-[1120px] gap-7 px-5 pb-12 pt-4 sm:px-8 lg:grid-cols-[.96fr_1.04fr] lg:items-center">
+      <div className="enter z-10 py-5">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-[.14em] text-[#536d84]"><span className="flex items-center gap-1.5 text-[#c94f3b]"><Radio size={15}/> Demo event</span><span aria-hidden="true">·</span><span>{event.community}</span></div>
+        <h1 className="font-display mt-5 max-w-[640px] text-[clamp(3.4rem,8vw,6.7rem)] font-extrabold leading-[.87] tracking-[-.078em]">{event.title}</h1>
+        <p className="mt-6 max-w-[570px] text-lg font-medium leading-8 text-[#53697c]">Five fast rounds. Two teams. Everyone plays.</p>
+        <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 border-y border-[#d2d7d8] py-4 text-sm font-bold text-[#425a70]">
+          <span className="flex items-center gap-2"><Users size={18} className="text-[#2175d5]"/> {faces + 12} joining</span>
+          <span className="flex items-center gap-2"><CalendarDays size={18} className="text-[#2175d5]"/> Starts now</span>
+          {event.rewardMode === 'nim' ? <span className="flex items-center gap-2 text-[#755700]"><Coins size={18}/> {event.rewardAmount || '0'} NIM skill rewards</span> : <span className="flex items-center gap-2"><Gamepad2 size={18}/> Free community game</span>}
         </div>
-        <div className="mt-10 grid max-w-[650px] grid-cols-3 border-y border-[#d3d5d3] py-5 text-sm">
-          <div><span className="text-[#788895]">Create</span><strong className="mt-1 block">Your own live game</strong></div>
-          <div><span className="text-[#788895]">Play</span><strong className="mt-1 block">Together in real time</strong></div>
-          <div><span className="text-[#8a6b08]">Reward</span><strong className="mt-1 block text-[#6e5709]">Skill with NIM</strong></div>
+        <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <motion.div whileHover={{ y: -2 }} whileTap={{ scale: .97 }}><Button onClick={next} className="h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold hover:bg-[#185fac]">Join this room <ArrowRight /></Button></motion.div>
+          <button onClick={create} className="h-14 px-5 text-sm font-extrabold text-[#28465f] underline decoration-[#9ab0c3] underline-offset-4 hover:text-[#1f72d2]">Create your own</button>
         </div>
+        <p className="mt-4 max-w-[520px] text-xs leading-5 text-[#748492]">This is a playable demo. It never moves money. A live NIM event asks the host to approve every payment in Nimiq Pay.</p>
       </div>
-      <div className="relative mx-auto h-[500px] w-full max-w-[470px]">
-        <div className="absolute left-1/2 top-1/2 h-[390px] w-[390px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#cad9e6] before:absolute before:inset-10 before:rounded-full before:border before:border-[#d7e1e9]" />
-        <Mascot mood="happy" className="absolute bottom-1 left-1/2 z-10 w-[395px] -translate-x-1/2" />
-        {roomPeople.slice(0, faces).map(([person, color], index) => <span key={person} style={{ background: color, animationDelay: `${index * 80}ms` }} className={`arrival absolute z-20 grid h-11 w-11 place-items-center rounded-full border-[3px] border-[#f6f4ef] text-xs font-extrabold text-white person-${index}`}>{person[0]}</span>)}
-        <div className="absolute bottom-2 right-0 z-30 max-w-[205px] bg-[#203752] px-4 py-3 text-sm font-bold leading-5 text-white shadow-[0_12px_30px_rgba(32,55,82,.18)]">“I’ll host. Your community plays.”</div>
+      <div className="mimo-stage relative mx-auto h-[520px] w-full max-w-[520px] overflow-hidden rounded-[36px] bg-[#e8f3ff]">
+        <div className="absolute inset-x-6 top-5 z-20 flex items-center justify-between"><span className="rounded-full bg-white px-3 py-2 text-xs font-extrabold text-[#31506b] shadow-[0_6px_20px_rgba(39,77,111,.1)]">LIVE ROOM</span><motion.span animate={{ y: [0,-10,0], rotate: [-7,8,-7], scale: [.95,1.14,.95] }} transition={{ duration: 1.9, repeat: Infinity }} className="text-3xl" aria-hidden="true">🙌</motion.span></div>
+        <AnimatePresence mode="wait"><motion.div key={hostLines[beat]} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: .26 }} className="host-line absolute left-5 top-20 z-30 max-w-[230px] bg-[#203752] px-4 py-3 text-sm font-bold leading-5 text-white shadow-[0_12px_28px_rgba(32,55,82,.18)]">{hostLines[beat]}</motion.div></AnimatePresence>
+        <div className="absolute -bottom-9 left-1/2 z-10 w-[390px] -translate-x-1/2"><motion.div animate={{ y: [0,-9,0], rotate: [-1,1.4,-1] }} whileHover={{ scale: 1.025, rotate: -2 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}><Mascot mood="calm" className="w-full" /></motion.div></div>
+        <AnimatePresence>{roomPeople.slice(0, faces).map(([person, color], index) => <motion.span layout key={person} initial={{ opacity: 0, scale: .4, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} whileHover={{ y: -7, scale: 1.08, zIndex: 40 }} transition={{ type: 'spring', stiffness: 410, damping: 23, delay: index * .035 }} style={{ background: color }} className={`absolute z-20 grid h-11 w-11 place-items-center rounded-full border-[3px] border-[#e8f3ff] text-xs font-extrabold text-white person-${index}`}>{person[0]}</motion.span>)}</AnimatePresence>
+        <div className="absolute bottom-0 inset-x-0 h-20 bg-[linear-gradient(180deg,transparent,#cfe6fb)]" />
       </div>
     </section>
   );
+}
+
+function CreateEvent({ event, setEvent, preview }: { event: EventDraft; setEvent: (event: EventDraft) => void; preview: () => void }) {
+  const update = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) => setEvent({ ...event, [key]: value });
+  return <section className="mx-auto grid max-w-[1000px] gap-10 px-5 pb-16 pt-6 lg:grid-cols-[1fr_340px]">
+    <div>
+      <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">Create a live event</p>
+      <h1 className="font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">What do you want to host?</h1>
+      <div className="mt-9 grid gap-7">
+        <label className="grid gap-2 text-sm font-extrabold">Community<input value={event.community} onChange={e => update('community', e.target.value)} className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]" /></label>
+        <label className="grid gap-2 text-sm font-extrabold">Event name<input value={event.title} onChange={e => update('title', e.target.value)} className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]" /></label>
+        <fieldset><legend className="text-sm font-extrabold">How should this event run?</legend><div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <motion.button whileHover={{ y: -4, rotate: -.35 }} whileTap={{ scale: .985 }} onClick={() => update('rewardMode','free')} className={`min-h-32 border-2 p-5 text-left transition ${event.rewardMode === 'free' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}><Gamepad2 className="text-[#1f72d2]"/><strong className="mt-4 block text-lg">Free game</strong><span className="mt-1 block text-sm text-[#617486]">Play together. No wallet needed.</span></motion.button>
+          <motion.button whileHover={{ y: -4, rotate: .35 }} whileTap={{ scale: .985 }} onClick={() => update('rewardMode','nim')} className={`min-h-32 border-2 p-5 text-left transition ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}><Gift className="text-[#a87600]"/><strong className="mt-4 block text-lg">NIM reward</strong><span className="mt-1 block text-sm text-[#617486]">Reward declared skill or participation.</span></motion.button>
+        </div></fieldset>
+        {event.rewardMode === 'nim' && <label className="grid gap-2 text-sm font-extrabold">Total reward<input inputMode="numeric" value={event.rewardAmount} onChange={e => update('rewardAmount', e.target.value.replace(/[^0-9]/g,''))} className="h-14 max-w-[260px] border-0 border-b-2 border-[#d0a62d] bg-transparent text-2xl font-extrabold outline-none"/><span className="text-xs font-medium text-[#6f7e8b]">NIM · funding comes later, after rules are locked</span></label>}
+      </div>
+      <Button onClick={preview} disabled={!event.title.trim() || !event.community.trim()} className="mt-9 h-13 rounded-full bg-[#203752] px-7 font-extrabold">Preview invitation <ArrowRight/></Button>
+    </div>
+    <aside className="self-start bg-[#203752] p-6 text-white lg:sticky lg:top-6"><Mascot className="mx-auto w-[170px]"/><p className="font-display mt-2 text-2xl font-extrabold">Start simple.</p><p className="mt-3 text-sm leading-6 text-[#c9d8e5]">Free rooms bring people together. NIM rooms add a clear reward to rules the host approves before play.</p><div className="mt-5 border-t border-white/15 pt-5 text-sm font-bold text-[#f6d66a]">Next: add rounds → rehearse → publish</div></aside>
+  </section>;
 }
 
 function Join({ name, setName, next }: { name:string; setName:(value:string)=>void; next:()=>void }) {
@@ -163,8 +210,8 @@ function Finale({ next }: { next:()=>void }) {
   return <section className="mx-auto max-w-[960px] px-5 pb-16 pt-5 text-center"><p className="text-sm font-extrabold uppercase tracking-[.16em] text-[#cf624e]">The finale · everyone vs Mimo</p><h1 className="font-display mx-auto mt-3 max-w-[820px] text-[clamp(3.2rem,8vw,6.4rem)] font-extrabold leading-[.88] tracking-[-.075em]">Can the whole room agree?</h1><p className="mx-auto mt-5 max-w-xl text-lg text-[#5c7183]">Push the room past 80%. Every tap is your voice. Everyone else is pushing too.</p><div className="relative mx-auto mt-8 h-8 max-w-2xl overflow-hidden rounded-full bg-[#dce2e5]"><div className={`h-full transition-all duration-500 ${progress>=80?'bg-[#36a66f]':'bg-[#1f72d2]'}`} style={{width:`${progress}%`}}/><span className="absolute inset-0 grid place-items-center text-xs font-extrabold text-white">{progress}%</span></div><div className="mx-auto mt-6 flex max-w-xl items-center justify-center gap-4"><Mascot mood={progress>=80?'happy':'thinking'} className="w-[190px]"/><div className="text-left"><p className="font-display text-2xl font-extrabold">{progress>=80?'“You beat me together.”':'“I can still hold this line.”'}</p><p className="mt-2 text-sm text-[#607486]">Your pushes: {taps}</p></div></div>{progress<80?<button onClick={hit} className="finale-button mt-4 h-24 w-24 rounded-full bg-[#f3c52f] font-display text-lg font-extrabold text-[#4c3a00] shadow-[0_12px_0_#c79a0c] active:translate-y-2 active:shadow-[0_4px_0_#c79a0c]">PUSH</button>:<Button onClick={next} className="enter mt-5 h-13 rounded-full bg-[#1f72d2] px-7 font-bold">See what we made <Sparkles/></Button>}<p aria-live="polite" className="mt-5 text-sm font-bold text-[#627687]">{progress<80?`${Math.max(0,80-progress)}% left to unlock the room bonus`:'Room bonus unlocked · every active player counts'}</p></section>;
 }
 
-function Results({ name,skillScore,restart }: { name:string;skillScore:number;restart:()=>void }) {
+function Results({ event,name,skillScore,restart }: { event:EventDraft;name:string;skillScore:number;restart:()=>void }) {
   const [score,setScore]=useState(0); const finalScore=skillScore+1840;
   useEffect(()=>{const timer=window.setInterval(()=>setScore(value=>Math.min(finalScore,value+Math.ceil(finalScore/28))),38);return()=>window.clearInterval(timer)},[finalScore]);
-  return <section className="mx-auto max-w-[1040px] px-5 pb-16 pt-5"><div className="grid gap-10 lg:grid-cols-[1fr_330px]"><div><div className="flex items-center gap-3 text-[#c58d00]"><Trophy size={26}/><span className="text-sm font-extrabold uppercase tracking-[.15em]">The room won</span></div><h1 className="font-display mt-4 text-[clamp(3.5rem,8vw,6.8rem)] font-extrabold leading-[.86] tracking-[-.075em]">Nobody sat this one out.</h1><div className="mt-8 grid grid-cols-3 border-y border-[#d0d3d2] py-5"><div><span className="text-sm text-[#697b89]">{name}</span><strong className="score-flip mt-1 block font-display text-3xl">{score.toLocaleString()}</strong></div><div><span className="text-sm text-[#697b89]">Your place</span><strong className="mt-1 block font-display text-3xl">#4</strong></div><div><span className="text-sm text-[#697b89]">Room streak</span><strong className="mt-1 block font-display text-3xl">3</strong></div></div><div className="mt-7 flex flex-wrap gap-3"><Button onClick={restart} className="rounded-full bg-[#203752] px-6 font-bold">Play it again</Button><Button variant="outline" className="rounded-full bg-transparent px-6 font-bold">Save next Friday</Button></div></div><aside className="border-l border-[#d1d4d3] pl-7"><span className="inline-flex items-center gap-2 rounded-full bg-[#fff2c2] px-3 py-1.5 text-sm font-extrabold text-[#6e5505]">250 NIM confirmed</span><p className="mt-6 text-sm font-extrabold text-[#667988]">YOUR RECOGNITION</p><p className="font-display mt-2 text-5xl font-extrabold">15 NIM</p><div className="mt-5 border-y border-[#d1d4d3] py-5"><p className="flex items-center gap-2 font-extrabold text-[#765f12]"><WalletCards size={19}/>Waiting for the host</p><p className="mt-2 text-sm leading-6 text-[#637688]">No money has moved. The host must verify the result and approve your payment.</p></div><p className="mt-5 flex items-center gap-2 text-sm text-[#637688]"><Check size={17}/>Rules locked before play</p><p className="mt-3 flex items-center gap-2 text-sm text-[#637688]"><ShieldCheck size={17}/>Wallet asked only when needed</p></aside></div></section>;
+  return <section className="mx-auto max-w-[1040px] px-5 pb-16 pt-5"><div className="grid gap-10 lg:grid-cols-[1fr_330px]"><div><div className="flex items-center gap-3 text-[#c58d00]"><Trophy size={26}/><span className="text-sm font-extrabold uppercase tracking-[.15em]">The room won</span></div><h1 className="font-display mt-4 text-[clamp(3.5rem,8vw,6.8rem)] font-extrabold leading-[.86] tracking-[-.075em]">Nobody sat this one out.</h1><div className="mt-8 grid grid-cols-3 border-y border-[#d0d3d2] py-5"><div><span className="text-sm text-[#697b89]">{name}</span><strong className="score-flip mt-1 block font-display text-3xl">{score.toLocaleString()}</strong></div><div><span className="text-sm text-[#697b89]">Your place</span><strong className="mt-1 block font-display text-3xl">#4</strong></div><div><span className="text-sm text-[#697b89]">Room streak</span><strong className="mt-1 block font-display text-3xl">3</strong></div></div><div className="mt-7 flex flex-wrap gap-3"><Button onClick={restart} className="rounded-full bg-[#203752] px-6 font-bold">Play it again</Button><Button variant="outline" className="rounded-full bg-transparent px-6 font-bold">Save next Friday</Button></div></div>{event.rewardMode === 'nim' ? <aside className="border-l border-[#d1d4d3] pl-7"><span className="inline-flex items-center gap-2 rounded-full bg-[#fff2c2] px-3 py-1.5 text-sm font-extrabold text-[#6e5505]">Demo reward · {event.rewardAmount || '0'} NIM</span><p className="mt-6 text-sm font-extrabold text-[#667988]">REWARD PREVIEW</p><p className="font-display mt-2 text-5xl font-extrabold">15 NIM</p><div className="mt-5 border-y border-[#d1d4d3] py-5"><p className="flex items-center gap-2 font-extrabold text-[#765f12]"><WalletCards size={19}/>Host approval would be next</p><p className="mt-2 text-sm leading-6 text-[#637688]">This demo never moves money. In a funded event, the host verifies results and confirms each payout in Nimiq Pay.</p></div><p className="mt-5 flex items-center gap-2 text-sm text-[#637688]"><Check size={17}/>Skill rules fixed before play</p><p className="mt-3 flex items-center gap-2 text-sm text-[#637688]"><ShieldCheck size={17}/>No automatic wallet payment</p></aside> : <aside className="border-l border-[#d1d4d3] pl-7"><span className="inline-flex items-center gap-2 rounded-full bg-[#e8f4ff] px-3 py-1.5 text-sm font-extrabold text-[#185b97]">Free community game</span><p className="mt-6 text-sm font-extrabold text-[#667988]">SEASON PROGRESS</p><p className="font-display mt-2 text-5xl font-extrabold">+40</p><p className="mt-2 text-sm text-[#637688]">Participation points</p><div className="mt-5 border-y border-[#d1d4d3] py-5"><p className="flex items-center gap-2 font-extrabold text-[#185b97]"><Users size={19}/>You showed up</p><p className="mt-2 text-sm leading-6 text-[#637688]">No wallet or payment is needed. Your place in the community season still counts.</p></div></aside>}</div></section>;
 }

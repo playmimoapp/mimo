@@ -25,9 +25,10 @@ button,input { font:inherit; } button { touch-action:manipulation; }
 .font-display { font-family:var(--font-display),sans-serif; }
 .mimo-shadow { box-shadow:0 18px 50px rgba(26,47,80,.1); }
 .soft-grid { background-image:radial-gradient(#d9e1ea .7px,transparent .7px); background-size:18px 18px; }
-.stage-orbit::before,.stage-orbit::after { content:''; position:absolute; border-radius:999px; border:1px solid #d9e1e8; }
-.stage-orbit::before { inset:32px; }
-.stage-orbit::after { inset:78px; }
+.mimo-stage { isolation:isolate; box-shadow:inset 0 0 0 1px rgba(48,102,148,.08),0 24px 70px rgba(36,74,108,.12); }
+.mimo-stage::before { content:''; position:absolute; z-index:-1; width:340px; height:120px; right:-64px; top:132px; background:#f7c933; transform:rotate(-11deg); opacity:.9; }
+.mimo-stage::after { content:''; position:absolute; z-index:-1; width:280px; height:72px; left:-82px; bottom:92px; background:#ff8a76; transform:rotate(12deg); opacity:.78; }
+.host-line::after { content:''; position:absolute; left:28px; bottom:-9px; border-left:10px solid transparent; border-right:10px solid transparent; border-top:10px solid #203752; }
 .person-0{left:4%;top:21%}.person-1{right:5%;top:24%}.person-2{left:0;top:52%}.person-3{right:1%;top:54%}
 .person-4{left:18%;top:5%}.person-5{right:17%;top:7%}.person-6{left:12%;bottom:11%}.person-7{right:14%;bottom:12%}
 .person-8{left:39%;top:0}.person-9{right:38%;bottom:2%}.person-10{left:1%;bottom:29%}.person-11{right:2%;bottom:31%}
@@ -36,16 +37,27 @@ button,input { font:inherit; } button { touch-action:manipulation; }
   .pulse-dot { animation:pulse 1.6s ease-in-out infinite; }
   .arrival { animation:arrival .45s cubic-bezier(.22,1.5,.36,1) both; }
   .reaction-pop { animation:reaction-pop .7s cubic-bezier(.22,1.4,.36,1) both; }
+  .reaction-loop { animation:reaction-loop 1.9s cubic-bezier(.22,1.4,.36,1) infinite; }
+  .host-line { animation:host-line .35s cubic-bezier(.22,1,.36,1) both; }
   .mimo-breathe { animation:mimo-breathe 3.4s ease-in-out infinite; transform-origin:50% 85%; }
   .mimo-happy { animation:mimo-happy .75s cubic-bezier(.22,1.5,.36,1) infinite alternate; transform-origin:50% 90%; }
   .mimo-think { animation:mimo-think 2.2s ease-in-out infinite; transform-origin:50% 80%; }
+  .mimo-on-stage { animation:mimo-on-stage 1.45s cubic-bezier(.45,.05,.55,.95) infinite alternate; transform-origin:50% 91%; }
   .score-flip { animation:score-flip .5s ease-out both; }
   @keyframes enter { from { opacity:0; transform:translateY(8px) scale(.985); } }
   @keyframes pulse { 50% { opacity:.35; transform:scale(.85); } }
   @keyframes arrival { from { opacity:0; transform:scale(.4) translateY(12px); } }
   @keyframes reaction-pop { 0% { opacity:0; transform:translateY(8px) scale(.5); } 60% { transform:translateY(-10px) scale(1.35); } }
+  @keyframes reaction-loop { 0%,100% { transform:translateY(0) rotate(-8deg) scale(.9); } 45% { transform:translateY(-12px) rotate(8deg) scale(1.15); } }
+  @keyframes host-line { from { opacity:0; transform:translateY(7px); } }
   @keyframes mimo-breathe { 50% { transform:translateY(-6px) rotate(-1deg); } }
   @keyframes mimo-happy { to { transform:translateY(-9px) rotate(2deg) scale(1.015); } }
   @keyframes mimo-think { 50% { transform:translateY(-3px) rotate(-3deg); } }
+  @keyframes mimo-on-stage { to { transform:translateY(-9px) rotate(1.4deg) scale(1.012); } }
   @keyframes score-flip { from { opacity:.2; transform:translateY(8px); } }
+}
+
+@media (max-width:640px) {
+  .mimo-stage { height:410px; border-radius:28px; }
+  .mimo-stage .person-6,.mimo-stage .person-7,.mimo-stage .person-8,.mimo-stage .person-9,.mimo-stage .person-10,.mimo-stage .person-11 { display:none; }
 }

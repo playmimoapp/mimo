@@ -41,7 +41,7 @@ declare global {
 }
 
 function Logo() {
-  return <Image src="/mimo-logo.svg" alt="Mimo" width={224} height={64} priority className="h-10 w-auto" />;
+  return <Image src="/mimo-logo.svg" alt="Mimo" width={180} height={64} priority className="h-8 w-auto sm:h-10" />;
 }
 
 function Mascot({ mood = 'calm', className = '' }: { mood?: 'calm' | 'happy' | 'thinking'; className?: string }) {
@@ -119,25 +119,25 @@ function Invite({ event, next, create }: { event: EventDraft; next: () => void; 
   }, []);
   return (
     <section className="mx-auto grid min-h-[calc(100dvh-72px)] max-w-[1120px] gap-7 px-5 pb-12 pt-4 sm:px-8 lg:grid-cols-[.96fr_1.04fr] lg:items-center">
-      <div className="enter z-10 py-5">
+      <div className="enter order-2 z-10 py-2 lg:order-1 lg:py-5">
         <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-[.14em] text-[#536d84]"><span className="flex items-center gap-1.5 text-[#c94f3b]"><Radio size={15}/> Demo event</span><span aria-hidden="true">·</span><span>{event.community}</span></div>
-        <h1 className="font-display mt-5 max-w-[640px] text-[clamp(3.4rem,8vw,6.7rem)] font-extrabold leading-[.87] tracking-[-.078em]">{event.title}</h1>
-        <p className="mt-6 max-w-[570px] text-lg font-medium leading-8 text-[#53697c]">Five fast rounds. Two teams. Everyone plays.</p>
-        <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 border-y border-[#d2d7d8] py-4 text-sm font-bold text-[#425a70]">
+        <h1 className="font-display mt-3 max-w-[640px] text-[clamp(2.7rem,12vw,6.7rem)] font-extrabold leading-[.89] tracking-[-.072em] lg:mt-5">{event.title}</h1>
+        <p className="mt-3 max-w-[570px] text-base font-medium leading-7 text-[#53697c] sm:text-lg sm:leading-8 lg:mt-6">Five fast rounds. Two teams. Everyone plays.</p>
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-y border-[#d2d7d8] py-3 text-sm font-bold text-[#425a70] lg:mt-7 lg:gap-x-5 lg:gap-y-3 lg:py-4">
           <span className="flex items-center gap-2"><Users size={18} className="text-[#2175d5]"/> {faces + 12} joining</span>
           <span className="flex items-center gap-2"><CalendarDays size={18} className="text-[#2175d5]"/> Starts now</span>
           {event.rewardMode === 'nim' ? <span className="flex items-center gap-2 text-[#755700]"><Coins size={18}/> {event.rewardAmount || '0'} NIM skill rewards</span> : <span className="flex items-center gap-2"><Gamepad2 size={18}/> Free community game</span>}
         </div>
-        <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center lg:mt-7">
           <motion.div whileHover={{ y: -2 }} whileTap={{ scale: .97 }}><Button onClick={next} className="h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold hover:bg-[#185fac]">Join this room <ArrowRight /></Button></motion.div>
           <button onClick={create} className="h-14 px-5 text-sm font-extrabold text-[#28465f] underline decoration-[#9ab0c3] underline-offset-4 hover:text-[#1f72d2]">Create your own</button>
         </div>
-        <p className="mt-4 max-w-[520px] text-xs leading-5 text-[#748492]">This is a playable demo. It never moves money. A live NIM event asks the host to approve every payment in Nimiq Pay.</p>
+        <p className="mt-3 max-w-[520px] text-xs leading-5 text-[#748492]">This is a playable demo. It never moves money. A live NIM event asks the host to approve every payment in Nimiq Pay.</p>
       </div>
-      <div className="mimo-stage relative mx-auto h-[520px] w-full max-w-[520px] overflow-hidden rounded-[36px] bg-[#e8f3ff]">
-        <div className="absolute inset-x-6 top-5 z-20 flex items-center justify-between"><span className="rounded-full bg-white px-3 py-2 text-xs font-extrabold text-[#31506b] shadow-[0_6px_20px_rgba(39,77,111,.1)]">LIVE ROOM</span><motion.span animate={{ y: [0,-10,0], rotate: [-7,8,-7], scale: [.95,1.14,.95] }} transition={{ duration: 1.9, repeat: Infinity }} className="text-3xl" aria-hidden="true">🙌</motion.span></div>
-        <AnimatePresence mode="wait"><motion.div key={hostLines[beat]} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: .26 }} className="host-line absolute left-5 top-20 z-30 max-w-[230px] bg-[#203752] px-4 py-3 text-sm font-bold leading-5 text-white shadow-[0_12px_28px_rgba(32,55,82,.18)]">{hostLines[beat]}</motion.div></AnimatePresence>
-        <div className="absolute -bottom-9 left-1/2 z-10 w-[390px] -translate-x-1/2"><motion.div animate={{ y: [0,-9,0], rotate: [-1,1.4,-1] }} whileHover={{ scale: 1.025, rotate: -2 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}><Mascot mood="calm" className="w-full" /></motion.div></div>
+      <div className="mimo-stage relative order-1 mx-auto h-[245px] w-full max-w-[520px] overflow-hidden rounded-[28px] bg-[#e8f3ff] sm:h-[420px] sm:rounded-[36px] lg:order-2 lg:h-[520px]">
+        <div className="absolute inset-x-4 top-4 z-20 flex items-center justify-between sm:inset-x-6 sm:top-5"><span className="rounded-full bg-white px-3 py-2 text-xs font-extrabold text-[#31506b] shadow-[0_6px_20px_rgba(39,77,111,.1)]">LIVE ROOM</span><motion.span animate={{ y: [0,-10,0], rotate: [-7,8,-7], scale: [.95,1.14,.95] }} transition={{ duration: 1.9, repeat: Infinity }} className="text-2xl sm:text-3xl" aria-hidden="true">🙌</motion.span></div>
+        <AnimatePresence mode="wait"><motion.div key={hostLines[beat]} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: .26 }} className="host-line absolute left-4 top-16 z-30 max-w-[170px] bg-[#203752] px-3 py-2 text-xs font-bold leading-4 text-white shadow-[0_12px_28px_rgba(32,55,82,.18)] sm:left-5 sm:top-20 sm:max-w-[230px] sm:px-4 sm:py-3 sm:text-sm sm:leading-5">{hostLines[beat]}</motion.div></AnimatePresence>
+        <div className="absolute -bottom-7 left-1/2 z-10 w-[225px] -translate-x-1/2 sm:-bottom-9 sm:w-[335px] lg:w-[390px]"><motion.div animate={{ y: [0,-9,0], rotate: [-1,1.4,-1] }} whileHover={{ scale: 1.025, rotate: -2 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}><Mascot mood="calm" className="w-full" /></motion.div></div>
         <AnimatePresence>{roomPeople.slice(0, faces).map(([person, color], index) => <motion.span layout key={person} initial={{ opacity: 0, scale: .4, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} whileHover={{ y: -7, scale: 1.08, zIndex: 40 }} transition={{ type: 'spring', stiffness: 410, damping: 23, delay: index * .035 }} style={{ background: color }} className={`absolute z-20 grid h-11 w-11 place-items-center rounded-full border-[3px] border-[#e8f3ff] text-xs font-extrabold text-white person-${index}`}>{person[0]}</motion.span>)}</AnimatePresence>
         <div className="absolute bottom-0 inset-x-0 h-20 bg-[linear-gradient(180deg,transparent,#cfe6fb)]" />
       </div>

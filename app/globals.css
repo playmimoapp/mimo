@@ -58,6 +58,9 @@ button,input { font:inherit; } button { touch-action:manipulation; }
 }
 
 @media (max-width:640px) {
-  .mimo-stage { height:410px; border-radius:28px; }
-  .mimo-stage .person-6,.mimo-stage .person-7,.mimo-stage .person-8,.mimo-stage .person-9,.mimo-stage .person-10,.mimo-stage .person-11 { display:none; }
+  .mimo-stage { height:245px; border-radius:28px; }
+  .mimo-stage .person-0 { left:auto; right:13px; top:76px; }
+  .mimo-stage .person-1 { left:12px; right:auto; top:158px; }
+  .mimo-stage .person-2 { left:auto; right:14px; top:166px; }
+  .mimo-stage .person-3,.mimo-stage .person-4,.mimo-stage .person-5,.mimo-stage .person-6,.mimo-stage .person-7,.mimo-stage .person-8,.mimo-stage .person-9,.mimo-stage .person-10,.mimo-stage .person-11 { display:none; }
 }

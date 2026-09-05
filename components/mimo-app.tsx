@@ -41,7 +41,7 @@ declare global {
 }
 
 function Logo() {
-  return <div className="font-display flex items-center text-[1.55rem] font-extrabold tracking-[-.075em] text-[#203752]">mimo<span className="mb-5 ml-1 h-2.5 w-2.5 rounded-full bg-[#f6c431]" /></div>;
+  return <Image src="/mimo-logo.svg" alt="Mimo" width={224} height={64} priority className="h-10 w-auto" />;
 }
 
 function Mascot({ mood = 'calm', className = '' }: { mood?: 'calm' | 'happy' | 'thinking'; className?: string }) {

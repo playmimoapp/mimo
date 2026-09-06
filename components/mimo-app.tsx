@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Bot,
   ChevronRight,
+  CircleDot,
   FileText,
   Gamepad2,
   Gift,
@@ -16,6 +17,8 @@ import {
   Radio,
   ShieldCheck,
   Sparkles,
+  Trash2,
+  Trophy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LiveRoom } from '@/components/live-room';
@@ -30,6 +33,15 @@ type Screen =
   | 'live_host'
   | 'live_player';
 type RewardMode = 'free' | 'nim';
+type RoundType = 'pulse' | 'multiple_choice' | 'finale';
+
+type RoundDraft = {
+  id: string;
+  type: RoundType;
+  question: string;
+  choices: [string, string, string, string];
+  correctChoice: number | null;
+};
 
 type AssistantBrief = {
   community: string;
@@ -44,10 +56,18 @@ type EventDraft = {
   community: string;
   rewardMode: RewardMode;
   rewardAmount: string;
-  question: string;
-  choices: [string, string, string, string];
-  correctChoice: number;
+  rounds: RoundDraft[];
 };
+
+function blankRound(type: RoundType = 'multiple_choice'): RoundDraft {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    question: '',
+    choices: ['', '', '', ''],
+    correctChoice: type === 'pulse' ? null : 0,
+  };
+}
 
 declare global {
   interface Document {
@@ -131,9 +151,7 @@ export function MimoApp() {
     community: '',
     rewardMode: 'free',
     rewardAmount: '',
-    question: '',
-    choices: ['', '', '', ''],
-    correctChoice: 0,
+    rounds: [blankRound()],
   });
 
   useEffect(() => {
@@ -749,16 +767,44 @@ function CreateEvent({
 }) {
   const update = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
     setEvent({ ...event, [key]: value });
-  const updateChoice = (index: number, value: string) => {
-    const choices = [...event.choices] as EventDraft['choices'];
-    choices[index] = value;
-    update('choices', choices);
+  const updateRound = (roundIndex: number, patch: Partial<RoundDraft>) => {
+    const rounds = event.rounds.map((round, index) =>
+      index === roundIndex ? { ...round, ...patch } : round,
+    );
+    update('rounds', rounds);
+  };
+  const updateChoice = (
+    roundIndex: number,
+    choiceIndex: number,
+    value: string,
+  ) => {
+    const choices = [
+      ...event.rounds[roundIndex].choices,
+    ] as RoundDraft['choices'];
+    choices[choiceIndex] = value;
+    updateRound(roundIndex, { choices });
+  };
+  const addRound = (type: RoundType) => {
+    if (event.rounds.length >= 8) return;
+    update('rounds', [...event.rounds, blankRound(type)]);
+  };
+  const removeRound = (roundIndex: number) => {
+    if (event.rounds.length === 1) return;
+    update(
+      'rounds',
+      event.rounds.filter((_, index) => index !== roundIndex),
+    );
   };
   const ready = Boolean(
     event.title.trim() &&
     event.community.trim() &&
-    event.question.trim() &&
-    event.choices.every((choice) => choice.trim()) &&
+    event.rounds.length > 0 &&
+    event.rounds.every(
+      (round) =>
+        round.question.trim().length >= 8 &&
+        round.choices.every((choice) => choice.trim()) &&
+        (round.type === 'pulse' || round.correctChoice !== null),
+    ) &&
     (event.rewardMode === 'free' || Number(event.rewardAmount) > 0),
   );
   return (
@@ -768,11 +814,11 @@ function CreateEvent({
           Create a live event
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
-          Build the first round.
+          Shape the whole show.
         </h1>
         <MimoCue
           className="mobile-only mt-5"
-          message="You write it once. I’ll run it live for everyone."
+          message={`${event.rounds.length} ${event.rounds.length === 1 ? 'round' : 'rounds'} ready to shape. I’ll run the room.`}
         />
         <div className="mt-8 grid gap-7">
           <label className="grid gap-2 text-sm font-extrabold">
@@ -795,48 +841,154 @@ function CreateEvent({
               className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
             />
           </label>
-          <fieldset className="border-y border-[#cfd5d8] py-6">
-            <legend className="px-2 text-sm font-extrabold">
-              First live question
-            </legend>
-            <textarea
-              value={event.question}
-              onChange={(e) => update('question', e.target.value)}
-              maxLength={180}
-              placeholder="Write one clear, objectively scored question"
-              className="mt-3 min-h-24 w-full resize-none bg-transparent text-xl font-bold leading-7 outline-none placeholder:text-[#97a2ab]"
-            />
-            <p className="mt-5 text-sm font-extrabold text-[#5a6e80]">
-              Answers · select the correct one
-            </p>
-            <div className="mt-2 grid gap-2">
-              {event.choices.map((choice, index) => (
-                <label
-                  key={index}
-                  className={`flex min-h-14 items-center gap-3 border px-3 transition ${event.correctChoice === index ? 'border-[#1f72d2] bg-[#eaf4ff]' : 'border-[#d1d6d8] bg-white'}`}
+          <div className="border-y border-[#cfd5d8] py-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-extrabold">Live rounds</p>
+                <p className="mt-1 text-sm font-medium text-[#6a7b89]">
+                  Pulse the room, test skill, then finish together.
+                </p>
+              </div>
+              <span className="font-display text-2xl font-extrabold text-[#84919b]">
+                {event.rounds.length}/8
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              {event.rounds.map((round, roundIndex) => (
+                <fieldset
+                  key={round.id}
+                  className="rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5"
                 >
-                  <input
-                    type="radio"
-                    name="correct-choice"
-                    checked={event.correctChoice === index}
-                    onChange={() => update('correctChoice', index)}
-                    className="h-5 w-5 accent-[#1f72d2]"
+                  <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
+                    Round {roundIndex + 1}
+                  </legend>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          ['pulse', 'Pulse', CircleDot],
+                          ['multiple_choice', 'Play', Gamepad2],
+                          ['finale', 'Finale', Trophy],
+                        ] as const
+                      ).map(([type, label, Icon]) => (
+                        <button
+                          type="button"
+                          key={type}
+                          onClick={() =>
+                            updateRound(roundIndex, {
+                              type,
+                              correctChoice:
+                                type === 'pulse'
+                                  ? null
+                                  : (round.correctChoice ?? 0),
+                            })
+                          }
+                          className={`flex min-h-10 items-center gap-2 rounded-full px-3 text-sm font-extrabold ${round.type === type ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                        >
+                          <Icon size={15} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                    {event.rounds.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeRound(roundIndex)}
+                        aria-label={`Remove round ${roundIndex + 1}`}
+                        className="grid h-10 w-10 place-items-center rounded-full text-[#9f4a3c] hover:bg-[#fff0ec]"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={round.question}
+                    onChange={(e) =>
+                      updateRound(roundIndex, { question: e.target.value })
+                    }
+                    maxLength={180}
+                    placeholder={
+                      round.type === 'pulse'
+                        ? 'Ask what the room thinks—there is no wrong side'
+                        : round.type === 'finale'
+                          ? 'Write the final skill question'
+                          : 'Write one clear, objectively scored question'
+                    }
+                    className="mt-4 min-h-20 w-full resize-none border-b-2 border-[#c5cdd2] bg-transparent text-lg font-bold leading-7 outline-none placeholder:text-[#97a2ab] focus:border-[#1f72d2]"
                   />
-                  <span className="text-sm font-extrabold text-[#6b7d8b]">
-                    {String.fromCharCode(65 + index)}
-                  </span>
-                  <input
-                    value={choice}
-                    onChange={(e) => updateChoice(index, e.target.value)}
-                    maxLength={80}
-                    aria-label={`Answer ${String.fromCharCode(65 + index)}`}
-                    placeholder={`Answer ${String.fromCharCode(65 + index)}`}
-                    className="min-w-0 flex-1 bg-transparent py-3 font-bold outline-none"
-                  />
-                </label>
+                  <p className="mt-5 text-sm font-extrabold text-[#5a6e80]">
+                    {round.type === 'pulse'
+                      ? 'Sides · every answer counts as participation'
+                      : 'Answers · select the correct one'}
+                  </p>
+                  <div className="mt-2 grid gap-2">
+                    {round.choices.map((choice, choiceIndex) => (
+                      <label
+                        key={choiceIndex}
+                        className={`flex min-h-14 items-center gap-3 border px-3 transition ${round.correctChoice === choiceIndex ? 'border-[#1f72d2] bg-[#eaf4ff]' : 'border-[#d1d6d8] bg-white'}`}
+                      >
+                        {round.type !== 'pulse' ? (
+                          <input
+                            type="radio"
+                            name={`correct-choice-${round.id}`}
+                            checked={round.correctChoice === choiceIndex}
+                            onChange={() =>
+                              updateRound(roundIndex, {
+                                correctChoice: choiceIndex,
+                              })
+                            }
+                            className="h-5 w-5 accent-[#1f72d2]"
+                          />
+                        ) : (
+                          <span className="h-5 w-5 rounded-full border-2 border-[#9daab4]" />
+                        )}
+                        <span className="text-sm font-extrabold text-[#6b7d8b]">
+                          {String.fromCharCode(65 + choiceIndex)}
+                        </span>
+                        <input
+                          value={choice}
+                          onChange={(e) =>
+                            updateChoice(
+                              roundIndex,
+                              choiceIndex,
+                              e.target.value,
+                            )
+                          }
+                          maxLength={80}
+                          aria-label={`Round ${roundIndex + 1}, answer ${String.fromCharCode(65 + choiceIndex)}`}
+                          placeholder={
+                            round.type === 'pulse'
+                              ? `Side ${String.fromCharCode(65 + choiceIndex)}`
+                              : `Answer ${String.fromCharCode(65 + choiceIndex)}`
+                          }
+                          className="min-w-0 flex-1 bg-transparent py-3 font-bold outline-none"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
               ))}
             </div>
-          </fieldset>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:flex">
+              <button
+                type="button"
+                disabled={event.rounds.length >= 8}
+                onClick={() => addRound('multiple_choice')}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
+              >
+                <Plus size={16} /> Play round
+              </button>
+              <button
+                type="button"
+                disabled={event.rounds.length >= 8}
+                onClick={() => addRound('pulse')}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
+              >
+                <Plus size={16} /> Pulse
+              </button>
+            </div>
+          </div>
           <fieldset>
             <legend className="text-sm font-extrabold">Reward setup</legend>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -905,8 +1057,8 @@ function CreateEvent({
           Mimo takes it live.
         </p>
         <p className="mt-3 text-sm leading-6 text-[#c9d8e5]">
-          Your question, correct answer and reward status are saved with the
-          room. Players see the same server-controlled moment.
+          Every round, correct answer and reward rule is saved with the room.
+          Mimo moves everyone through the same server-controlled show.
         </p>
       </aside>
     </section>

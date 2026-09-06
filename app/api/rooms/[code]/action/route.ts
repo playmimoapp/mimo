@@ -4,6 +4,7 @@ import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
 const nextStatus = {
   start: 'live',
   reveal: 'verifying',
+  next: 'live',
   finish: 'complete',
   reset: 'lobby',
 } as const;
@@ -26,15 +27,26 @@ export async function POST(
   if ((await hashToken(hostKey)) !== room.hostKeyHash)
     return json({ error: 'Host access was rejected.' }, 403);
 
+  const db = getD1();
+  const roundRows = await db
+    .prepare(
+      `SELECT id, position FROM rounds WHERE event_id = ? ORDER BY position`,
+    )
+    .bind(room.id)
+    .all<{ id: string; position: number }>();
+  const currentRoundIndex = roundRows.results.findIndex(
+    (round) => round.id === room.activeRoundId,
+  );
+  const nextRound = roundRows.results[currentRoundIndex + 1];
   const allowed =
     (action === 'start' && room.status === 'lobby') ||
     (action === 'reveal' && room.status === 'live') ||
-    (action === 'finish' && room.status === 'verifying') ||
+    (action === 'next' && room.status === 'verifying' && Boolean(nextRound)) ||
+    (action === 'finish' && room.status === 'verifying' && !nextRound) ||
     (action === 'reset' && room.status === 'complete');
   if (!allowed)
     return json({ error: 'That action is not available right now.' }, 409);
 
-  const db = getD1();
   const status = nextStatus[action];
   if (action === 'start') {
     await db.batch([
@@ -50,13 +62,25 @@ export async function POST(
         .bind(room.id),
       db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
     ]);
-  } else if (action === 'reset') {
+  } else if (action === 'next' && nextRound) {
     await db.batch([
       db
         .prepare(
-          `UPDATE events SET status = 'lobby', round_started_at = NULL WHERE id = ?`,
+          `UPDATE events SET status = 'live', active_round_id = ?, round_started_at = ? WHERE id = ?`,
         )
+        .bind(nextRound.id, Date.now(), room.id),
+      db
+        .prepare(`UPDATE participants SET answer_locked = 0 WHERE event_id = ?`)
         .bind(room.id),
+    ]);
+  } else if (action === 'reset') {
+    const firstRound = roundRows.results[0];
+    await db.batch([
+      db
+        .prepare(
+          `UPDATE events SET status = 'lobby', active_round_id = ?, round_started_at = NULL WHERE id = ?`,
+        )
+        .bind(firstRound.id, room.id),
       db
         .prepare(
           `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,

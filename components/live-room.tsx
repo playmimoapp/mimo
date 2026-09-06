@@ -60,7 +60,9 @@ export function LiveRoom({
         const me = next.players.find(
           (player) => player.nickname.toLowerCase() === nickname.toLowerCase(),
         );
-        if (me?.answerLocked) setLocked(true);
+        const answerIsLocked = Boolean(me?.answerLocked);
+        setLocked(answerIsLocked);
+        if (!answerIsLocked) setSelected(null);
       }
     } catch (cause) {
       setError(
@@ -94,7 +96,7 @@ export function LiveRoom({
   );
 
   const hostAction = async (
-    action: 'start' | 'reveal' | 'finish' | 'reset',
+    action: 'start' | 'reveal' | 'next' | 'finish' | 'reset',
   ) => {
     if (!hostKey || busy) return;
     setBusy(true);
@@ -248,7 +250,9 @@ export function LiveRoom({
                 ? `${room.players.length || 'No'} players here. I’ll keep everyone together.`
                 : room.status === 'live'
                   ? `${answered} answers locked. I’m watching the clock.`
-                  : 'Scores checked. The room result is ready.'
+                  : room.status === 'verifying' && room.hasNextRound
+                    ? `Round ${room.roundIndex + 1} is revealed. The next moment is ready.`
+                    : 'Scores checked. The room result is ready.'
             }
           />
 
@@ -280,6 +284,7 @@ export function LiveRoom({
               role={mode}
               busy={busy}
               onFinish={() => void hostAction('finish')}
+              onNext={() => void hostAction('next')}
               onReset={() => void hostAction('reset')}
             />
           )}
@@ -305,7 +310,9 @@ export function LiveRoom({
               ? `${room.players.length} ${room.players.length === 1 ? 'player' : 'players'} arrived`
               : room.status === 'live'
                 ? `${answered} of ${room.players.length} locked`
-                : 'Scores verified'}
+                : room.status === 'verifying' && room.hasNextRound
+                  ? `Round ${room.roundIndex + 1} revealed`
+                  : 'Scores verified'}
           </p>
           <p className="mt-2 text-center text-sm leading-5 text-[#c5d4e0]">
             {mode === 'host'
@@ -411,7 +418,12 @@ function QuestionState({
       <div className="mobile-round-top flex items-start justify-between gap-4 border-b border-[#d1d5d5] pb-5">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
-            Round 1 · server timed
+            Round {room.roundIndex + 1} of {room.roundCount} ·{' '}
+            {room.roundType === 'pulse'
+              ? 'room pulse'
+              : room.roundType === 'finale'
+                ? 'finale'
+                : 'server timed'}
           </p>
           <h2 className="font-display mt-3 max-w-3xl text-[clamp(2rem,9vw,3.8rem)] font-extrabold leading-[.98] tracking-[-.05em]">
             {room.prompt}
@@ -451,7 +463,9 @@ function QuestionState({
             disabled={busy}
             className="mobile-primary mt-6 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
           >
-            Reveal verified result
+            {room.roundType === 'pulse'
+              ? 'Reveal the room pulse'
+              : 'Reveal verified result'}
           </Button>
         </div>
       )}
@@ -463,7 +477,9 @@ function QuestionState({
           {locked ? (
             <>
               <ShieldCheck size={18} />
-              Answer saved. It cannot be changed.
+              {room.roundType === 'pulse'
+                ? 'Your side is saved.'
+                : 'Answer saved. It cannot be changed.'}
             </>
           ) : seconds === 0 ? (
             'Time is up. Waiting for the reveal.'
@@ -481,6 +497,7 @@ function ResultsState({
   leaderboard,
   role,
   busy,
+  onNext,
   onFinish,
   onReset,
 }: {
@@ -488,6 +505,7 @@ function ResultsState({
   leaderboard: LiveRoomState['players'];
   role: 'host' | 'player';
   busy: boolean;
+  onNext: () => void;
   onFinish: () => void;
   onReset: () => void;
 }) {
@@ -500,7 +518,13 @@ function ResultsState({
         </span>
       </div>
       <h2 className="mobile-flow-title font-display mt-3 text-[clamp(2.6rem,6vw,5rem)] font-extrabold leading-[.9] tracking-[-.06em]">
-        The room has spoken.
+        {room.status === 'complete'
+          ? 'The room has spoken.'
+          : room.roundType === 'pulse'
+            ? 'The room chose.'
+            : room.roundType === 'finale'
+              ? 'Finale revealed.'
+              : 'Round revealed.'}
       </h2>
       {room.correctChoice !== null && (
         <p className="mt-4 text-lg text-[#526a7e]">
@@ -509,6 +533,35 @@ function ResultsState({
             {room.choices[room.correctChoice]}
           </strong>
         </p>
+      )}
+      {room.roundType === 'pulse' && room.status === 'verifying' && (
+        <div className="mt-7 grid gap-3">
+          {room.choices.map((choice, index) => {
+            const count = room.choiceCounts[index] ?? 0;
+            const total = Math.max(
+              1,
+              room.choiceCounts.reduce((sum, value) => sum + value, 0),
+            );
+            const percentage = Math.round((count / total) * 100);
+            return (
+              <div
+                key={choice}
+                className="relative overflow-hidden rounded-[18px] border border-[#cbd4d9] bg-white p-4"
+              >
+                <div
+                  className="absolute inset-y-0 left-0 bg-[#dceeff]"
+                  style={{ width: `${percentage}%` }}
+                />
+                <div className="relative flex items-center justify-between gap-4 font-bold">
+                  <span>{choice}</span>
+                  <span className="font-display text-lg font-extrabold">
+                    {percentage}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
       <div className="mt-7 border-y border-[#cdd3d5]">
         {leaderboard.map((player, index) => (
@@ -532,7 +585,15 @@ function ResultsState({
         ))}
       </div>
       {role === 'host' &&
-        (room.status === 'verifying' ? (
+        (room.status === 'verifying' && room.hasNextRound ? (
+          <Button
+            onClick={onNext}
+            disabled={busy}
+            className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
+          >
+            Next round
+          </Button>
+        ) : room.status === 'verifying' ? (
           <Button
             onClick={onFinish}
             disabled={busy}
@@ -553,7 +614,9 @@ function ResultsState({
         <p className="mt-5 font-bold text-[#536b7e]">
           {room.status === 'complete'
             ? 'Event complete. Your result is saved.'
-            : 'The host is checking the room.'}
+            : room.hasNextRound
+              ? 'Mimo is getting the next round ready.'
+              : 'The host is checking the final result.'}
         </p>
       )}
     </div>

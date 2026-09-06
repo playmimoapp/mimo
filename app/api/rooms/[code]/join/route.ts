@@ -15,10 +15,22 @@ export async function POST(
   const { code } = await context.params;
   const room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
+  const db = getD1();
+  const hasAnotherRound =
+    room.status !== 'verifying' ||
+    Boolean(
+      await db
+        .prepare(`SELECT next.id FROM rounds current
+          JOIN rounds next ON next.event_id = current.event_id
+            AND next.position = current.position + 1
+          WHERE current.id = ? LIMIT 1`)
+        .bind(room.activeRoundId)
+        .first<{ id: string }>(),
+    );
   if (
     room.status === 'complete' ||
     room.status === 'cancelled' ||
-    room.status === 'verifying'
+    !hasAnotherRound
   ) {
     return json({ error: 'This room is no longer accepting players.' }, 409);
   }
@@ -28,7 +40,6 @@ export async function POST(
   if (nickname.length < 2)
     return json({ error: 'Use at least two characters.' }, 400);
 
-  const db = getD1();
   const existing = await db
     .prepare(`SELECT id FROM participants
     WHERE event_id = ? AND lower(nickname) = lower(?) LIMIT 1`)

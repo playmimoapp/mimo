@@ -15,8 +15,15 @@ export type LiveRoomState = {
   rewardAmount: string;
   serverNow: number;
   deadline: number | null;
+  activeRoundId: string;
+  roundIndex: number;
+  roundCount: number;
+  roundType: 'pulse' | 'multiple_choice' | 'finale';
+  scored: boolean;
+  hasNextRound: boolean;
   prompt: string | null;
   choices: string[];
+  choiceCounts: number[];
   correctChoice: number | null;
   players: LivePlayer[];
 };

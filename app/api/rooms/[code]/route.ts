@@ -10,13 +10,23 @@ export async function GET(
   if (!room) return json({ error: 'That room does not exist.' }, 404);
 
   const db = getD1();
-  const [round, playerRows] = await Promise.all([
+  const [round, roundCountRow, playerRows, answerRows] = await Promise.all([
     db
       .prepare(
-        `SELECT prompt, config_json AS configJson FROM rounds WHERE id = ? LIMIT 1`,
+        `SELECT prompt, type, position, config_json AS configJson
+        FROM rounds WHERE id = ? LIMIT 1`,
       )
       .bind(room.activeRoundId)
-      .first<{ prompt: string; configJson: string }>(),
+      .first<{
+        prompt: string;
+        type: 'pulse' | 'multiple_choice' | 'finale';
+        position: number;
+        configJson: string;
+      }>(),
+    db
+      .prepare(`SELECT COUNT(*) AS total FROM rounds WHERE event_id = ?`)
+      .bind(room.id)
+      .first<{ total: number }>(),
     db
       .prepare(`SELECT id, nickname, team_id AS teamId, score,
         answer_locked AS answerLocked
@@ -31,12 +41,19 @@ export async function GET(
         score: number;
         answerLocked: number;
       }>(),
+    db
+      .prepare(
+        `SELECT answer_json AS answerJson FROM answers WHERE round_id = ?`,
+      )
+      .bind(room.activeRoundId)
+      .all<{ answerJson: string }>(),
   ]);
 
   const config = round
     ? (JSON.parse(round.configJson) as {
         choices: string[];
-        correctChoice: number;
+        correctChoice: number | null;
+        scored?: boolean;
       })
     : null;
   const reward = room.launchedConfigJson
@@ -50,6 +67,21 @@ export async function GET(
     ? room.roundStartedAt + room.roundDurationSeconds * 1000
     : null;
   const reveal = room.status === 'verifying' || room.status === 'complete';
+  const roundCount = roundCountRow?.total ?? 1;
+  const roundIndex = round?.position ?? 0;
+  const choiceCounts = [0, 0, 0, 0];
+  for (const answer of answerRows.results) {
+    try {
+      const choice = Number(
+        (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
+      );
+      if (Number.isInteger(choice) && choice >= 0 && choice <= 3) {
+        choiceCounts[choice] += 1;
+      }
+    } catch {
+      // Malformed historical answers are ignored in the public tally.
+    }
+  }
 
   return json({
     code: room.roomCode,
@@ -60,8 +92,15 @@ export async function GET(
     rewardAmount: reward.amount,
     serverNow,
     deadline,
+    activeRoundId: room.activeRoundId,
+    roundIndex,
+    roundCount,
+    roundType: round?.type ?? 'multiple_choice',
+    scored: config?.scored ?? round?.type !== 'pulse',
+    hasNextRound: roundIndex + 1 < roundCount,
     prompt: room.status === 'lobby' ? null : (round?.prompt ?? null),
     choices: room.status === 'lobby' ? [] : (config?.choices ?? []),
+    choiceCounts: room.status === 'lobby' ? [] : choiceCounts,
     correctChoice: reveal ? (config?.correctChoice ?? null) : null,
     players: playerRows.results.map((player) => ({
       ...player,

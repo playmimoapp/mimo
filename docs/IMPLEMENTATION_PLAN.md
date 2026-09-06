@@ -61,6 +61,22 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 - The Gemini key is server-only. Without a configured key, Mimo reports that the assistant is unavailable instead of returning fake generated content.
 - Both paths end in the same real room creation and server-authoritative play loop.
 
+## Working milestone â€” complete show sequence
+
+- Hosts can compose up to eight Pulse, Play, and Finale rounds in one event.
+- Pulse rounds have no fake “correct” side and reveal the room-wide distribution.
+- Scored rounds accumulate server-owned points across the show.
+- Mimo moves every connected player through the same active round, reveal, next-round, and final-result states.
+- The automated room simulation now runs four players through a three-round show.
+
+## X distribution layer â€” after the core is reliable
+
+- A creator may summon `@MimoHost` with a topic, audience, round count, and proposed NIM reward.
+- Mimo replies only to explicit mentions with a private review link; it never publishes or funds an event from the post alone.
+- The creator reviews in Mimo, connects Nimiq Pay, confirms funding, and explicitly publishes.
+- X can then distribute invitations, countdowns, live links, and result recaps. Participants never need X accounts.
+- This requires a paid X developer app, mention ingestion, reply authorization, idempotency, abuse controls, and secret management, so it remains outside the critical play path.
+
 ## Milestones
 
 - [x] Establish the visual system, animated host presence, free/NIM event choice, and a playable participant journey.
@@ -68,6 +84,7 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 - [x] Implement D1-backed community/event APIs and protected create/join/answer commands.
 - [x] Add authoritative room snapshots, server deadlines, reconnect tokens, and host session recovery.
 - [x] Add assisted and manual creation entrances that converge on one editable event.
+- [x] Expand live rooms to a multi-round Pulse → Play → Finale sequence with cumulative scoring.
 - [ ] **Next:** connect the existing typed `@nimiq/mini-app-sdk` adapter to real account access, signed identity, NIM funding intent, and explicit payout transactions inside Nimiq Pay.
 - [ ] Expand the creator from one working round to modular round editing, validation, preview, rehearsal, scheduling, and locked launch snapshots.
 - [ ] Add transaction monitoring, partial payout recovery, moderation, structured logs, and privacy-conscious usage events.

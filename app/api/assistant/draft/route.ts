@@ -8,25 +8,48 @@ type DraftRequest = {
 
 type GeneratedDraft = {
   title: string;
-  question: string;
-  choices: [string, string, string, string];
-  correctChoice: number;
+  rounds: Array<{
+    type: 'pulse' | 'multiple_choice' | 'finale';
+    question: string;
+    choices: [string, string, string, string];
+    correctChoice: number | null;
+  }>;
 };
 
 const responseSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'question', 'choices', 'correctChoice'],
+  required: ['title', 'rounds'],
   properties: {
     title: { type: 'string', minLength: 3, maxLength: 80 },
-    question: { type: 'string', minLength: 8, maxLength: 180 },
-    choices: {
+    rounds: {
       type: 'array',
-      minItems: 4,
-      maxItems: 4,
-      items: { type: 'string', minLength: 1, maxLength: 80 },
+      minItems: 3,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['type', 'question', 'choices', 'correctChoice'],
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['pulse', 'multiple_choice', 'finale'],
+          },
+          question: { type: 'string', minLength: 8, maxLength: 180 },
+          choices: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 4,
+            items: { type: 'string', minLength: 1, maxLength: 80 },
+          },
+          correctChoice: {
+            type: ['integer', 'null'],
+            minimum: 0,
+            maximum: 3,
+          },
+        },
+      },
     },
-    correctChoice: { type: 'integer', minimum: 0, maximum: 3 },
   },
 } as const;
 
@@ -52,16 +75,24 @@ function validDraft(value: unknown): value is GeneratedDraft {
   return Boolean(
     typeof draft.title === 'string' &&
     draft.title.trim().length >= 3 &&
-    typeof draft.question === 'string' &&
-    draft.question.trim().length >= 8 &&
-    Array.isArray(draft.choices) &&
-    draft.choices.length === 4 &&
-    draft.choices.every(
-      (choice) => typeof choice === 'string' && choice.trim().length > 0,
-    ) &&
-    Number.isInteger(draft.correctChoice) &&
-    Number(draft.correctChoice) >= 0 &&
-    Number(draft.correctChoice) <= 3,
+    Array.isArray(draft.rounds) &&
+    draft.rounds.length >= 3 &&
+    draft.rounds.length <= 5 &&
+    draft.rounds.every(
+      (round) =>
+        ['pulse', 'multiple_choice', 'finale'].includes(round.type) &&
+        typeof round.question === 'string' &&
+        round.question.trim().length >= 8 &&
+        Array.isArray(round.choices) &&
+        round.choices.length === 4 &&
+        round.choices.every(
+          (choice) => typeof choice === 'string' && choice.trim().length > 0,
+        ) &&
+        (round.type === 'pulse' ||
+          (Number.isInteger(round.correctChoice) &&
+            Number(round.correctChoice) >= 0 &&
+            Number(round.correctChoice) <= 3)),
+    ),
   );
 }
 
@@ -97,8 +128,10 @@ export async function POST(request: Request) {
   }
 
   const instructions = `You are Mimo, a careful live community-game editor.
-Create exactly one multiple-choice starter round for an event host to review.
-The question must have one objectively correct answer and exactly four distinct choices.
+Create a short live show with 3 to 5 rounds for an event host to review.
+Start with one unscored pulse, follow with objectively scored multiple-choice rounds,
+and end with one finale. Every round has exactly four distinct choices. Pulse rounds use
+null for correctChoice; scored rounds must have exactly one correct answer.
 Never invent a claim from supplied source text. If no source is supplied, use only stable,
 widely established facts. Avoid trick wording, subjective judgment, politics, medical advice,
 financial advice, gambling, random reward rules and promotional claims. Keep the language
@@ -149,9 +182,13 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
         community,
         rewardMode: 'free',
         rewardAmount: '',
-        question: draft.question.trim().slice(0, 180),
-        choices: draft.choices.map((choice) => choice.trim().slice(0, 80)),
-        correctChoice: draft.correctChoice,
+        rounds: draft.rounds.map((round) => ({
+          id: crypto.randomUUID(),
+          type: round.type,
+          question: round.question.trim().slice(0, 180),
+          choices: round.choices.map((choice) => choice.trim().slice(0, 80)),
+          correctChoice: round.type === 'pulse' ? null : round.correctChoice,
+        })),
       },
     });
   } catch (error) {

@@ -48,8 +48,12 @@ export async function POST(
     .bind(room.activeRoundId)
     .first<{ configJson: string }>();
   if (!round) return json({ error: 'This round could not be loaded.' }, 500);
-  const config = JSON.parse(round.configJson) as { correctChoice: number };
-  const correct = choice === config.correctChoice;
+  const config = JSON.parse(round.configJson) as {
+    correctChoice: number | null;
+    scored?: boolean;
+  };
+  const scored = config.scored ?? config.correctChoice !== null;
+  const correct = scored ? choice === config.correctChoice : null;
   const remaining = Math.max(0, Math.ceil((deadline - now) / 1000));
   const score = correct ? 1000 + remaining * 10 : 0;
 
@@ -70,7 +74,7 @@ export async function POST(
         ),
       db
         .prepare(
-          `UPDATE participants SET answer_locked = 1, score = ?, last_seen_at = ? WHERE id = ?`,
+          `UPDATE participants SET answer_locked = 1, score = score + ?, last_seen_at = ? WHERE id = ?`,
         )
         .bind(score, now, participant.id),
     ]);

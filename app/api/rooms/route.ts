@@ -28,16 +28,42 @@ export async function POST(request: Request) {
           .replace(/[^0-9]/g, '')
           .slice(0, 12)
       : '0';
-  const question = (typeof body.question === 'string' ? body.question : '')
-    .trim()
-    .slice(0, 180);
-  const choices = Array.isArray(body.choices)
-    ? body.choices.map((choice) =>
-        (typeof choice === 'string' ? choice : '').trim().slice(0, 80),
-      )
-    : [];
-  const correctChoice =
-    typeof body.correctChoice === 'number' ? body.correctChoice : -1;
+  const rawRounds = Array.isArray(body.rounds)
+    ? body.rounds
+    : [
+        {
+          type: 'multiple_choice',
+          question: body.question,
+          choices: body.choices,
+          correctChoice: body.correctChoice,
+        },
+      ];
+  const parsedRounds = rawRounds.slice(0, 8).map((value) => {
+    const round = value && typeof value === 'object' ? value : {};
+    const record = round as Record<string, unknown>;
+    const type = ['pulse', 'multiple_choice', 'finale'].includes(
+      String(record.type),
+    )
+      ? (String(record.type) as 'pulse' | 'multiple_choice' | 'finale')
+      : 'multiple_choice';
+    const question = (
+      typeof record.question === 'string' ? record.question : ''
+    )
+      .trim()
+      .slice(0, 180);
+    const choices = Array.isArray(record.choices)
+      ? record.choices.map((choice) =>
+          (typeof choice === 'string' ? choice : '').trim().slice(0, 80),
+        )
+      : [];
+    const correctChoice =
+      type === 'pulse'
+        ? null
+        : typeof record.correctChoice === 'number'
+          ? record.correctChoice
+          : -1;
+    return { type, question, choices, correctChoice };
+  });
 
   if (title.length < 3 || community.length < 2) {
     return json({ error: 'Add an event and community name.' }, 400);
@@ -46,15 +72,23 @@ export async function POST(request: Request) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
   }
   if (
-    question.length < 8 ||
-    choices.length !== 4 ||
-    choices.some((choice) => choice.length < 1) ||
-    !Number.isInteger(correctChoice) ||
-    correctChoice < 0 ||
-    correctChoice > 3
+    parsedRounds.length < 1 ||
+    parsedRounds.some(
+      (round) =>
+        round.question.length < 8 ||
+        round.choices.length !== 4 ||
+        round.choices.some((choice) => choice.length < 1) ||
+        (round.type !== 'pulse' &&
+          (!Number.isInteger(round.correctChoice) ||
+            Number(round.correctChoice) < 0 ||
+            Number(round.correctChoice) > 3)),
+    )
   ) {
     return json(
-      { error: 'Add one clear question, four answers and the correct answer.' },
+      {
+        error:
+          'Every round needs one clear question and four answers. Scored rounds also need a correct answer.',
+      },
       400,
     );
   }
@@ -65,14 +99,14 @@ export async function POST(request: Request) {
   const hostKeyHash = await hashToken(hostKey);
   const communityId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
-  const roundId = crypto.randomUUID();
+  const roundIds = parsedRounds.map(() => crypto.randomUUID());
   const now = Date.now();
   const reward = JSON.stringify({
     mode: rewardMode,
     amount: rewardAmount,
     funded: false,
+    roundCount: parsedRounds.length,
   });
-  const round = JSON.stringify({ choices, correctChoice });
 
   try {
     await db.batch([
@@ -99,14 +133,27 @@ export async function POST(request: Request) {
           reward,
           code,
           hostKeyHash,
-          roundId,
+          roundIds[0],
           now,
         ),
-      db
-        .prepare(`INSERT INTO rounds
-        (id, event_id, position, type, prompt, config_json)
-        VALUES (?, ?, 0, 'multiple_choice', ?, ?)`)
-        .bind(roundId, eventId, question, round),
+      ...parsedRounds.map((round, index) =>
+        db
+          .prepare(`INSERT INTO rounds
+          (id, event_id, position, type, prompt, config_json)
+          VALUES (?, ?, ?, ?, ?, ?)`)
+          .bind(
+            roundIds[index],
+            eventId,
+            index,
+            round.type,
+            round.question,
+            JSON.stringify({
+              choices: round.choices,
+              correctChoice: round.correctChoice,
+              scored: round.type !== 'pulse',
+            }),
+          ),
+      ),
     ]);
   } catch (error) {
     console.error('room_create_failed', error);

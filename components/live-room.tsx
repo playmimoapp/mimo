@@ -1,14 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import QRCode from 'qrcode';
 import {
   Check,
   Clock3,
-  Copy,
+  Link2,
   LockKeyhole,
+  QrCode,
   Radio,
   RefreshCw,
+  Share2,
   ShieldCheck,
   Trophy,
   Users,
@@ -18,6 +22,13 @@ import {
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { MimoCharacter, MimoCue } from '@/components/mimo-host';
 import type { LiveRoomState } from '@/lib/live-room-types';
 import { MimoNimiq } from '@/lib/nimiq';
@@ -66,6 +77,9 @@ export function LiveRoom({
   const [selected, setSelected] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteQr, setInviteQr] = useState('');
+  const [inviteError, setInviteError] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const [nimiq] = useState(() => new MimoNimiq());
   const [walletProof, setWalletProof] = useState<WalletProofUi>({
@@ -73,6 +87,32 @@ export function LiveRoom({
   });
   const reduceMotion = useReducedMotion();
   const [reactionBusy, setReactionBusy] = useState(false);
+
+  const inviteUrl = useCallback(
+    () =>
+      `${window.location.origin}/?room=${code}${inviteToken ? `#invite=${inviteToken}` : ''}`,
+    [code, inviteToken],
+  );
+
+  useEffect(() => {
+    if (!inviteOpen) return;
+    let active = true;
+    void QRCode.toDataURL(inviteUrl(), {
+      width: 720,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#203752', light: '#ffffff' },
+    })
+      .then((dataUrl) => {
+        if (active) setInviteQr(dataUrl);
+      })
+      .catch(() => {
+        if (active) setInviteError('The QR code could not be made. Copy the link instead.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [inviteOpen, inviteUrl]);
 
   const refresh = useCallback(async () => {
     try {
@@ -295,10 +335,31 @@ export function LiveRoom({
   };
 
   const copyInvite = async () => {
-    const url = `${window.location.origin}/?room=${code}${inviteToken ? `#invite=${inviteToken}` : ''}`;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    try {
+      await navigator.clipboard.writeText(inviteUrl());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setInviteError('Your browser blocked copy. Use Share instead.');
+    }
+  };
+
+  const shareInvite = async () => {
+    if (!room) return;
+    if (!navigator.share) {
+      await copyInvite();
+      return;
+    }
+    try {
+      await navigator.share({
+        title: `${room.title} on Mimo`,
+        text: `Join ${room.community} in room ${room.code}.`,
+        url: inviteUrl(),
+      });
+    } catch (cause) {
+      if (cause instanceof Error && cause.name === 'AbortError') return;
+      setInviteError('Sharing did not open. You can copy the link instead.');
+    }
   };
 
   if (!room) {
@@ -356,11 +417,14 @@ export function LiveRoom({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => void copyInvite()}
+            onClick={() => {
+              setInviteError('');
+              setInviteOpen(true);
+            }}
             className="flex h-10 items-center gap-2 rounded-full border border-[#bdc8cf] bg-white px-4 text-sm font-extrabold"
           >
-            <Copy size={15} />
-            {copied ? 'Copied' : 'Invite'}
+            <QrCode size={16} />
+            Invite
           </button>
           <button
             onClick={onExit}
@@ -370,6 +434,87 @@ export function LiveRoom({
           </button>
         </div>
       </div>
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="invite-sheet overflow-hidden rounded-[30px] bg-[#f8f7f3] p-0 sm:max-w-[430px]">
+          <div className="relative overflow-hidden bg-[#dceeff] px-5 pb-5 pt-6">
+            <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full border-[22px] border-white/35" />
+            <DialogHeader className="relative pr-9">
+              <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
+                Bring everyone in
+              </p>
+              <DialogTitle className="font-display text-3xl font-extrabold leading-[.95] tracking-[-.04em]">
+                Scan. Join. Play.
+              </DialogTitle>
+              <DialogDescription className="max-w-[290px] font-medium leading-5 text-[#526a7c]">
+                Point any phone camera at the code. No app lesson needed.
+              </DialogDescription>
+            </DialogHeader>
+            <MimoCharacter
+              mood="happy"
+              className="absolute -bottom-8 -right-3 w-[118px] rotate-[-4deg]"
+            />
+          </div>
+
+          <div className="grid justify-items-center px-5 pb-6 pt-5">
+            <div className="w-full rounded-[22px] bg-white p-3 shadow-[0_10px_32px_rgba(37,63,87,.08)]">
+              {inviteQr ? (
+                <Image
+                  src={inviteQr}
+                  alt={`QR code to join room ${room.code}`}
+                  width={720}
+                  height={720}
+                  unoptimized
+                  className="aspect-square w-full rounded-[14px]"
+                />
+              ) : (
+                <div className="grid aspect-square w-full place-items-center rounded-[14px] bg-[#edf2f5] text-[#607486]">
+                  <RefreshCw className="animate-spin" />
+                  <span className="sr-only">Creating QR code</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex w-full items-center justify-between gap-3 border-b border-[#d1d7da] pb-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-extrabold">{room.title}</p>
+                <p className="mt-1 text-xs font-bold text-[#617486]">
+                  {room.accessMode === 'private' ? 'Private invite' : 'Public room'}
+                  {room.rewardMode === 'nim'
+                    ? ` · ${room.rewardAmount} NIM proposed`
+                    : ' · Free to join'}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-[#203752] px-3 py-2 font-display text-sm font-extrabold tracking-[.14em] text-white">
+                {room.code}
+              </span>
+            </div>
+
+            {inviteError && (
+              <p role="alert" className="mt-3 w-full text-sm font-bold text-[#a33f30]">
+                {inviteError}
+              </p>
+            )}
+
+            <div className="mt-4 grid w-full grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                onClick={() => void copyInvite()}
+                className="h-12 rounded-full border-[#afbdc7] bg-white font-extrabold"
+              >
+                {copied ? <Check /> : <Link2 />}
+                {copied ? 'Copied' : 'Copy link'}
+              </Button>
+              <Button
+                onClick={() => void shareInvite()}
+                className="h-12 rounded-full bg-[#1f72d2] font-extrabold"
+              >
+                <Share2 /> Share invite
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {error && (
         <div

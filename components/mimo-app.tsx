@@ -575,41 +575,40 @@ function CreateChoice({
   manual: () => void;
 }) {
   return (
-    <section className="mobile-page mx-auto max-w-[1040px] px-5 pb-16 pt-3 sm:px-8 sm:pt-8">
-      <div className="grid items-end gap-6 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
+    <section className="mobile-page create-choice-page mx-auto max-w-[1040px] px-5 pb-16 pt-3 sm:px-8 sm:pt-8">
+      <div className="create-choice-hero grid items-end gap-6 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
         <div>
           <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
             Start a new Mimo
           </p>
           <h1 className="mobile-flow-title font-display mt-3 max-w-[720px] text-[clamp(3rem,7vw,5.6rem)] font-extrabold leading-[.9] tracking-[-.065em]">
-            How do you want to make it?
+            What are we making tonight?
           </h1>
         </div>
         <MimoCue
           className="md:justify-self-end"
           mood="thinking"
-          message="Give me the brief, or take the pen. You stay in control."
+          message="Give me the spark and I’ll build the first draft. You approve every word."
         />
       </div>
 
-      <div className="mt-7 grid gap-4 md:grid-cols-[1.08fr_.92fr]">
+      <div className="create-choice-grid mt-7 grid gap-4 md:grid-cols-[1.08fr_.92fr]">
         <motion.button
           whileTap={{ scale: 0.99 }}
           onClick={assisted}
-          className="group relative min-h-[270px] overflow-hidden rounded-[28px] bg-[#1f72d2] p-6 text-left text-white transition hover:-translate-y-1 sm:p-8"
+          className="create-choice-card create-choice-card-ai group relative min-h-[270px] overflow-hidden rounded-[28px] bg-[#1f72d2] p-6 text-left text-white transition hover:-translate-y-1 sm:p-8"
         >
           <div className="absolute right-[-34px] top-[-42px] h-40 w-40 rounded-full border-[24px] border-white/10" />
           <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-[#175da8]">
-            <Sparkles size={17} /> Fastest
+            <Sparkles size={17} /> Mimo-assisted
           </span>
           <div className="mt-12 flex items-end justify-between gap-5">
             <div>
               <h2 className="font-display text-[clamp(2rem,5vw,3.35rem)] font-extrabold leading-none tracking-[-.045em]">
-                Make it with Mimo
+                Let Mimo draft it
               </h2>
               <p className="mt-3 max-w-md text-base font-semibold leading-6 text-[#dceeff]">
-                Describe the room or paste your source. Mimo prepares an
-                editable question and answers.
+                Tell Mimo the topic. Get a complete editable show in seconds.
               </p>
             </div>
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[#1f72d2] transition group-hover:translate-x-1">
@@ -621,7 +620,7 @@ function CreateChoice({
         <motion.button
           whileTap={{ scale: 0.99 }}
           onClick={manual}
-          className="group min-h-[270px] rounded-[28px] border-2 border-[#c9d1d6] bg-white p-6 text-left transition hover:-translate-y-1 hover:border-[#86a5be] sm:p-8"
+          className="create-choice-card group min-h-[270px] rounded-[28px] border-2 border-[#c9d1d6] bg-white p-6 text-left transition hover:-translate-y-1 hover:border-[#86a5be] sm:p-8"
         >
           <span className="grid h-11 w-11 place-items-center rounded-full bg-[#edf2f5] text-[#203752]">
             <PenLine size={19} />
@@ -629,10 +628,10 @@ function CreateChoice({
           <div className="mt-12 flex items-end justify-between gap-5">
             <div>
               <h2 className="font-display text-[clamp(2rem,5vw,3.35rem)] font-extrabold leading-none tracking-[-.045em]">
-                Build it myself
+                Start from blank
               </h2>
               <p className="mt-3 max-w-md text-base font-medium leading-6 text-[#5e7283]">
-                Start clean and write every question yourself.
+                You already know the room. Shape every round yourself.
               </p>
             </div>
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#203752] text-white transition group-hover:translate-x-1">
@@ -671,19 +670,25 @@ function AssistedCreate({
     brief.community.trim().length > 1 && brief.topic.trim().length > 5;
 
   return (
-    <section className="mobile-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:px-8 sm:pt-6 lg:grid-cols-[1fr_320px]">
+    <section className="mobile-page creator-form-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:px-8 sm:pt-6 lg:grid-cols-[1fr_320px]">
       <div>
         <p className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
           <Bot size={17} /> Make it with Mimo
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
-          What are we playing about?
+          Give Mimo the spark.
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#5d7182]">
           A short brief is enough. Add source text when accuracy matters.
         </p>
 
-        <div className="mt-8 grid gap-7">
+        <MimoCue
+          className="mobile-only mt-5"
+          mood="thinking"
+          message="Topic, crowd, vibe. That’s enough for me to start."
+        />
+
+        <div className="creator-form-shell mt-8 grid gap-7">
           <label className="grid gap-2 text-sm font-extrabold">
             Community
             <input
@@ -705,7 +710,7 @@ function AssistedCreate({
             />
           </label>
 
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className="creator-segments grid gap-6 sm:grid-cols-2">
             <fieldset>
               <legend className="text-sm font-extrabold">Audience</legend>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -740,21 +745,22 @@ function AssistedCreate({
             </fieldset>
           </div>
 
-          <label className="grid gap-2 text-sm font-extrabold">
-            <span className="flex items-center gap-2">
-              <FileText size={17} /> Source text{' '}
-              <em className="font-medium not-italic text-[#758592]">
-                optional
-              </em>
-            </span>
+          <details className="creator-source rounded-[20px] border border-[#cbd3d8] bg-white p-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-extrabold">
+              <span className="flex items-center gap-2">
+                <FileText size={17} /> Add source material
+              </span>
+              <span className="font-medium text-[#758592]">Optional</span>
+            </summary>
             <textarea
+              aria-label="Source material"
               value={brief.source}
               onChange={(event) => update('source', event.target.value)}
               maxLength={8000}
               placeholder="Paste notes, an announcement or facts Mimo should use"
-              className="min-h-32 resize-y border-2 border-[#cbd3d8] bg-white p-4 font-medium leading-6 outline-none focus:border-[#1f72d2]"
+              className="mt-4 min-h-32 w-full resize-y border-0 border-t border-[#d7dcdf] bg-white pt-4 font-medium leading-6 outline-none"
             />
-          </label>
+          </details>
         </div>
 
         {error && (
@@ -778,7 +784,8 @@ function AssistedCreate({
             disabled={!ready || working}
             className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 font-extrabold"
           >
-            {working ? 'Mimo is writing…' : 'Make my draft'} <Sparkles />
+            {working ? 'Mimo is building…' : 'Build my first draft'}{' '}
+            <Sparkles />
           </Button>
         </div>
       </div>
@@ -855,7 +862,7 @@ function CreateEvent({
     (event.rewardMode === 'free' || Number(event.rewardAmount) > 0),
   );
   return (
-    <section className="mobile-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:pt-6 lg:grid-cols-[1fr_340px]">
+    <section className="mobile-page creator-form-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:pt-6 lg:grid-cols-[1fr_340px]">
       <div>
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
           Create a live event
@@ -867,7 +874,7 @@ function CreateEvent({
           className="mobile-only mt-5"
           message={`${event.rounds.length} ${event.rounds.length === 1 ? 'round' : 'rounds'} ready to shape. I’ll run the room.`}
         />
-        <div className="mt-8 grid gap-7">
+        <div className="creator-form-shell mt-8 grid gap-7">
           <label className="grid gap-2 text-sm font-extrabold">
             Community
             <input
@@ -905,7 +912,7 @@ function CreateEvent({
               {event.rounds.map((round, roundIndex) => (
                 <fieldset
                   key={round.id}
-                  className="rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5"
+                  className="creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5"
                 >
                   <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
                     Round {roundIndex + 1}
@@ -1038,7 +1045,7 @@ function CreateEvent({
           </div>
           <fieldset>
             <legend className="text-sm font-extrabold">Who can join?</legend>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.985 }}
@@ -1067,7 +1074,7 @@ function CreateEvent({
           </fieldset>
           <fieldset>
             <legend className="text-sm font-extrabold">Reward setup</legend>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
               <motion.button
                 whileTap={{ scale: 0.985 }}
                 onClick={() => update('rewardMode', 'free')}
@@ -1118,7 +1125,7 @@ function CreateEvent({
             {error}
           </p>
         )}
-        <div className="mobile-action-bar mt-8 flex gap-2">
+        <div className="mobile-action-bar creator-actions mt-8 flex gap-2">
           <Button
             onClick={preview}
             disabled={!ready}

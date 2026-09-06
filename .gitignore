@@ -36,3 +36,9 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local browser QA profiles
+/.edge-*/
+
+# locally generated social artwork
+/public/social/

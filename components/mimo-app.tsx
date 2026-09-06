@@ -6,19 +6,38 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   ChevronRight,
+  FileText,
   Gamepad2,
   Gift,
+  PenLine,
   Plus,
   Radio,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LiveRoom } from '@/components/live-room';
 import { MimoCharacter, MimoCue } from '@/components/mimo-host';
 
-type Screen = 'home' | 'create' | 'join' | 'live_host' | 'live_player';
+type Screen =
+  | 'home'
+  | 'create_choice'
+  | 'create_assisted'
+  | 'create'
+  | 'join'
+  | 'live_host'
+  | 'live_player';
 type RewardMode = 'free' | 'nim';
+
+type AssistantBrief = {
+  community: string;
+  topic: string;
+  audience: 'newcomers' | 'community' | 'experts';
+  difficulty: 'easy' | 'balanced' | 'hard';
+  source: string;
+};
 
 type EventDraft = {
   title: string;
@@ -100,6 +119,13 @@ export function MimoApp() {
   const [participantToken, setParticipantToken] = useState('');
   const [working, setWorking] = useState(false);
   const [roomError, setRoomError] = useState('');
+  const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
+    community: '',
+    topic: '',
+    audience: 'community',
+    difficulty: 'balanced',
+    source: '',
+  });
   const [event, setEvent] = useState<EventDraft>({
     title: '',
     community: '',
@@ -161,7 +187,7 @@ export function MimoApp() {
           },
           annotations: { readOnlyHint: false, untrustedContentHint: false },
           execute: () => {
-            setScreen('create');
+            setScreen('create_choice');
             return { status: 'creator_opened' };
           },
         },
@@ -178,6 +204,49 @@ export function MimoApp() {
     setHostKey('');
     setParticipantToken('');
     setRoomError('');
+  };
+
+  const goBack = () => {
+    setRoomError('');
+    if (screen === 'create') {
+      setScreen('create_choice');
+      return;
+    }
+    if (screen === 'create_assisted') {
+      setScreen('create_choice');
+      return;
+    }
+    goHome();
+  };
+
+  const makeDraftWithMimo = async () => {
+    if (working) return;
+    setWorking(true);
+    setRoomError('');
+    try {
+      const response = await fetch('/api/assistant/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(assistantBrief),
+      });
+      const body = (await response.json()) as {
+        draft?: EventDraft;
+        error?: string;
+      };
+      if (!response.ok || !body.draft) {
+        throw new Error(body.error || 'Mimo could not make the draft.');
+      }
+      setEvent(body.draft);
+      setScreen('create');
+    } catch (cause) {
+      setRoomError(
+        cause instanceof Error
+          ? cause.message
+          : 'Mimo could not make the draft.',
+      );
+    } finally {
+      setWorking(false);
+    }
   };
 
   const launchLiveRoom = async () => {
@@ -263,8 +332,15 @@ export function MimoApp() {
   return (
     <main className="min-h-dvh overflow-x-hidden bg-[#f6f4ef] text-[#16283d]">
       <Header
-        back={screen === 'create' || screen === 'join' ? goHome : undefined}
-        host={screen === 'home' ? () => setScreen('create') : undefined}
+        back={
+          screen === 'create_choice' ||
+          screen === 'create_assisted' ||
+          screen === 'create' ||
+          screen === 'join'
+            ? goBack
+            : undefined
+        }
+        host={screen === 'home' ? () => setScreen('create_choice') : undefined}
       />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -282,7 +358,23 @@ export function MimoApp() {
               code={joinCode}
               setCode={setJoinCode}
               join={openRoomCode}
-              host={() => setScreen('create')}
+              host={() => setScreen('create_choice')}
+              error={roomError}
+            />
+          )}
+          {screen === 'create_choice' && (
+            <CreateChoice
+              assisted={() => setScreen('create_assisted')}
+              manual={() => setScreen('create')}
+            />
+          )}
+          {screen === 'create_assisted' && (
+            <AssistedCreate
+              brief={assistantBrief}
+              setBrief={setAssistantBrief}
+              makeDraft={() => void makeDraftWithMimo()}
+              manual={() => setScreen('create')}
+              working={working}
               error={roomError}
             />
           )}
@@ -408,6 +500,236 @@ function ProductHome({
         </div>
         <div className="absolute inset-x-0 bottom-0 h-16 bg-[linear-gradient(180deg,transparent,#cfe6fb)]" />
       </div>
+    </section>
+  );
+}
+
+function CreateChoice({
+  assisted,
+  manual,
+}: {
+  assisted: () => void;
+  manual: () => void;
+}) {
+  return (
+    <section className="mobile-page mx-auto max-w-[1040px] px-5 pb-16 pt-3 sm:px-8 sm:pt-8">
+      <div className="grid items-end gap-6 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
+        <div>
+          <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
+            Start a new Mimo
+          </p>
+          <h1 className="mobile-flow-title font-display mt-3 max-w-[720px] text-[clamp(3rem,7vw,5.6rem)] font-extrabold leading-[.9] tracking-[-.065em]">
+            How do you want to make it?
+          </h1>
+        </div>
+        <MimoCue
+          className="md:justify-self-end"
+          mood="thinking"
+          message="Give me the brief, or take the pen. You stay in control."
+        />
+      </div>
+
+      <div className="mt-7 grid gap-4 md:grid-cols-[1.08fr_.92fr]">
+        <motion.button
+          whileTap={{ scale: 0.99 }}
+          onClick={assisted}
+          className="group relative min-h-[270px] overflow-hidden rounded-[28px] bg-[#1f72d2] p-6 text-left text-white transition hover:-translate-y-1 sm:p-8"
+        >
+          <div className="absolute right-[-34px] top-[-42px] h-40 w-40 rounded-full border-[24px] border-white/10" />
+          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-[#175da8]">
+            <Sparkles size={17} /> Fastest
+          </span>
+          <div className="mt-12 flex items-end justify-between gap-5">
+            <div>
+              <h2 className="font-display text-[clamp(2rem,5vw,3.35rem)] font-extrabold leading-none tracking-[-.045em]">
+                Make it with Mimo
+              </h2>
+              <p className="mt-3 max-w-md text-base font-semibold leading-6 text-[#dceeff]">
+                Describe the room or paste your source. Mimo prepares an
+                editable question and answers.
+              </p>
+            </div>
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[#1f72d2] transition group-hover:translate-x-1">
+              <ArrowRight />
+            </span>
+          </div>
+        </motion.button>
+
+        <motion.button
+          whileTap={{ scale: 0.99 }}
+          onClick={manual}
+          className="group min-h-[270px] rounded-[28px] border-2 border-[#c9d1d6] bg-white p-6 text-left transition hover:-translate-y-1 hover:border-[#86a5be] sm:p-8"
+        >
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-[#edf2f5] text-[#203752]">
+            <PenLine size={19} />
+          </span>
+          <div className="mt-12 flex items-end justify-between gap-5">
+            <div>
+              <h2 className="font-display text-[clamp(2rem,5vw,3.35rem)] font-extrabold leading-none tracking-[-.045em]">
+                Build it myself
+              </h2>
+              <p className="mt-3 max-w-md text-base font-medium leading-6 text-[#5e7283]">
+                Start clean and write every question yourself.
+              </p>
+            </div>
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#203752] text-white transition group-hover:translate-x-1">
+              <ArrowRight />
+            </span>
+          </div>
+        </motion.button>
+      </div>
+      <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-[#607486]">
+        <ShieldCheck size={17} /> Nothing goes live until you review it.
+      </p>
+    </section>
+  );
+}
+
+function AssistedCreate({
+  brief,
+  setBrief,
+  makeDraft,
+  manual,
+  working,
+  error,
+}: {
+  brief: AssistantBrief;
+  setBrief: (brief: AssistantBrief) => void;
+  makeDraft: () => void;
+  manual: () => void;
+  working: boolean;
+  error: string;
+}) {
+  const update = <K extends keyof AssistantBrief>(
+    key: K,
+    value: AssistantBrief[K],
+  ) => setBrief({ ...brief, [key]: value });
+  const ready =
+    brief.community.trim().length > 1 && brief.topic.trim().length > 5;
+
+  return (
+    <section className="mobile-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:px-8 sm:pt-6 lg:grid-cols-[1fr_320px]">
+      <div>
+        <p className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
+          <Bot size={17} /> Make it with Mimo
+        </p>
+        <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
+          What are we playing about?
+        </h1>
+        <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#5d7182]">
+          A short brief is enough. Add source text when accuracy matters.
+        </p>
+
+        <div className="mt-8 grid gap-7">
+          <label className="grid gap-2 text-sm font-extrabold">
+            Community
+            <input
+              value={brief.community}
+              onChange={(event) => update('community', event.target.value)}
+              maxLength={60}
+              placeholder="e.g. Nimiq Lagos"
+              className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-extrabold">
+            Topic or idea
+            <textarea
+              value={brief.topic}
+              onChange={(event) => update('topic', event.target.value)}
+              maxLength={500}
+              placeholder="A fast game night about Nimiq basics for new community members"
+              className="min-h-28 resize-none border-2 border-[#cbd3d8] bg-white p-4 text-lg font-bold leading-7 outline-none focus:border-[#1f72d2]"
+            />
+          </label>
+
+          <div className="grid gap-6 sm:grid-cols-2">
+            <fieldset>
+              <legend className="text-sm font-extrabold">Audience</legend>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(['newcomers', 'community', 'experts'] as const).map(
+                  (item) => (
+                    <button
+                      type="button"
+                      key={item}
+                      onClick={() => update('audience', item)}
+                      className={`min-h-11 rounded-full border px-4 text-sm font-extrabold capitalize ${brief.audience === item ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
+                    >
+                      {item}
+                    </button>
+                  ),
+                )}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend className="text-sm font-extrabold">Difficulty</legend>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(['easy', 'balanced', 'hard'] as const).map((item) => (
+                  <button
+                    type="button"
+                    key={item}
+                    onClick={() => update('difficulty', item)}
+                    className={`min-h-11 rounded-full border px-4 text-sm font-extrabold capitalize ${brief.difficulty === item ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+
+          <label className="grid gap-2 text-sm font-extrabold">
+            <span className="flex items-center gap-2">
+              <FileText size={17} /> Source text{' '}
+              <em className="font-medium not-italic text-[#758592]">
+                optional
+              </em>
+            </span>
+            <textarea
+              value={brief.source}
+              onChange={(event) => update('source', event.target.value)}
+              maxLength={8000}
+              placeholder="Paste notes, an announcement or facts Mimo should use"
+              className="min-h-32 resize-y border-2 border-[#cbd3d8] bg-white p-4 font-medium leading-6 outline-none focus:border-[#1f72d2]"
+            />
+          </label>
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="mt-6 bg-[#fff0ec] px-4 py-4 text-sm font-bold leading-6 text-[#9f3f2f]"
+          >
+            {error}
+            <button
+              onClick={manual}
+              className="ml-2 underline underline-offset-4"
+            >
+              Build it myself instead
+            </button>
+          </div>
+        )}
+
+        <div className="mobile-action-bar mt-8">
+          <Button
+            onClick={makeDraft}
+            disabled={!ready || working}
+            className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 font-extrabold"
+          >
+            {working ? 'Mimo is writing…' : 'Make my draft'} <Sparkles />
+          </Button>
+        </div>
+      </div>
+
+      <aside className="desktop-only self-start rounded-[28px] bg-[#dceeff] p-6 lg:sticky lg:top-6">
+        <MimoCharacter mood="thinking" className="mx-auto w-[180px]" />
+        <p className="font-display mt-2 text-2xl font-extrabold">
+          Mimo drafts. You decide.
+        </p>
+        <p className="mt-3 text-sm font-medium leading-6 text-[#526a7c]">
+          Every answer stays editable. Mimo cannot publish the room, judge
+          subjective answers or approve a payment.
+        </p>
+      </aside>
     </section>
   );
 }

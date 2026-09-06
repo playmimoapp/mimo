@@ -48,15 +48,28 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 - A NIM room must show whether value is merely proposed, submitted, confirmed, or paid. Never use “funded” or “confirmed” without chain evidence.
 - Every launched scoring and reward rule is immutable and auditable.
 - The mascot is a recurring host character, not background decoration.
+- Polling exists as a live Pulse or choose-a-side round, not as a separate generic poll product.
+- Drops follow verified skill, completion, or contribution rules. Random giveaways and wagering are out.
+- Open-ended tipping is deferred. It adds payment and moderation complexity without strengthening the live show.
+- NIM is the launch currency. USDT follows for sponsor-funded events that need stable budgets.
+
+## Working milestone â€” two creation modes
+
+- **Make it with Mimo** accepts a short brief, audience, difficulty, and optional source text, then requests a structured Gemini draft.
+- **Build it myself** opens the same editor with a blank event.
+- Generated questions and answers remain editable and require host review.
+- The Gemini key is server-only. Without a configured key, Mimo reports that the assistant is unavailable instead of returning fake generated content.
+- Both paths end in the same real room creation and server-authoritative play loop.
 
 ## Milestones
 
 - [x] Establish the visual system, animated host presence, free/NIM event choice, and a playable participant journey.
 - [x] Model communities, immutable launched events, rounds, participants, authoritative answers, rewards, payouts, and audit history.
-- [ ] **Next:** implement D1-backed community/event APIs and idempotent create/join/answer commands.
-- [ ] **Next:** add authoritative room snapshots, server deadlines, sequence numbers, reconnect tokens, and host recovery.
+- [x] Implement D1-backed community/event APIs and protected create/join/answer commands.
+- [x] Add authoritative room snapshots, server deadlines, reconnect tokens, and host session recovery.
+- [x] Add assisted and manual creation entrances that converge on one editable event.
 - [ ] **Next:** connect the existing typed `@nimiq/mini-app-sdk` adapter to real account access, signed identity, NIM funding intent, and explicit payout transactions inside Nimiq Pay.
-- [ ] Build creator round editing, validation, preview, rehearsal, schedule, sharing, and a locked launch snapshot.
+- [ ] Expand the creator from one working round to modular round editing, validation, preview, rehearsal, scheduling, and locked launch snapshots.
 - [ ] Add transaction monitoring, partial payout recovery, moderation, structured logs, and privacy-conscious usage events.
 - [ ] Run automated scoring/reconnect/late-answer simulations and in-app mobile testing.
 - [ ] Prepare launch templates, demos, public usage report, and community pilots.

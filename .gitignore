@@ -42,3 +42,4 @@ next-env.d.ts
 
 # locally generated social artwork
 /public/social/
+/local-assets/

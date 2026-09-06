@@ -6,6 +6,7 @@ import {
   Check,
   Clock3,
   Copy,
+  LockKeyhole,
   Radio,
   RefreshCw,
   ShieldCheck,
@@ -21,6 +22,7 @@ type LiveRoomProps = {
   mode: 'host' | 'player';
   hostKey?: string;
   participantToken?: string;
+  inviteToken?: string;
   nickname?: string;
   onExit: () => void;
 };
@@ -37,6 +39,7 @@ export function LiveRoom({
   mode,
   hostKey,
   participantToken,
+  inviteToken,
   nickname,
   onExit,
 }: LiveRoomProps) {
@@ -50,7 +53,14 @@ export function LiveRoom({
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(`/api/rooms/${code}`, { cache: 'no-store' });
+      const headers: Record<string, string> = {};
+      if (hostKey) headers['x-mimo-host'] = hostKey;
+      else if (participantToken) headers['x-mimo-session'] = participantToken;
+      else if (inviteToken) headers['x-mimo-invite'] = inviteToken;
+      const response = await fetch(`/api/rooms/${code}`, {
+        cache: 'no-store',
+        headers,
+      });
       if (!response.ok) throw new Error(await getError(response));
       const next = (await response.json()) as LiveRoomState;
       setRoom(next);
@@ -71,7 +81,7 @@ export function LiveRoom({
           : 'The room could not be reached.',
       );
     }
-  }, [code, nickname, mode]);
+  }, [code, hostKey, inviteToken, nickname, mode, participantToken]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
@@ -147,7 +157,7 @@ export function LiveRoom({
   };
 
   const copyInvite = async () => {
-    const url = `${window.location.origin}/?room=${code}`;
+    const url = `${window.location.origin}/?room=${code}${inviteToken ? `#invite=${inviteToken}` : ''}`;
     await navigator.clipboard.writeText(url);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
@@ -188,7 +198,12 @@ export function LiveRoom({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d1d5d5] pb-4">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
-            <Radio size={15} /> Live room
+            {room.accessMode === 'private' ? (
+              <LockKeyhole size={15} />
+            ) : (
+              <Radio size={15} />
+            )}{' '}
+            {room.accessMode === 'private' ? 'Private room' : 'Live room'}
           </span>
           <strong className="font-display text-xl tracking-[.12em]">
             {room.code}
@@ -420,7 +435,7 @@ function QuestionState({
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
             Round {room.roundIndex + 1} of {room.roundCount} ·{' '}
             {room.roundType === 'pulse'
-              ? 'room pulse'
+              ? 'live poll'
               : room.roundType === 'finale'
                 ? 'finale'
                 : 'server timed'}
@@ -464,7 +479,7 @@ function QuestionState({
             className="mobile-primary mt-6 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
           >
             {room.roundType === 'pulse'
-              ? 'Reveal the room pulse'
+              ? 'Reveal the live poll'
               : 'Reveal verified result'}
           </Button>
         </div>

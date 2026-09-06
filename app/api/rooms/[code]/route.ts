@@ -1,13 +1,19 @@
 import { getD1 } from '@/db';
-import { getRoom, json } from '@/lib/live-room';
+import { canViewRoom, getRoom, getRoomConfig, json } from '@/lib/live-room';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ code: string }> },
 ) {
   const { code } = await context.params;
   const room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
+  if (!(await canViewRoom(request, room))) {
+    return json(
+      { error: 'This private room needs its original invite link.' },
+      403,
+    );
+  }
 
   const db = getD1();
   const [round, roundCountRow, playerRows, answerRows] = await Promise.all([
@@ -56,12 +62,7 @@ export async function GET(
         scored?: boolean;
       })
     : null;
-  const reward = room.launchedConfigJson
-    ? (JSON.parse(room.launchedConfigJson) as {
-        mode: 'free' | 'nim';
-        amount: string;
-      })
-    : { mode: 'free' as const, amount: '0' };
+  const reward = getRoomConfig(room.launchedConfigJson);
   const serverNow = Date.now();
   const deadline = room.roundStartedAt
     ? room.roundStartedAt + room.roundDurationSeconds * 1000
@@ -90,6 +91,7 @@ export async function GET(
     status: room.status,
     rewardMode: reward.mode,
     rewardAmount: reward.amount,
+    accessMode: reward.accessMode,
     serverNow,
     deadline,
     activeRoundId: room.activeRoundId,

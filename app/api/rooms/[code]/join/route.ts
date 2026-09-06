@@ -2,6 +2,7 @@ import { getD1 } from '@/db';
 import {
   cleanNickname,
   getRoom,
+  hasInviteAccess,
   hashToken,
   json,
   makeToken,
@@ -15,6 +16,13 @@ export async function POST(
   const { code } = await context.params;
   const room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
+  const body = await readJson(request);
+  if (!(await hasInviteAccess(room, body?.inviteToken))) {
+    return json(
+      { error: 'This private room needs its original invite link.' },
+      403,
+    );
+  }
   const db = getD1();
   const hasAnotherRound =
     room.status !== 'verifying' ||
@@ -35,7 +43,6 @@ export async function POST(
     return json({ error: 'This room is no longer accepting players.' }, 409);
   }
 
-  const body = await readJson(request);
   const nickname = cleanNickname(body?.nickname);
   if (nickname.length < 2)
     return json({ error: 'Use at least two characters.' }, 400);

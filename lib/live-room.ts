@@ -66,6 +66,75 @@ export async function getRoom(codeValue: string) {
     }>();
 }
 
+export type RoomAccessMode = 'public' | 'private';
+
+export function getRoomConfig(value: string | null) {
+  const fallback = {
+    mode: 'free' as const,
+    amount: '0',
+    accessMode: 'public' as RoomAccessMode,
+    inviteTokenHash: '',
+  };
+  if (!value) return fallback;
+  try {
+    const config = JSON.parse(value) as Record<string, unknown>;
+    return {
+      mode: config.mode === 'nim' ? ('nim' as const) : ('free' as const),
+      amount:
+        typeof config.amount === 'string' ? config.amount.slice(0, 12) : '0',
+      accessMode:
+        config.accessMode === 'private'
+          ? ('private' as const)
+          : ('public' as const),
+      inviteTokenHash:
+        typeof config.inviteTokenHash === 'string'
+          ? config.inviteTokenHash
+          : '',
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export async function hasInviteAccess(
+  room: { launchedConfigJson: string | null },
+  inviteToken: unknown,
+) {
+  const config = getRoomConfig(room.launchedConfigJson);
+  if (config.accessMode === 'public') return true;
+  if (typeof inviteToken !== 'string' || !config.inviteTokenHash) return false;
+  return (await hashToken(inviteToken)) === config.inviteTokenHash;
+}
+
+export async function canViewRoom(
+  request: Request,
+  room: {
+    id: string;
+    hostKeyHash: string;
+    launchedConfigJson: string | null;
+  },
+) {
+  const config = getRoomConfig(room.launchedConfigJson);
+  if (config.accessMode === 'public') return true;
+
+  const inviteToken = request.headers.get('x-mimo-invite');
+  if (await hasInviteAccess(room, inviteToken)) return true;
+
+  const hostKey = request.headers.get('x-mimo-host');
+  if (hostKey && (await hashToken(hostKey)) === room.hostKeyHash) return true;
+
+  const participantToken = request.headers.get('x-mimo-session');
+  if (!participantToken) return false;
+  const participant = await getD1()
+    .prepare(
+      `SELECT id FROM participants
+      WHERE event_id = ? AND session_token_hash = ? LIMIT 1`,
+    )
+    .bind(room.id, await hashToken(participantToken))
+    .first<{ id: string }>();
+  return Boolean(participant);
+}
+
 export function json(data: unknown, status = 200) {
   return Response.json(data, {
     status,

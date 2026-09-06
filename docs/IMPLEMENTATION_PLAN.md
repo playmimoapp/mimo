@@ -48,7 +48,7 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 - A NIM room must show whether value is merely proposed, submitted, confirmed, or paid. Never use “funded” or “confirmed” without chain evidence.
 - Every launched scoring and reward rule is immutable and auditable.
 - The mascot is a recurring host character, not background decoration.
-- Polling exists as a live Pulse or choose-a-side round, not as a separate generic poll product.
+- Polling exists as a live poll or choose-a-side round inside any community event, not as a hackathon-only feature.
 - Drops follow verified skill, completion, or contribution rules. Random giveaways and wagering are out.
 - Open-ended tipping is deferred. It adds payment and moderation complexity without strengthening the live show.
 - NIM is the launch currency. USDT follows for sponsor-funded events that need stable budgets.
@@ -63,8 +63,8 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 
 ## Working milestone â€” complete show sequence
 
-- Hosts can compose up to eight Pulse, Play, and Finale rounds in one event.
-- Pulse rounds have no fake “correct” side and reveal the room-wide distribution.
+- Hosts can compose up to eight Live poll, Play, and Finale rounds in one event.
+- Live polls have no fake “correct” side and reveal the room-wide distribution.
 - Scored rounds accumulate server-owned points across the show.
 - Mimo moves every connected player through the same active round, reveal, next-round, and final-result states.
 - The automated room simulation now runs four players through a three-round show.
@@ -85,6 +85,7 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 - [x] Add authoritative room snapshots, server deadlines, reconnect tokens, and host session recovery.
 - [x] Add assisted and manual creation entrances that converge on one editable event.
 - [x] Expand live rooms to a multi-round Pulse → Play → Finale sequence with cumulative scoring.
+- [x] Add public rooms and secure private invite rooms for communities.
 - [ ] **Next:** connect the existing typed `@nimiq/mini-app-sdk` adapter to real account access, signed identity, NIM funding intent, and explicit payout transactions inside Nimiq Pay.
 - [ ] Expand the creator from one working round to modular round editing, validation, preview, rehearsal, scheduling, and locked launch snapshots.
 - [ ] Add transaction monitoring, partial payout recovery, moderation, structured logs, and privacy-conscious usage events.

@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     .trim()
     .slice(0, 60);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
+  const accessMode = body.accessMode === 'private' ? 'private' : 'public';
   const rewardAmount =
     rewardMode === 'nim'
       ? (typeof body.rewardAmount === 'string' ||
@@ -97,6 +98,8 @@ export async function POST(request: Request) {
   const code = makeCode();
   const hostKey = makeToken();
   const hostKeyHash = await hashToken(hostKey);
+  const inviteToken = accessMode === 'private' ? makeToken() : '';
+  const inviteTokenHash = inviteToken ? await hashToken(inviteToken) : '';
   const communityId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
   const roundIds = parsedRounds.map(() => crypto.randomUUID());
@@ -106,6 +109,8 @@ export async function POST(request: Request) {
     amount: rewardAmount,
     funded: false,
     roundCount: parsedRounds.length,
+    accessMode,
+    inviteTokenHash,
   });
 
   try {
@@ -160,5 +165,15 @@ export async function POST(request: Request) {
     return json({ error: 'The room could not be opened. Try again.' }, 500);
   }
 
-  return json({ code, hostKey, sharePath: `/?room=${code}` }, 201);
+  return json(
+    {
+      code,
+      hostKey,
+      inviteToken: inviteToken || undefined,
+      sharePath: inviteToken
+        ? `/?room=${code}#invite=${inviteToken}`
+        : `/?room=${code}`,
+    },
+    201,
+  );
 }

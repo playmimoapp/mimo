@@ -180,6 +180,57 @@ await request(`/api/rooms/${room.code}/action`, {
   body: JSON.stringify({ action: 'finish', hostKey: room.hostKey }),
 });
 
+const privateRoom = await request('/api/rooms', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: 'Private community vote',
+    community: 'Mimo QA',
+    accessMode: 'private',
+    rewardMode: 'free',
+    rounds: [
+      {
+        type: 'pulse',
+        question: 'Which community event should happen next?',
+        choices: ['Game night', 'Town hall', 'Workshop', 'Demo day'],
+        correctChoice: null,
+      },
+    ],
+  }),
+});
+assert(privateRoom.inviteToken, 'A private room must issue an invite token.');
+assert(
+  privateRoom.sharePath.includes('#invite='),
+  'A private invite must keep its secret out of the server URL.',
+);
+
+const blockedView = await fetch(`${base}/api/rooms/${privateRoom.code}`);
+assert(blockedView.status === 403, 'A private room must block public viewing.');
+
+const blockedJoin = await fetch(`${base}/api/rooms/${privateRoom.code}/join`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ nickname: `NoLink-${privateRoom.code.slice(0, 2)}` }),
+});
+assert(
+  blockedJoin.status === 403,
+  'A private room must block code-only joins.',
+);
+
+const invitedPlayer = await request(`/api/rooms/${privateRoom.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({
+    nickname: `Invited-${privateRoom.code.slice(0, 2)}`,
+    inviteToken: privateRoom.inviteToken,
+  }),
+});
+const privateLobby = await request(`/api/rooms/${privateRoom.code}`, {
+  headers: { 'x-mimo-session': invitedPlayer.participantToken },
+});
+assert(
+  privateLobby.accessMode === 'private' && privateLobby.players.length === 1,
+  'An invited participant must be able to restore the private room.',
+);
+
 console.log(
   JSON.stringify({
     ok: true,
@@ -187,5 +238,6 @@ console.log(
     players: finale.players.length,
     rounds: finale.roundCount,
     scoredPlayers: finale.players.filter((player) => player.score > 0).length,
+    privateAccess: true,
   }),
 );

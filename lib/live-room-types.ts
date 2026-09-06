@@ -13,6 +13,7 @@ export type LiveRoomState = {
   status: 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
   rewardMode: 'free' | 'nim';
   rewardAmount: string;
+  accessMode: 'public' | 'private';
   serverNow: number;
   deadline: number | null;
   activeRoundId: string;

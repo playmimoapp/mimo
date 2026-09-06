@@ -180,6 +180,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
       draft: {
         title: draft.title.trim().slice(0, 80),
         community,
+        accessMode: 'public',
         rewardMode: 'free',
         rewardAmount: '',
         rounds: draft.rounds.map((round) => ({

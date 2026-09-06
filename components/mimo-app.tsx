@@ -12,6 +12,8 @@ import {
   FileText,
   Gamepad2,
   Gift,
+  Globe2,
+  LockKeyhole,
   PenLine,
   Plus,
   Radio,
@@ -54,6 +56,7 @@ type AssistantBrief = {
 type EventDraft = {
   title: string;
   community: string;
+  accessMode: 'public' | 'private';
   rewardMode: RewardMode;
   rewardAmount: string;
   rounds: RoundDraft[];
@@ -137,6 +140,7 @@ export function MimoApp() {
   const [roomCode, setRoomCode] = useState('');
   const [hostKey, setHostKey] = useState('');
   const [participantToken, setParticipantToken] = useState('');
+  const [inviteToken, setInviteToken] = useState('');
   const [working, setWorking] = useState(false);
   const [roomError, setRoomError] = useState('');
   const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
@@ -149,6 +153,7 @@ export function MimoApp() {
   const [event, setEvent] = useState<EventDraft>({
     title: '',
     community: '',
+    accessMode: 'public',
     rewardMode: 'free',
     rewardAmount: '',
     rounds: [blankRound()],
@@ -165,6 +170,22 @@ export function MimoApp() {
           .slice(0, 8) ?? '';
       if (!code) return;
       setRoomCode(code);
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const linkedInvite = fragment.get('invite') ?? '';
+      const savedInvite =
+        window.sessionStorage.getItem(`mimo:${code}:invite`) ?? '';
+      const resolvedInvite = linkedInvite || savedInvite;
+      if (resolvedInvite) {
+        setInviteToken(resolvedInvite);
+        window.sessionStorage.setItem(`mimo:${code}:invite`, resolvedInvite);
+      }
+      if (linkedInvite) {
+        window.history.replaceState(
+          {},
+          '',
+          `${window.location.pathname}${window.location.search}`,
+        );
+      }
       if (query.get('host') === '1') {
         const savedHostKey =
           window.sessionStorage.getItem(`mimo:${code}:host`) ?? '';
@@ -221,6 +242,7 @@ export function MimoApp() {
     setRoomCode('');
     setHostKey('');
     setParticipantToken('');
+    setInviteToken('');
     setRoomError('');
   };
 
@@ -280,13 +302,21 @@ export function MimoApp() {
       const body = (await response.json()) as {
         code?: string;
         hostKey?: string;
+        inviteToken?: string;
         error?: string;
       };
       if (!response.ok || !body.code || !body.hostKey)
         throw new Error(body.error || 'The room could not be opened.');
       setRoomCode(body.code);
       setHostKey(body.hostKey);
+      setInviteToken(body.inviteToken ?? '');
       window.sessionStorage.setItem(`mimo:${body.code}:host`, body.hostKey);
+      if (body.inviteToken) {
+        window.sessionStorage.setItem(
+          `mimo:${body.code}:invite`,
+          body.inviteToken,
+        );
+      }
       window.history.replaceState({}, '', `/?room=${body.code}&host=1`);
       setScreen('live_host');
     } catch (cause) {
@@ -308,7 +338,7 @@ export function MimoApp() {
       const response = await fetch(`/api/rooms/${roomCode}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: name }),
+        body: JSON.stringify({ nickname: name, inviteToken }),
       });
       const body = (await response.json()) as {
         participantToken?: string;
@@ -343,6 +373,7 @@ export function MimoApp() {
     }
     setRoomError('');
     setRoomCode(code);
+    setInviteToken(window.sessionStorage.getItem(`mimo:${code}:invite`) ?? '');
     window.history.replaceState({}, '', `/?room=${code}`);
     setScreen('join');
   };
@@ -413,6 +444,7 @@ export function MimoApp() {
               roomCode={roomCode}
               working={working}
               error={roomError}
+              privateInvite={Boolean(inviteToken)}
             />
           )}
           {screen === 'live_host' && roomCode && (
@@ -420,6 +452,7 @@ export function MimoApp() {
               code={roomCode}
               mode="host"
               hostKey={hostKey}
+              inviteToken={inviteToken}
               onExit={goHome}
             />
           )}
@@ -428,6 +461,7 @@ export function MimoApp() {
               code={roomCode}
               mode="player"
               participantToken={participantToken}
+              inviteToken={inviteToken}
               nickname={name}
               onExit={goHome}
             />
@@ -846,7 +880,7 @@ function CreateEvent({
               <div>
                 <p className="text-sm font-extrabold">Live rounds</p>
                 <p className="mt-1 text-sm font-medium text-[#6a7b89]">
-                  Pulse the room, test skill, then finish together.
+                  Start with a live poll, test skill, then finish together.
                 </p>
               </div>
               <span className="font-display text-2xl font-extrabold text-[#84919b]">
@@ -867,7 +901,7 @@ function CreateEvent({
                     <div className="flex flex-wrap gap-2">
                       {(
                         [
-                          ['pulse', 'Pulse', CircleDot],
+                          ['pulse', 'Live poll', CircleDot],
                           ['multiple_choice', 'Play', Gamepad2],
                           ['finale', 'Finale', Trophy],
                         ] as const
@@ -985,10 +1019,39 @@ function CreateEvent({
                 onClick={() => addRound('pulse')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
-                <Plus size={16} /> Pulse
+                <Plus size={16} /> Live poll
               </button>
             </div>
           </div>
+          <fieldset>
+            <legend className="text-sm font-extrabold">Who can join?</legend>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.985 }}
+                onClick={() => update('accessMode', 'public')}
+                className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'public' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
+              >
+                <Globe2 className="text-[#1f72d2]" />
+                <strong className="mt-3 block text-lg">Public room</strong>
+                <span className="mt-1 block text-sm text-[#617486]">
+                  Anyone with the room code can join.
+                </span>
+              </motion.button>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.985 }}
+                onClick={() => update('accessMode', 'private')}
+                className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'private' ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
+              >
+                <LockKeyhole className="text-[#203752]" />
+                <strong className="mt-3 block text-lg">Private invite</strong>
+                <span className="mt-1 block text-sm text-[#617486]">
+                  Only people with the secure link can enter.
+                </span>
+              </motion.button>
+            </div>
+          </fieldset>
           <fieldset>
             <legend className="text-sm font-extrabold">Reward setup</legend>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1072,6 +1135,7 @@ function Join({
   roomCode,
   working,
   error,
+  privateInvite,
 }: {
   name: string;
   setName: (value: string) => void;
@@ -1079,6 +1143,7 @@ function Join({
   roomCode: string;
   working: boolean;
   error: string;
+  privateInvite: boolean;
 }) {
   return (
     <section className="mobile-page mx-auto grid max-w-[920px] items-center gap-5 px-5 pb-12 pt-3 sm:pt-10 md:grid-cols-[290px_1fr]">
@@ -1089,7 +1154,7 @@ function Join({
           message="Pick a name. You’ll be in the room in seconds."
         />
         <p className="text-sm font-extrabold uppercase tracking-[.15em] text-[#cf624e]">
-          Join room {roomCode}
+          {privateInvite ? 'Private invite' : 'Join room'} {roomCode}
         </p>
         <h1 className="mobile-flow-title font-display mt-3 text-[clamp(2.7rem,7vw,5rem)] font-extrabold leading-[.95] tracking-[-.065em]">
           What should everyone call you?

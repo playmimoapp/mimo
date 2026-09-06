@@ -11,7 +11,7 @@ type GeneratedDraft = {
   rounds: Array<{
     type: 'pulse' | 'multiple_choice' | 'finale';
     question: string;
-    choices: [string, string, string, string];
+    choices: string[];
     correctChoice: number | null;
   }>;
 };
@@ -38,7 +38,7 @@ const responseSchema = {
           question: { type: 'string', minLength: 8, maxLength: 180 },
           choices: {
             type: 'array',
-            minItems: 4,
+            minItems: 2,
             maxItems: 4,
             items: { type: 'string', minLength: 1, maxLength: 80 },
           },
@@ -84,14 +84,15 @@ function validDraft(value: unknown): value is GeneratedDraft {
         typeof round.question === 'string' &&
         round.question.trim().length >= 8 &&
         Array.isArray(round.choices) &&
-        round.choices.length === 4 &&
+        round.choices.length >= 2 &&
+        round.choices.length <= 4 &&
         round.choices.every(
           (choice) => typeof choice === 'string' && choice.trim().length > 0,
         ) &&
         (round.type === 'pulse' ||
           (Number.isInteger(round.correctChoice) &&
             Number(round.correctChoice) >= 0 &&
-            Number(round.correctChoice) <= 3)),
+            Number(round.correctChoice) < round.choices.length)),
     ),
   );
 }
@@ -128,10 +129,10 @@ export async function POST(request: Request) {
   }
 
   const instructions = `You are Mimo, a careful live community-game editor.
-Create a short live show with 3 to 5 rounds for an event host to review.
-Start with one unscored pulse, follow with objectively scored multiple-choice rounds,
-and end with one finale. Every round has exactly four distinct choices. Pulse rounds use
-null for correctChoice; scored rounds must have exactly one correct answer.
+Create a short live show with 3 to 5 moments for an event host to review.
+Start with one unscored pulse poll, follow with objectively scored skill questions,
+and end with one final challenge. Every moment has two to four distinct choices. Pulse polls use
+null for correctChoice; scored moments must have exactly one correct answer.
 Never invent a claim from supplied source text. If no source is supplied, use only stable,
 widely established facts. Avoid trick wording, subjective judgment, politics, medical advice,
 financial advice, gambling, random reward rules and promotional claims. Keep the language

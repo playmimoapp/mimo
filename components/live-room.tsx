@@ -55,6 +55,33 @@ type WalletProofUi = {
   detail?: string;
 };
 
+const CHOICE_TONES = [
+  {
+    surface: 'border-[#78aee5] bg-[#edf6ff]',
+    selected: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
+    badge: 'bg-[#1f72d2] text-white',
+    bar: 'bg-[#bdddff]',
+  },
+  {
+    surface: 'border-[#e89989] bg-[#fff1ed]',
+    selected: 'border-[#c85743] bg-[#ffe1da] ring-2 ring-[#c85743]/20',
+    badge: 'bg-[#d76551] text-white',
+    bar: 'bg-[#ffc4b8]',
+  },
+  {
+    surface: 'border-[#d7b13f] bg-[#fff8dc]',
+    selected: 'border-[#a97c00] bg-[#ffedaa] ring-2 ring-[#a97c00]/20',
+    badge: 'bg-[#c18c00] text-white',
+    bar: 'bg-[#f8d65e]',
+  },
+  {
+    surface: 'border-[#72b88f] bg-[#eef9f2]',
+    selected: 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20',
+    badge: 'bg-[#3b9a62] text-white',
+    bar: 'bg-[#ade0bf]',
+  },
+] as const;
+
 async function getError(response: Response) {
   const body = (await response.json().catch(() => null)) as {
     error?: string;
@@ -436,8 +463,8 @@ export function LiveRoom({
       </div>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="invite-sheet overflow-hidden rounded-[30px] bg-[#f8f7f3] p-0 sm:max-w-[430px]">
-          <div className="relative overflow-hidden bg-[#dceeff] px-5 pb-5 pt-6">
+        <DialogContent className="invite-sheet overflow-y-auto rounded-[30px] bg-[#f8f7f3] p-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-[430px]">
+          <div className="relative shrink-0 overflow-hidden bg-[#dceeff] px-5 pb-4 pt-5">
             <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full border-[22px] border-white/35" />
             <DialogHeader className="relative pr-9">
               <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
@@ -452,12 +479,12 @@ export function LiveRoom({
             </DialogHeader>
             <MimoCharacter
               mood="happy"
-              className="absolute -bottom-8 -right-3 w-[118px] rotate-[-4deg]"
+              className="absolute -bottom-8 -right-3 w-[104px] rotate-[-4deg]"
             />
           </div>
 
-          <div className="grid justify-items-center px-5 pb-6 pt-5">
-            <div className="w-full rounded-[22px] bg-white p-3 shadow-[0_10px_32px_rgba(37,63,87,.08)]">
+          <div className="grid justify-items-center px-5 pb-5 pt-4">
+            <div className="invite-qr mx-auto w-full max-w-[280px] rounded-[22px] bg-white p-3 shadow-[0_10px_32px_rgba(37,63,87,.08)]">
               {inviteQr ? (
                 <Image
                   src={inviteQr}
@@ -562,7 +589,7 @@ export function LiveRoom({
                 : room.status === 'live'
                   ? `${answered} answers locked. I’m watching the clock.`
                   : room.status === 'verifying' && room.hasNextRound
-                    ? `Round ${room.roundIndex + 1} is revealed. The next moment is ready.`
+                    ? `Moment ${room.roundIndex + 1} is revealed. The next one is ready.`
                     : 'Scores checked. The room result is ready.'
             }
           />
@@ -660,7 +687,7 @@ export function LiveRoom({
               : room.status === 'live'
                 ? `${answered} of ${room.players.length} locked`
                 : room.status === 'verifying' && room.hasNextRound
-                  ? `Round ${room.roundIndex + 1} revealed`
+                  ? `Moment ${room.roundIndex + 1} revealed`
                   : 'Scores verified'}
           </p>
           <p className="mt-2 text-center text-sm leading-5 text-[#c5d4e0]">
@@ -904,8 +931,35 @@ function LobbyState({
   const verifiedWallets = room.players.filter(
     (player) => player.walletVerified,
   ).length;
+  const arrivalLabel =
+    room.players.length === 0
+      ? 'No one here yet'
+      : room.players.length === 1
+        ? '1 person joined'
+        : `${room.players.length} people joined`;
   return (
     <div className="mt-6 sm:mt-8">
+      <div className="live-lobby-stage mobile-only relative mb-5 min-h-[190px] overflow-hidden rounded-[28px] bg-[#dceeff] px-5 py-4">
+        <span className="pulse-dot absolute left-5 top-5 h-3 w-3 rounded-full bg-[#f4bf1c]" />
+        <span className="pulse-dot absolute right-7 top-9 h-2 w-2 rounded-full bg-[#e66c58] [animation-delay:260ms]" />
+        <div className="relative z-10 max-w-[58%] self-center">
+          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
+            Mimo is warming up
+          </p>
+          <p className="font-display mt-2 text-2xl font-extrabold leading-[1.02] tracking-[-.04em]">
+            {room.players.length
+              ? 'The room is coming alive.'
+              : 'Share the invite. I’ll welcome everyone.'}
+          </p>
+          <span className="mt-3 inline-flex rounded-full bg-white/85 px-3 py-1.5 text-sm font-extrabold text-[#29445f]">
+            {arrivalLabel}
+          </span>
+        </div>
+        <MimoCharacter
+          mood="happy"
+          className="mimo-happy absolute -bottom-4 -right-4 w-[148px]"
+        />
+      </div>
       <div className="flex items-center justify-between gap-3 border-b border-[#d1d5d5] pb-3">
         <p className="flex items-center gap-2 font-extrabold">
           <Users size={19} /> Arriving now
@@ -916,7 +970,7 @@ function LobbyState({
               <ShieldCheck size={15} /> {verifiedWallets} verified
             </span>
           )}
-          <span>{room.players.length}/80</span>
+          <span>{arrivalLabel}</span>
         </div>
       </div>
       {room.players.length ? (
@@ -958,7 +1012,7 @@ function LobbyState({
           disabled={busy || room.players.length === 0}
           className="mobile-primary h-13 rounded-full bg-[#1f72d2] px-7 font-extrabold"
         >
-          Start first round
+          Start the show
         </Button>
       ) : (
         <p className="flex items-center gap-2 border-t border-[#d1d5d5] pt-5 font-bold text-[#526a7e]">
@@ -998,12 +1052,12 @@ function QuestionState({
       <div className="mobile-round-top flex items-start justify-between gap-4 border-b border-[#d1d5d5] pb-5">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
-            Round {room.roundIndex + 1} of {room.roundCount} ·{' '}
+            Moment {room.roundIndex + 1} of {room.roundCount} ·{' '}
             {room.roundType === 'pulse'
-              ? 'live poll'
+              ? 'Pulse poll'
               : room.roundType === 'finale'
-                ? 'finale'
-                : 'server timed'}
+                ? 'Final challenge'
+                : 'Skill question'}
           </p>
           <h2 className="font-display mt-3 max-w-3xl text-[clamp(2rem,9vw,3.8rem)] font-extrabold leading-[.98] tracking-[-.05em]">
             {room.prompt}
@@ -1015,14 +1069,16 @@ function QuestionState({
       </div>
       {role === 'player' ? (
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          {room.choices.map((choice, index) => (
+          {room.choices.map((choice, index) => {
+            const tone = CHOICE_TONES[index];
+            return (
             <button
               key={choice}
               disabled={locked || busy || seconds === 0}
               onClick={() => onAnswer(index)}
-              className={`mobile-answer min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? 'border-[#1f72d2] bg-[#e9f4ff]' : 'border-[#cfd5d8] bg-white hover:-translate-y-1 hover:border-[#80a8cb]'} disabled:cursor-default disabled:hover:translate-y-0`}
+              className={`mobile-answer min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? tone.selected : `${tone.surface} hover:-translate-y-1`} disabled:cursor-default disabled:hover:translate-y-0`}
             >
-              <span className="mr-3 text-sm text-[#718291]">
+              <span className={`mr-3 inline-grid h-7 w-7 place-items-center rounded-full text-sm ${tone.badge}`}>
                 {String.fromCharCode(65 + index)}
               </span>
               {choice}
@@ -1030,7 +1086,7 @@ function QuestionState({
                 <Check className="mt-3 text-[#1f72d2]" />
               )}
             </button>
-          ))}
+          )})}
         </div>
       ) : (
         <div className="mt-7 overflow-hidden rounded-[26px] bg-[#203752] p-5 text-white sm:p-6">
@@ -1125,6 +1181,16 @@ function ResultsState({
   nimiq: MimoNimiq;
   currentPlayerId?: string;
 }) {
+  const finaleCorrect =
+    room.roundType === 'finale' && room.correctChoice !== null
+      ? (room.choiceCounts[room.correctChoice] ?? 0)
+      : 0;
+  const finaleTarget = Math.ceil(
+    room.players.length * (room.collectiveTargetPercent / 100),
+  );
+  const finaleProgress = room.players.length
+    ? Math.min(100, (finaleCorrect / room.players.length) * 100)
+    : 0;
   return (
     <div className="relative mt-6 overflow-hidden sm:mt-8">
       {room.status === 'verifying' && (
@@ -1149,8 +1215,10 @@ function ResultsState({
           : room.roundType === 'pulse'
             ? 'The room chose.'
             : room.roundType === 'finale'
-              ? 'Finale revealed.'
-              : 'Round revealed.'}
+              ? room.finalePassed
+                ? 'The room beat Mimo!'
+                : 'Mimo takes this one.'
+              : 'Moment revealed.'}
       </h2>
       {room.correctChoice !== null && (
         <p className="mt-4 text-lg text-[#526a7e]">
@@ -1175,7 +1243,7 @@ function ResultsState({
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.09 }}
-                className="relative overflow-hidden rounded-[18px] border border-[#cbd4d9] bg-white p-4"
+                className={`relative overflow-hidden rounded-[18px] border p-4 ${CHOICE_TONES[index].surface}`}
               >
                 <motion.div
                   initial={{ width: 0 }}
@@ -1185,7 +1253,7 @@ function ResultsState({
                     delay: 0.12 + index * 0.08,
                     ease: [0.22, 1, 0.36, 1],
                   }}
-                  className="absolute inset-y-0 left-0 bg-[#dceeff]"
+                  className={`absolute inset-y-0 left-0 ${CHOICE_TONES[index].bar}`}
                 />
                 <div className="relative flex items-center justify-between gap-4 font-bold">
                   <span>{choice}</span>
@@ -1196,6 +1264,34 @@ function ResultsState({
               </motion.div>
             );
           })}
+        </div>
+      )}
+      {room.roundType === 'finale' && room.status === 'verifying' && (
+        <div className={`mt-7 overflow-hidden rounded-[24px] border-2 p-5 ${room.finalePassed ? 'border-[#58a978] bg-[#eef9f2]' : 'border-[#e0b752] bg-[#fff8dc]'}`}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#607486]">
+                Everyone versus Mimo
+              </p>
+              <p className="font-display mt-2 text-3xl font-extrabold">
+                {finaleCorrect} of {room.players.length} got it
+              </p>
+            </div>
+            <MimoCharacter
+              mood={room.finalePassed ? 'happy' : 'thinking'}
+              className="w-20 shrink-0"
+            />
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/80">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${finaleProgress}%` }}
+              className={`h-full ${room.finalePassed ? 'bg-[#3b9a62]' : 'bg-[#e0ad14]'}`}
+            />
+          </div>
+          <p className="mt-3 text-sm font-bold text-[#526a7e]">
+            The room needed {finaleTarget} correct answer{finaleTarget === 1 ? '' : 's'} to beat Mimo’s {room.collectiveTargetPercent}% target.
+          </p>
         </div>
       )}
       <div className="mt-7 border-y border-[#cdd3d5]">
@@ -1254,7 +1350,7 @@ function ResultsState({
             disabled={busy}
             className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
-            Next round
+            Next moment
           </Button>
         ) : room.status === 'verifying' ? (
           <Button
@@ -1278,7 +1374,7 @@ function ResultsState({
           {room.status === 'complete'
             ? 'Event complete. Your result is saved.'
             : room.hasNextRound
-              ? 'Mimo is getting the next round ready.'
+              ? 'Mimo is getting the next moment ready.'
               : 'The host is checking the final result.'}
         </p>
       )}

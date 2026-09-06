@@ -13,8 +13,7 @@ export async function POST(
   if (
     !participantToken ||
     !Number.isInteger(choice) ||
-    choice < 0 ||
-    choice > 3
+    choice < 0
   ) {
     return json({ error: 'Choose one answer.' }, 400);
   }
@@ -49,9 +48,13 @@ export async function POST(
     .first<{ configJson: string }>();
   if (!round) return json({ error: 'This round could not be loaded.' }, 500);
   const config = JSON.parse(round.configJson) as {
+    choices: string[];
     correctChoice: number | null;
     scored?: boolean;
   };
+  if (!Array.isArray(config.choices) || choice >= config.choices.length) {
+    return json({ error: 'That choice is not available.' }, 400);
+  }
   const scored = config.scored ?? config.correctChoice !== null;
   const correct = scored ? choice === config.correctChoice : null;
   const remaining = Math.max(0, Math.ceil((deadline - now) / 1000));

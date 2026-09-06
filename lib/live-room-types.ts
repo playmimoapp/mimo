@@ -43,6 +43,8 @@ export type LiveRoomState = {
   choices: string[];
   choiceCounts: number[];
   correctChoice: number | null;
+  collectiveTargetPercent: number;
+  finalePassed: boolean | null;
   players: LivePlayer[];
   reactions: LiveReaction[];
 };

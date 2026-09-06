@@ -85,6 +85,7 @@ export async function GET(
         choices: string[];
         correctChoice: number | null;
         scored?: boolean;
+        collectiveTargetPercent?: number;
       })
     : null;
   const reward = getRoomConfig(room.launchedConfigJson);
@@ -95,19 +96,37 @@ export async function GET(
   const reveal = room.status === 'verifying' || room.status === 'complete';
   const roundCount = roundCountRow?.total ?? 1;
   const roundIndex = round?.position ?? 0;
-  const choiceCounts = [0, 0, 0, 0];
+  const choiceCounts = Array.from(
+    { length: config?.choices.length ?? 0 },
+    () => 0,
+  );
   for (const answer of answerRows.results) {
     try {
       const choice = Number(
         (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
       );
-      if (Number.isInteger(choice) && choice >= 0 && choice <= 3) {
+      if (
+        Number.isInteger(choice) &&
+        choice >= 0 &&
+        choice < choiceCounts.length
+      ) {
         choiceCounts[choice] += 1;
       }
     } catch {
       // Malformed historical answers are ignored in the public tally.
     }
   }
+
+  const collectiveTargetPercent = config?.collectiveTargetPercent ?? 60;
+  const finaleCorrect =
+    round?.type === 'finale' && config?.correctChoice !== null
+      ? (choiceCounts[Number(config?.correctChoice)] ?? 0)
+      : 0;
+  const finalePassed =
+    round?.type === 'finale'
+      ? finaleCorrect >=
+        Math.ceil(playerRows.results.length * (collectiveTargetPercent / 100))
+      : null;
 
   return json({
     code: room.roomCode,
@@ -131,6 +150,8 @@ export async function GET(
     choices: room.status === 'lobby' ? [] : (config?.choices ?? []),
     choiceCounts: room.status === 'lobby' ? [] : choiceCounts,
     correctChoice: reveal ? (config?.correctChoice ?? null) : null,
+    collectiveTargetPercent,
+    finalePassed: reveal ? finalePassed : null,
     players: playerRows.results.map(({ walletHash, ...player }) => ({
       ...player,
       answerLocked: Boolean(player.answerLocked),

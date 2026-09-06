@@ -192,6 +192,11 @@ assert(
   finale.players.every((player) => player.score > 0),
   'Every player must keep cumulative skill points after the finale.',
 );
+assert(finale.finalePassed === true, 'The room must beat the 60% final target.');
+assert(
+  finale.collectiveTargetPercent === 60,
+  'The final challenge must publish its collective target.',
+);
 
 await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
@@ -209,7 +214,7 @@ const privateRoom = await request('/api/rooms', {
       {
         type: 'pulse',
         question: 'Which community event should happen next?',
-        choices: ['Game night', 'Town hall', 'Workshop', 'Demo day'],
+        choices: ['Game night', 'Town hall'],
         correctChoice: null,
       },
     ],
@@ -247,6 +252,10 @@ const privateLobby = await request(`/api/rooms/${privateRoom.code}`, {
 assert(
   privateLobby.accessMode === 'private' && privateLobby.players.length === 1,
   'An invited participant must be able to restore the private room.',
+);
+assert(
+  privateLobby.roundCount === 1,
+  'A two-choice community vote must be accepted.',
 );
 
 const walletRoom = await request('/api/rooms', {

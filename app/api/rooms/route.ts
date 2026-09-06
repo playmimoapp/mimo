@@ -77,18 +77,19 @@ export async function POST(request: Request) {
     parsedRounds.some(
       (round) =>
         round.question.length < 8 ||
-        round.choices.length !== 4 ||
+        round.choices.length < 2 ||
+        round.choices.length > 4 ||
         round.choices.some((choice) => choice.length < 1) ||
         (round.type !== 'pulse' &&
           (!Number.isInteger(round.correctChoice) ||
             Number(round.correctChoice) < 0 ||
-            Number(round.correctChoice) > 3)),
+            Number(round.correctChoice) >= round.choices.length)),
     )
   ) {
     return json(
       {
         error:
-          'Every round needs one clear question and four answers. Scored rounds also need a correct answer.',
+          'Every moment needs one clear question and two to four choices. Scored moments also need a correct answer.',
       },
       400,
     );
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
     roundCount: parsedRounds.length,
     accessMode,
     inviteTokenHash,
+    collectiveTargetPercent: 60,
   });
 
   try {
@@ -157,6 +159,7 @@ export async function POST(request: Request) {
               choices: round.choices,
               correctChoice: round.correctChoice,
               scored: round.type !== 'pulse',
+              collectiveTargetPercent: round.type === 'finale' ? 60 : undefined,
             }),
           ),
       ),

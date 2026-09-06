@@ -38,11 +38,30 @@ type Screen =
 type RewardMode = 'free' | 'nim';
 type RoundType = 'pulse' | 'multiple_choice' | 'finale';
 
+const CHOICE_TONES = [
+  {
+    base: 'border-[#78aee5] bg-[#edf6ff]',
+    active: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
+  },
+  {
+    base: 'border-[#e89989] bg-[#fff1ed]',
+    active: 'border-[#c85743] bg-[#ffe1da] ring-2 ring-[#c85743]/20',
+  },
+  {
+    base: 'border-[#d7b13f] bg-[#fff8dc]',
+    active: 'border-[#a97c00] bg-[#ffedaa] ring-2 ring-[#a97c00]/20',
+  },
+  {
+    base: 'border-[#72b88f] bg-[#eef9f2]',
+    active: 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20',
+  },
+] as const;
+
 type RoundDraft = {
   id: string;
   type: RoundType;
   question: string;
-  choices: [string, string, string, string];
+  choices: string[];
   correctChoice: number | null;
 };
 
@@ -68,7 +87,7 @@ function blankRound(type: RoundType = 'multiple_choice'): RoundDraft {
     id: crypto.randomUUID(),
     type,
     question: '',
-    choices: ['', '', '', ''],
+    choices: ['', ''],
     correctChoice: type === 'pulse' ? null : 0,
   };
 }
@@ -631,7 +650,7 @@ function CreateChoice({
                 Start from blank
               </h2>
               <p className="mt-3 max-w-md text-base font-medium leading-6 text-[#5e7283]">
-                You already know the room. Shape every round yourself.
+                You already know the room. Shape every moment yourself.
               </p>
             </div>
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#203752] text-white transition group-hover:translate-x-1">
@@ -832,11 +851,28 @@ function CreateEvent({
     choiceIndex: number,
     value: string,
   ) => {
-    const choices = [
-      ...event.rounds[roundIndex].choices,
-    ] as RoundDraft['choices'];
+    const choices = [...event.rounds[roundIndex].choices];
     choices[choiceIndex] = value;
     updateRound(roundIndex, { choices });
+  };
+  const addChoice = (roundIndex: number) => {
+    const round = event.rounds[roundIndex];
+    if (round.choices.length >= 4) return;
+    updateRound(roundIndex, { choices: [...round.choices, ''] });
+  };
+  const removeChoice = (roundIndex: number, choiceIndex: number) => {
+    const round = event.rounds[roundIndex];
+    if (round.choices.length <= 2) return;
+    const choices = round.choices.filter((_, index) => index !== choiceIndex);
+    const correctChoice =
+      round.type === 'pulse'
+        ? null
+        : round.correctChoice === choiceIndex
+          ? 0
+          : round.correctChoice !== null && round.correctChoice > choiceIndex
+            ? round.correctChoice - 1
+            : round.correctChoice;
+    updateRound(roundIndex, { choices, correctChoice });
   };
   const addRound = (type: RoundType) => {
     if (event.rounds.length >= 8) return;
@@ -856,8 +892,13 @@ function CreateEvent({
     event.rounds.every(
       (round) =>
         round.question.trim().length >= 8 &&
+        round.choices.length >= 2 &&
+        round.choices.length <= 4 &&
         round.choices.every((choice) => choice.trim()) &&
-        (round.type === 'pulse' || round.correctChoice !== null),
+        (round.type === 'pulse' ||
+          (round.correctChoice !== null &&
+            round.correctChoice >= 0 &&
+            round.correctChoice < round.choices.length)),
     ) &&
     (event.rewardMode === 'free' || Number(event.rewardAmount) > 0),
   );
@@ -872,7 +913,7 @@ function CreateEvent({
         </h1>
         <MimoCue
           className="mobile-only mt-5"
-          message={`${event.rounds.length} ${event.rounds.length === 1 ? 'round' : 'rounds'} ready to shape. I’ll run the room.`}
+          message={`${event.rounds.length} ${event.rounds.length === 1 ? 'moment' : 'moments'} in your show. I’ll keep the room moving.`}
         />
         <div className="creator-form-shell mt-8 grid gap-7">
           <label className="grid gap-2 text-sm font-extrabold">
@@ -898,9 +939,9 @@ function CreateEvent({
           <div className="border-y border-[#cfd5d8] py-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-extrabold">Live rounds</p>
+                <p className="text-sm font-extrabold">Show moments</p>
                 <p className="mt-1 text-sm font-medium text-[#6a7b89]">
-                  Start with a live poll, test skill, then finish together.
+                  Each moment is one poll or question, played in this order.
                 </p>
               </div>
               <span className="font-display text-2xl font-extrabold text-[#84919b]">
@@ -915,15 +956,15 @@ function CreateEvent({
                   className="creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5"
                 >
                   <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
-                    Round {roundIndex + 1}
+                    Moment {roundIndex + 1}
                   </legend>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       {(
                         [
-                          ['pulse', 'Live poll', CircleDot],
-                          ['multiple_choice', 'Play', Gamepad2],
-                          ['finale', 'Finale', Trophy],
+                          ['pulse', 'Pulse poll', CircleDot],
+                          ['multiple_choice', 'Skill question', Gamepad2],
+                          ['finale', 'Final challenge', Trophy],
                         ] as const
                       ).map(([type, label, Icon]) => (
                         <button
@@ -948,7 +989,7 @@ function CreateEvent({
                       <button
                         type="button"
                         onClick={() => removeRound(roundIndex)}
-                        aria-label={`Remove round ${roundIndex + 1}`}
+                        aria-label={`Remove moment ${roundIndex + 1}`}
                         className="grid h-10 w-10 place-items-center rounded-full text-[#9f4a3c] hover:bg-[#fff0ec]"
                       >
                         <Trash2 size={17} />
@@ -965,21 +1006,23 @@ function CreateEvent({
                       round.type === 'pulse'
                         ? 'Ask what the room thinks—there is no wrong side'
                         : round.type === 'finale'
-                          ? 'Write the final skill question'
+                          ? 'Write the final challenge everyone will answer'
                           : 'Write one clear, objectively scored question'
                     }
                     className="mt-4 min-h-20 w-full resize-none border-b-2 border-[#c5cdd2] bg-transparent text-lg font-bold leading-7 outline-none placeholder:text-[#97a2ab] focus:border-[#1f72d2]"
                   />
                   <p className="mt-5 text-sm font-extrabold text-[#5a6e80]">
                     {round.type === 'pulse'
-                      ? 'Sides · every answer counts as participation'
-                      : 'Answers · select the correct one'}
+                      ? 'Poll choices · add between two and four'
+                      : round.type === 'finale'
+                        ? 'Everyone plays · 60% correct beats Mimo'
+                        : 'Answer choices · select the correct one'}
                   </p>
                   <div className="mt-2 grid gap-2">
                     {round.choices.map((choice, choiceIndex) => (
-                      <label
+                      <div
                         key={choiceIndex}
-                        className={`flex min-h-14 items-center gap-3 border px-3 transition ${round.correctChoice === choiceIndex ? 'border-[#1f72d2] bg-[#eaf4ff]' : 'border-[#d1d6d8] bg-white'}`}
+                        className={`flex min-h-14 items-center gap-3 border px-3 transition ${round.correctChoice === choiceIndex ? 'border-[#1f72d2] bg-[#eaf4ff]' : choiceIndex === 0 ? 'border-[#a9caeb] bg-[#f4f9ff]' : choiceIndex === 1 ? 'border-[#efb2a7] bg-[#fff7f4]' : choiceIndex === 2 ? 'border-[#e5cf79] bg-[#fffbee]' : 'border-[#a9d3ba] bg-[#f3fbf6]'}`}
                       >
                         {round.type !== 'pulse' ? (
                           <input
@@ -1009,7 +1052,7 @@ function CreateEvent({
                             )
                           }
                           maxLength={80}
-                          aria-label={`Round ${roundIndex + 1}, answer ${String.fromCharCode(65 + choiceIndex)}`}
+                          aria-label={`Moment ${roundIndex + 1}, choice ${String.fromCharCode(65 + choiceIndex)}`}
                           placeholder={
                             round.type === 'pulse'
                               ? `Side ${String.fromCharCode(65 + choiceIndex)}`
@@ -1017,9 +1060,28 @@ function CreateEvent({
                           }
                           className="min-w-0 flex-1 bg-transparent py-3 font-bold outline-none"
                         />
-                      </label>
+                        {round.choices.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => removeChoice(roundIndex, choiceIndex)}
+                            aria-label={`Remove choice ${String.fromCharCode(65 + choiceIndex)}`}
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8d5b53] hover:bg-white/70"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
+                  {round.choices.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={() => addChoice(roundIndex)}
+                      className="mt-3 flex min-h-10 items-center gap-2 text-sm font-extrabold text-[#1f72d2]"
+                    >
+                      <Plus size={16} /> Add another choice
+                    </button>
+                  )}
                 </fieldset>
               ))}
             </div>
@@ -1031,7 +1093,7 @@ function CreateEvent({
                 onClick={() => addRound('multiple_choice')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
-                <Plus size={16} /> Play round
+                <Plus size={16} /> Skill question
               </button>
               <button
                 type="button"
@@ -1039,7 +1101,7 @@ function CreateEvent({
                 onClick={() => addRound('pulse')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
-                <Plus size={16} /> Live poll
+                <Plus size={16} /> Pulse poll
               </button>
             </div>
           </div>
@@ -1149,7 +1211,7 @@ function CreateEvent({
           Mimo takes it live.
         </p>
         <p className="mt-3 text-sm leading-6 text-[#c9d8e5]">
-          Every round, correct answer and reward rule is saved with the room.
+          Every moment, correct answer and reward rule is saved with the room.
           Mimo moves everyone through the same server-controlled show.
         </p>
       </aside>
@@ -1203,7 +1265,7 @@ function CreatorRehearsal({
                 : selected === round.correctChoice
                   ? 'That reveal lands. Keep the pace.'
                   : 'Good catch—this is why we rehearse.'
-              : `Round ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
+              : `Moment ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
           }
         />
         <div className="mt-7 flex flex-wrap gap-2">
@@ -1221,8 +1283,8 @@ function CreatorRehearsal({
               {item.type === 'pulse'
                 ? 'Poll'
                 : item.type === 'finale'
-                  ? 'Finale'
-                  : 'Play'}
+                  ? 'Final challenge'
+                  : 'Skill'}
             </button>
           ))}
         </div>
@@ -1246,7 +1308,7 @@ function CreatorRehearsal({
       <div className="mx-auto w-full max-w-[390px] self-start rounded-[38px] border-[8px] border-[#203752] bg-[#f8f7f3] p-4 shadow-[0_30px_80px_rgba(25,49,76,.18)] lg:sticky lg:top-5">
         <div className="mx-auto mb-5 h-1.5 w-20 rounded-full bg-[#203752]/20" />
         <p className="text-xs font-extrabold uppercase tracking-[.13em] text-[#c65340]">
-          Round {roundIndex + 1} of {event.rounds.length}
+          Moment {roundIndex + 1} of {event.rounds.length}
         </p>
         <h2 className="font-display mt-3 text-3xl font-extrabold leading-[1.02] tracking-[-.04em]">
           {round.question}
@@ -1259,7 +1321,7 @@ function CreatorRehearsal({
                 key={`${round.id}-${index}`}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => !revealed && setSelected(index)}
-                className={`min-h-16 rounded-[18px] border-2 p-4 text-left font-extrabold transition ${correct ? 'border-[#44a86d] bg-[#e4f7ea]' : selected === index ? 'border-[#1f72d2] bg-[#e8f3ff]' : 'border-[#d1d7db] bg-white'}`}
+                className={`min-h-16 rounded-[18px] border-2 p-4 text-left font-extrabold transition ${correct ? 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20' : selected === index ? CHOICE_TONES[index].active : CHOICE_TONES[index].base}`}
               >
                 <span className="mr-2 text-xs text-[#718291]">
                   {String.fromCharCode(65 + index)}
@@ -1277,8 +1339,8 @@ function CreatorRehearsal({
           {!revealed
             ? 'Rehearse reveal'
             : last
-              ? 'Finale complete'
-              : 'Next round'}
+              ? 'Rehearsal complete'
+              : 'Next moment'}
         </Button>
         <p className="mt-3 text-center text-xs font-bold text-[#74838e]">
           Participant-sized preview · safe rehearsal

@@ -7,6 +7,14 @@ export type LivePlayer = {
   walletVerified: boolean;
 };
 
+export type LiveReaction = {
+  id: string;
+  emoji: '👏' | '🔥' | '🤯' | '💙';
+  nickname: string;
+  teamId: 'signal' | 'spark';
+  createdAt: number;
+};
+
 export type LiveRoomState = {
   code: string;
   title: string;
@@ -14,6 +22,14 @@ export type LiveRoomState = {
   status: 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
   rewardMode: 'free' | 'nim';
   rewardAmount: string;
+  rewardState:
+    | 'none'
+    | 'proposed'
+    | 'payout_submitted'
+    | 'payout_confirmed'
+    | 'payment_failed'
+    | 'cancelled';
+  payoutTxHash: string | null;
   accessMode: 'public' | 'private';
   serverNow: number;
   deadline: number | null;
@@ -28,4 +44,5 @@ export type LiveRoomState = {
   choiceCounts: number[];
   correctChoice: number | null;
   players: LivePlayer[];
+  reactions: LiveReaction[];
 };

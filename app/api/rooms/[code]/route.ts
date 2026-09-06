@@ -16,7 +16,14 @@ export async function GET(
   }
 
   const db = getD1();
-  const [round, roundCountRow, playerRows, answerRows] = await Promise.all([
+  const [
+    round,
+    roundCountRow,
+    playerRows,
+    answerRows,
+    reactionRows,
+    rewardRow,
+  ] = await Promise.all([
     db
       .prepare(
         `SELECT prompt, type, position, config_json AS configJson
@@ -54,6 +61,23 @@ export async function GET(
       )
       .bind(room.activeRoundId)
       .all<{ answerJson: string }>(),
+    db
+      .prepare(
+        `SELECT id, payload_json AS payloadJson, created_at AS createdAt
+        FROM event_audit
+        WHERE event_id = ? AND action = 'reaction' AND created_at > ?
+        ORDER BY created_at DESC LIMIT 18`,
+      )
+      .bind(room.id, Date.now() - 9000)
+      .all<{ id: string; payloadJson: string; createdAt: number }>(),
+    db
+      .prepare(
+        `SELECT r.state, p.tx_hash AS payoutTxHash
+           FROM rewards r LEFT JOIN payouts p ON p.reward_id = r.id
+           WHERE r.event_id = ? LIMIT 1`,
+      )
+      .bind(room.id)
+      .first<{ state: string; payoutTxHash: string | null }>(),
   ]);
 
   const config = round
@@ -92,6 +116,8 @@ export async function GET(
     status: room.status,
     rewardMode: reward.mode,
     rewardAmount: reward.amount,
+    rewardState: rewardRow?.state ?? 'none',
+    payoutTxHash: rewardRow?.payoutTxHash ?? null,
     accessMode: reward.accessMode,
     serverNow,
     deadline,
@@ -110,5 +136,19 @@ export async function GET(
       answerLocked: Boolean(player.answerLocked),
       walletVerified: Boolean(walletHash),
     })),
+    reactions: reactionRows.results
+      .map((reaction) => {
+        try {
+          const payload = JSON.parse(reaction.payloadJson) as {
+            emoji: string;
+            nickname: string;
+            teamId: 'signal' | 'spark';
+          };
+          return { ...payload, id: reaction.id, createdAt: reaction.createdAt };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean),
   });
 }

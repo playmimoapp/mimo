@@ -31,6 +31,7 @@ type Screen =
   | 'create_choice'
   | 'create_assisted'
   | 'create'
+  | 'preview'
   | 'join'
   | 'live_host'
   | 'live_player';
@@ -248,7 +249,7 @@ export function MimoApp() {
 
   const goBack = () => {
     setRoomError('');
-    if (screen === 'create') {
+    if (screen === 'create' || screen === 'preview') {
       setScreen('create_choice');
       return;
     }
@@ -385,6 +386,7 @@ export function MimoApp() {
           screen === 'create_choice' ||
           screen === 'create_assisted' ||
           screen === 'create' ||
+          screen === 'preview' ||
           screen === 'join'
             ? goBack
             : undefined
@@ -432,8 +434,17 @@ export function MimoApp() {
               event={event}
               setEvent={setEvent}
               launch={() => void launchLiveRoom()}
+              preview={() => setScreen('preview')}
               working={working}
               error={roomError}
+            />
+          )}
+          {screen === 'preview' && (
+            <CreatorRehearsal
+              event={event}
+              back={() => setScreen('create')}
+              launch={() => void launchLiveRoom()}
+              working={working}
             />
           )}
           {screen === 'join' && (
@@ -790,12 +801,14 @@ function CreateEvent({
   event,
   setEvent,
   launch,
+  preview,
   working,
   error,
 }: {
   event: EventDraft;
   setEvent: (event: EventDraft) => void;
   launch: () => void;
+  preview: () => void;
   working: boolean;
   error: string;
 }) {
@@ -1084,6 +1097,7 @@ function CreateEvent({
               Total proposed reward
               <input
                 inputMode="numeric"
+                maxLength={8}
                 value={event.rewardAmount}
                 onChange={(e) =>
                   update('rewardAmount', e.target.value.replace(/[^0-9]/g, ''))
@@ -1104,7 +1118,15 @@ function CreateEvent({
             {error}
           </p>
         )}
-        <div className="mobile-action-bar mt-8">
+        <div className="mobile-action-bar mt-8 flex gap-2">
+          <Button
+            onClick={preview}
+            disabled={!ready}
+            variant="outline"
+            className="h-14 rounded-full border-[#9cadb9] bg-white px-6 font-extrabold"
+          >
+            Preview & rehearse
+          </Button>
           <Button
             onClick={launch}
             disabled={working || !ready}
@@ -1124,6 +1146,137 @@ function CreateEvent({
           Mimo moves everyone through the same server-controlled show.
         </p>
       </aside>
+    </section>
+  );
+}
+
+function CreatorRehearsal({
+  event,
+  back,
+  launch,
+  working,
+}: {
+  event: EventDraft;
+  back: () => void;
+  launch: () => void;
+  working: boolean;
+}) {
+  const [roundIndex, setRoundIndex] = useState(0);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const round = event.rounds[roundIndex];
+  const last = roundIndex === event.rounds.length - 1;
+  const next = () => {
+    if (!revealed) {
+      setRevealed(true);
+      return;
+    }
+    if (!last) {
+      setRoundIndex((value) => value + 1);
+      setSelected(null);
+      setRevealed(false);
+    }
+  };
+  return (
+    <section className="mobile-page mx-auto grid max-w-[1060px] gap-8 px-5 pb-16 pt-3 lg:grid-cols-[1fr_390px]">
+      <div>
+        <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c65340]">
+          Private rehearsal · nothing is live
+        </p>
+        <h1 className="mobile-flow-title font-display mt-3 text-[clamp(2.7rem,7vw,5rem)] font-extrabold leading-[.92] tracking-[-.06em]">
+          Feel the show before your guests do.
+        </h1>
+        <MimoCue
+          className="mt-5"
+          mood={revealed ? 'happy' : 'thinking'}
+          message={
+            revealed
+              ? round.type === 'pulse'
+                ? 'Nice. The room will see every side move together.'
+                : selected === round.correctChoice
+                  ? 'That reveal lands. Keep the pace.'
+                  : 'Good catch—this is why we rehearse.'
+              : `Round ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
+          }
+        />
+        <div className="mt-7 flex flex-wrap gap-2">
+          {event.rounds.map((item, index) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setRoundIndex(index);
+                setSelected(null);
+                setRevealed(false);
+              }}
+              className={`h-10 rounded-full px-4 text-sm font-extrabold ${index === roundIndex ? 'bg-[#203752] text-white' : 'border border-[#c9d1d6] bg-white text-[#607486]'}`}
+            >
+              {index + 1} ·{' '}
+              {item.type === 'pulse'
+                ? 'Poll'
+                : item.type === 'finale'
+                  ? 'Finale'
+                  : 'Play'}
+            </button>
+          ))}
+        </div>
+        <div className="mt-7 flex flex-wrap gap-3">
+          <Button
+            onClick={back}
+            variant="outline"
+            className="h-12 rounded-full bg-white px-6 font-extrabold"
+          >
+            Edit show
+          </Button>
+          <Button
+            onClick={launch}
+            disabled={working}
+            className="h-12 rounded-full bg-[#1f72d2] px-6 font-extrabold"
+          >
+            {working ? 'Opening…' : 'Open live room'} <Radio />
+          </Button>
+        </div>
+      </div>
+      <div className="mx-auto w-full max-w-[390px] self-start rounded-[38px] border-[8px] border-[#203752] bg-[#f8f7f3] p-4 shadow-[0_30px_80px_rgba(25,49,76,.18)] lg:sticky lg:top-5">
+        <div className="mx-auto mb-5 h-1.5 w-20 rounded-full bg-[#203752]/20" />
+        <p className="text-xs font-extrabold uppercase tracking-[.13em] text-[#c65340]">
+          Round {roundIndex + 1} of {event.rounds.length}
+        </p>
+        <h2 className="font-display mt-3 text-3xl font-extrabold leading-[1.02] tracking-[-.04em]">
+          {round.question}
+        </h2>
+        <div className="mt-5 grid gap-2">
+          {round.choices.map((choice, index) => {
+            const correct = revealed && round.correctChoice === index;
+            return (
+              <motion.button
+                key={`${round.id}-${index}`}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => !revealed && setSelected(index)}
+                className={`min-h-16 rounded-[18px] border-2 p-4 text-left font-extrabold transition ${correct ? 'border-[#44a86d] bg-[#e4f7ea]' : selected === index ? 'border-[#1f72d2] bg-[#e8f3ff]' : 'border-[#d1d7db] bg-white'}`}
+              >
+                <span className="mr-2 text-xs text-[#718291]">
+                  {String.fromCharCode(65 + index)}
+                </span>
+                {choice}
+              </motion.button>
+            );
+          })}
+        </div>
+        <Button
+          onClick={next}
+          disabled={selected === null && !revealed}
+          className="mt-5 h-12 w-full rounded-[16px] bg-[#203752] font-extrabold"
+        >
+          {!revealed
+            ? 'Rehearse reveal'
+            : last
+              ? 'Finale complete'
+              : 'Next round'}
+        </Button>
+        <p className="mt-3 text-center text-xs font-bold text-[#74838e]">
+          Participant-sized preview · safe rehearsal
+        </p>
+      </div>
     </section>
   );
 }

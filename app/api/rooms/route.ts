@@ -27,7 +27,7 @@ export async function POST(request: Request) {
           : ''
         )
           .replace(/[^0-9]/g, '')
-          .slice(0, 12)
+          .slice(0, 8)
       : '0';
   const rawRounds = Array.isArray(body.rounds)
     ? body.rounds
@@ -104,6 +104,7 @@ export async function POST(request: Request) {
   const eventId = crypto.randomUUID();
   const roundIds = parsedRounds.map(() => crypto.randomUUID());
   const now = Date.now();
+  const rewardId = crypto.randomUUID();
   const reward = JSON.stringify({
     mode: rewardMode,
     amount: rewardAmount,
@@ -159,6 +160,26 @@ export async function POST(request: Request) {
             }),
           ),
       ),
+      ...(rewardMode === 'nim'
+        ? [
+            db
+              .prepare(`INSERT INTO rewards
+              (id, event_id, state, amount_luna, funding_tx_hash, rules_json, updated_at)
+              VALUES (?, ?, 'proposed', ?, NULL, ?, ?)`)
+              .bind(
+                rewardId,
+                eventId,
+                (BigInt(rewardAmount) * BigInt(100000)).toString(),
+                JSON.stringify({
+                  type: 'skill',
+                  winners: 1,
+                  distribution: 'winner_takes_all',
+                  custody: 'host_wallet',
+                }),
+                now,
+              ),
+          ]
+        : []),
     ]);
   } catch (error) {
     console.error('room_create_failed', error);

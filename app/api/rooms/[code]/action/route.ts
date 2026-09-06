@@ -7,6 +7,8 @@ const nextStatus = {
   next: 'live',
   finish: 'complete',
   reset: 'lobby',
+  extend: 'live',
+  cancel: 'cancelled',
 } as const;
 
 export async function POST(
@@ -43,12 +45,28 @@ export async function POST(
     (action === 'reveal' && room.status === 'live') ||
     (action === 'next' && room.status === 'verifying' && Boolean(nextRound)) ||
     (action === 'finish' && room.status === 'verifying' && !nextRound) ||
-    (action === 'reset' && room.status === 'complete');
+    (action === 'reset' && room.status === 'complete') ||
+    (action === 'extend' &&
+      room.status === 'live' &&
+      room.roundDurationSeconds < 90) ||
+    (action === 'cancel' && !['complete', 'cancelled'].includes(room.status));
   if (!allowed)
     return json({ error: 'That action is not available right now.' }, 409);
 
   const status = nextStatus[action];
-  if (action === 'start') {
+  if (action === 'extend') {
+    await db
+      .prepare(
+        `UPDATE events SET round_duration_seconds = MIN(round_duration_seconds + 10, 90) WHERE id = ?`,
+      )
+      .bind(room.id)
+      .run();
+  } else if (action === 'cancel') {
+    await db
+      .prepare(`UPDATE events SET status = 'cancelled' WHERE id = ?`)
+      .bind(room.id)
+      .run();
+  } else if (action === 'start') {
     await db.batch([
       db
         .prepare(
@@ -95,5 +113,5 @@ export async function POST(
       .run();
   }
 
-  return json({ status });
+  return json({ status, extendedBy: action === 'extend' ? 10 : undefined });
 }

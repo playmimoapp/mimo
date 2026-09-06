@@ -78,6 +78,18 @@ await request(`/api/rooms/${room.code}/action`, {
   body: JSON.stringify({ action: 'start', hostKey: room.hostKey }),
 });
 
+await request(`/api/rooms/${room.code}/reaction`, {
+  method: 'POST',
+  body: JSON.stringify({
+    participantToken: players[0].participantToken,
+    emoji: '🔥',
+  }),
+});
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'extend', hostKey: room.hostKey }),
+});
+
 await Promise.all(
   players.map((player, index) =>
     request(`/api/rooms/${room.code}/answer`, {
@@ -106,6 +118,10 @@ assert(
 assert(
   pulse.players.every((player) => player.score === 0),
   'A pulse must not change scores.',
+);
+assert(
+  pulse.reactions.some((reaction) => reaction.emoji === '🔥'),
+  'A safe live reaction must reach the room.',
 );
 
 await request(`/api/rooms/${room.code}/action`, {
@@ -289,6 +305,41 @@ assert(
   'The room must expose verified-wallet status without exposing an address.',
 );
 
+await request(`/api/rooms/${walletRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'start', hostKey: walletRoom.hostKey }),
+});
+await request(`/api/rooms/${walletRoom.code}/answer`, {
+  method: 'POST',
+  body: JSON.stringify({
+    participantToken: walletPlayer.participantToken,
+    choice: 0,
+  }),
+});
+await request(`/api/rooms/${walletRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: walletRoom.hostKey }),
+});
+await request(`/api/rooms/${walletRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'finish', hostKey: walletRoom.hostKey }),
+});
+const preparedPayout = await request(
+  `/api/rooms/${walletRoom.code}/reward/prepare`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      hostKey: walletRoom.hostKey,
+      participantId: walletLobby.players[0].id,
+      payoutAddress: account,
+    }),
+  },
+);
+assert(
+  preparedPayout.amountLuna === '1000000',
+  'The payout must match the declared 10 NIM reward.',
+);
+
 console.log(
   JSON.stringify({
     ok: true,
@@ -298,5 +349,7 @@ console.log(
     scoredPlayers: finale.players.filter((player) => player.score > 0).length,
     privateAccess: true,
     walletProof: true,
+    reactions: true,
+    rewardPrepared: true,
   }),
 );

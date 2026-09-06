@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Check,
   Clock3,
@@ -13,6 +13,9 @@ import {
   Trophy,
   Users,
   WalletCards,
+  TimerReset,
+  XCircle,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MimoCharacter, MimoCue } from '@/components/mimo-host';
@@ -68,6 +71,8 @@ export function LiveRoom({
   const [walletProof, setWalletProof] = useState<WalletProofUi>({
     status: 'idle',
   });
+  const reduceMotion = useReducedMotion();
+  const [reactionBusy, setReactionBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -124,7 +129,14 @@ export function LiveRoom({
   );
 
   const hostAction = async (
-    action: 'start' | 'reveal' | 'next' | 'finish' | 'reset',
+    action:
+      | 'start'
+      | 'reveal'
+      | 'next'
+      | 'finish'
+      | 'reset'
+      | 'extend'
+      | 'cancel',
   ) => {
     if (!hostKey || busy) return;
     setBusy(true);
@@ -147,6 +159,26 @@ export function LiveRoom({
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const react = async (emoji: '👏' | '🔥' | '🤯' | '💙') => {
+    if (!participantToken || reactionBusy) return;
+    setReactionBusy(true);
+    try {
+      const response = await fetch(`/api/rooms/${code}/reaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantToken, emoji }),
+      });
+      if (!response.ok) throw new Error(await getError(response));
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : 'That reaction did not land.',
+      );
+    } finally {
+      window.setTimeout(() => setReactionBusy(false), 450);
     }
   };
 
@@ -298,9 +330,16 @@ export function LiveRoom({
     room.rewardMode === 'nim'
       ? `${room.rewardAmount} NIM proposed · not funded`
       : 'Free room · no wallet needed';
+  const signalScore = room.players
+    .filter((player) => player.teamId === 'signal')
+    .reduce((sum, player) => sum + player.score, 0);
+  const sparkScore = room.players
+    .filter((player) => player.teamId === 'spark')
+    .reduce((sum, player) => sum + player.score, 0);
 
   return (
-    <section className="mobile-page mx-auto max-w-[1080px] px-5 pb-16 pt-1 sm:px-8 sm:pt-3">
+    <section className="mobile-page relative mx-auto max-w-[1180px] px-5 pb-24 pt-1 sm:px-8 sm:pt-3">
+      <ReactionSky reactions={room.reactions} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d1d5d5] pb-4">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
@@ -344,7 +383,13 @@ export function LiveRoom({
         </div>
       )}
 
-      <div className="mt-6 grid gap-7 lg:grid-cols-[1fr_300px]">
+      <TeamMomentum
+        signal={signalScore}
+        spark={sparkScore}
+        live={room.status === 'live'}
+      />
+
+      <div className="mt-6 grid gap-7 lg:grid-cols-[1fr_340px]">
         <div>
           <p className="text-sm font-extrabold text-[#5b7082]">
             {room.community}
@@ -385,37 +430,67 @@ export function LiveRoom({
             />
           )}
 
-          {room.status === 'lobby' && (
-            <LobbyState
-              room={room}
-              isHost={mode === 'host'}
-              busy={busy}
-              onStart={() => void hostAction('start')}
-            />
-          )}
-          {room.status === 'live' && (
-            <QuestionState
-              room={room}
-              seconds={seconds ?? 0}
-              role={mode}
-              selected={selected}
-              locked={locked || Boolean(me?.answerLocked)}
-              busy={busy}
-              answered={answered}
-              onAnswer={answer}
-              onReveal={() => void hostAction('reveal')}
-            />
-          )}
-          {(room.status === 'verifying' || room.status === 'complete') && (
-            <ResultsState
-              room={room}
-              leaderboard={leaderboard}
-              role={mode}
-              busy={busy}
-              onFinish={() => void hostAction('finish')}
-              onNext={() => void hostAction('next')}
-              onReset={() => void hostAction('reset')}
-            />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`${room.activeRoundId}-${room.status}`}
+              initial={{
+                opacity: 0,
+                scale: reduceMotion ? 1 : 0.97,
+                y: reduceMotion ? 0 : 28,
+              }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{
+                opacity: 0,
+                scale: reduceMotion ? 1 : 1.02,
+                y: reduceMotion ? 0 : -18,
+              }}
+              transition={{
+                duration: reduceMotion ? 0 : 0.42,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+            >
+              {room.status === 'lobby' && (
+                <LobbyState
+                  room={room}
+                  isHost={mode === 'host'}
+                  busy={busy}
+                  onStart={() => void hostAction('start')}
+                />
+              )}
+              {room.status === 'live' && (
+                <QuestionState
+                  room={room}
+                  seconds={seconds ?? 0}
+                  role={mode}
+                  selected={selected}
+                  locked={locked || Boolean(me?.answerLocked)}
+                  busy={busy}
+                  answered={answered}
+                  onAnswer={answer}
+                  onReveal={() => void hostAction('reveal')}
+                  onExtend={() => void hostAction('extend')}
+                />
+              )}
+              {(room.status === 'verifying' || room.status === 'complete') && (
+                <ResultsState
+                  room={room}
+                  leaderboard={leaderboard}
+                  role={mode}
+                  busy={busy}
+                  onFinish={() => void hostAction('finish')}
+                  onNext={() => void hostAction('next')}
+                  onReset={() => void hostAction('reset')}
+                  hostKey={hostKey}
+                  nimiq={nimiq}
+                  currentPlayerId={me?.id}
+                />
+              )}
+              {room.status === 'cancelled' && <CancelledState />}
+            </motion.div>
+          </AnimatePresence>
+
+          {mode === 'player' && room.status !== 'cancelled' && (
+            <ReactionBar busy={reactionBusy} onReact={react} />
           )}
         </div>
 
@@ -450,9 +525,171 @@ export function LiveRoom({
                 ? `You are on Team ${me.teamId === 'signal' ? 'Signal' : 'Spark'}.`
                 : 'Your place is saved in this room.'}
           </p>
+          <div className="mt-5 grid grid-cols-3 gap-2 border-y border-white/10 py-4 text-center">
+            <div>
+              <strong className="font-display block text-2xl">
+                {room.players.length}
+              </strong>
+              <span className="text-xs text-[#aebfce]">players</span>
+            </div>
+            <div>
+              <strong className="font-display block text-2xl">
+                {answered}
+              </strong>
+              <span className="text-xs text-[#aebfce]">locked</span>
+            </div>
+            <div>
+              <strong className="font-display block text-2xl">
+                {room.players.filter((p) => p.walletVerified).length}
+              </strong>
+              <span className="text-xs text-[#aebfce]">verified</span>
+            </div>
+          </div>
+          {mode === 'host' && room.status === 'live' && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => void hostAction('extend')}
+                disabled={busy}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/10 text-sm font-extrabold hover:bg-white/15"
+              >
+                <TimerReset size={16} /> +10 sec
+              </button>
+              <button
+                onClick={() => void hostAction('reveal')}
+                disabled={busy}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#f7c933] text-sm font-extrabold text-[#25364b]"
+              >
+                <Zap size={16} /> Reveal
+              </button>
+            </div>
+          )}
+          {mode === 'host' &&
+            !['complete', 'cancelled'].includes(room.status) && (
+              <button
+                onClick={() => void hostAction('cancel')}
+                disabled={busy}
+                className="mx-auto mt-4 flex items-center gap-2 text-xs font-bold text-[#efaaa0] hover:text-white"
+              >
+                <XCircle size={14} /> Cancel room
+              </button>
+            )}
         </aside>
       </div>
     </section>
+  );
+}
+
+function TeamMomentum({
+  signal,
+  spark,
+  live,
+}: {
+  signal: number;
+  spark: number;
+  live: boolean;
+}) {
+  const total = signal + spark;
+  const signalWidth = total
+    ? Math.max(12, Math.min(88, (signal / total) * 100))
+    : 50;
+  return (
+    <div className="mt-4 overflow-hidden rounded-[22px] border border-[#ccd5dc] bg-white p-3 sm:p-4">
+      <div className="mb-2 flex items-center justify-between text-xs font-extrabold uppercase tracking-[.1em]">
+        <span className="text-[#1f72d2]">
+          Signal · {signal.toLocaleString()}
+        </span>
+        <span className={live ? 'text-[#c25340]' : 'text-[#73828e]'}>
+          {live ? 'Live momentum' : 'Team energy'}
+        </span>
+        <span className="text-[#c75d4a]">{spark.toLocaleString()} · Spark</span>
+      </div>
+      <div className="flex h-3 overflow-hidden rounded-full bg-[#edf0f2]">
+        <motion.div
+          animate={{ width: `${signalWidth}%` }}
+          transition={{ type: 'spring', stiffness: 120, damping: 22 }}
+          className="bg-[#1f72d2]"
+        />
+        <motion.div
+          animate={{ width: `${100 - signalWidth}%` }}
+          transition={{ type: 'spring', stiffness: 120, damping: 22 }}
+          className="bg-[#e06b56]"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReactionSky({ reactions }: { reactions: LiveRoomState['reactions'] }) {
+  return (
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-24 z-50 mx-auto h-[55dvh] max-w-[1100px] overflow-hidden"
+      aria-live="polite"
+    >
+      <AnimatePresence>
+        {reactions.map((reaction, index) => (
+          <motion.div
+            key={reaction.id}
+            initial={{ opacity: 0, y: 90, scale: 0.45, rotate: -12 }}
+            animate={{
+              opacity: [0, 1, 1, 0],
+              y: -260 - (index % 3) * 38,
+              scale: [0.45, 1.18, 1, 0.82],
+              rotate: [-12, 8, -5],
+            }}
+            transition={{ duration: 3.8, ease: 'easeOut' }}
+            className="absolute bottom-0 rounded-full border border-white/70 bg-white/90 px-3 py-2 shadow-lg"
+            style={{ left: `${9 + ((index * 23) % 78)}%` }}
+          >
+            <span className="text-2xl">{reaction.emoji}</span>
+            <span className="ml-1 text-xs font-extrabold text-[#526a7e]">
+              {reaction.nickname}
+            </span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ReactionBar({
+  busy,
+  onReact,
+}: {
+  busy: boolean;
+  onReact: (emoji: '👏' | '🔥' | '🤯' | '💙') => void;
+}) {
+  return (
+    <div className="sticky bottom-3 z-40 mx-auto mt-8 flex w-fit items-center gap-1 rounded-full border border-[#c9d4dc] bg-white/95 p-1.5 shadow-[0_14px_45px_rgba(26,47,80,.16)] backdrop-blur">
+      <span className="pl-3 pr-1 text-xs font-extrabold text-[#607486]">
+        React
+      </span>
+      {(['👏', '🔥', '🤯', '💙'] as const).map((emoji) => (
+        <motion.button
+          key={emoji}
+          whileTap={{ scale: 1.35, rotate: 8 }}
+          disabled={busy}
+          onClick={() => onReact(emoji)}
+          className="grid h-11 w-11 place-items-center rounded-full text-xl hover:bg-[#eef5fb] disabled:opacity-60"
+          aria-label={`React ${emoji}`}
+        >
+          {emoji}
+        </motion.button>
+      ))}
+    </div>
+  );
+}
+
+function CancelledState() {
+  return (
+    <div className="mt-8 border-y border-[#d0d6da] py-10 text-center">
+      <MimoCharacter mood="thinking" className="mx-auto w-32 grayscale-[.25]" />
+      <h2 className="font-display mt-3 text-4xl font-extrabold">
+        This room has ended.
+      </h2>
+      <p className="mx-auto mt-3 max-w-md text-[#607486]">
+        Nobody was charged. Any wallet prompt can be safely closed.
+      </p>
+    </div>
   );
 }
 
@@ -598,6 +835,7 @@ function QuestionState({
   answered,
   onAnswer,
   onReveal,
+  onExtend,
 }: {
   room: LiveRoomState;
   seconds: number;
@@ -608,6 +846,7 @@ function QuestionState({
   answered: number;
   onAnswer: (choice: number) => void;
   onReveal: () => void;
+  onExtend: () => void;
 }) {
   return (
     <div className="mt-6 sm:mt-8">
@@ -649,20 +888,50 @@ function QuestionState({
           ))}
         </div>
       ) : (
-        <div className="mt-7">
-          <p className="font-display text-4xl font-extrabold">
-            {answered} / {room.players.length}
-          </p>
-          <p className="mt-1 text-[#617486]">answers locked on the server</p>
-          <Button
-            onClick={onReveal}
-            disabled={busy}
-            className="mobile-primary mt-6 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
-          >
-            {room.roundType === 'pulse'
-              ? 'Reveal the live poll'
-              : 'Reveal verified result'}
-          </Button>
+        <div className="mt-7 overflow-hidden rounded-[26px] bg-[#203752] p-5 text-white sm:p-6">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#9fb5c8]">
+                Host desk
+              </p>
+              <p className="font-display mt-1 text-4xl font-extrabold">
+                {answered} / {room.players.length}
+              </p>
+              <p className="mt-1 text-sm text-[#c1d1de]">
+                answers locked safely
+              </p>
+            </div>
+            <div className="text-right">
+              <strong className="font-display text-3xl">{seconds}s</strong>
+              <p className="text-xs text-[#9fb5c8]">remaining</p>
+            </div>
+          </div>
+          <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
+            <motion.div
+              animate={{
+                width: `${room.players.length ? (answered / room.players.length) * 100 : 0}%`,
+              }}
+              className="h-full bg-[#54d78c]"
+            />
+          </div>
+          <div className="mt-5 grid grid-cols-[auto_1fr] gap-2">
+            <Button
+              onClick={onExtend}
+              disabled={busy}
+              variant="outline"
+              className="h-12 rounded-full border-white/20 bg-transparent px-4 text-white hover:bg-white/10"
+            >
+              <TimerReset /> +10s
+            </Button>
+            <Button
+              onClick={onReveal}
+              disabled={busy}
+              className="h-12 rounded-full bg-[#f7c933] px-6 font-extrabold text-[#203752] hover:bg-[#ffda4e]"
+            >
+              <Zap />{' '}
+              {room.roundType === 'pulse' ? 'Reveal poll' : 'Reveal result'}
+            </Button>
+          </div>
         </div>
       )}
       {role === 'player' && (
@@ -696,6 +965,9 @@ function ResultsState({
   onNext,
   onFinish,
   onReset,
+  hostKey,
+  nimiq,
+  currentPlayerId,
 }: {
   room: LiveRoomState;
   leaderboard: LiveRoomState['players'];
@@ -704,9 +976,22 @@ function ResultsState({
   onNext: () => void;
   onFinish: () => void;
   onReset: () => void;
+  hostKey?: string;
+  nimiq: MimoNimiq;
+  currentPlayerId?: string;
 }) {
   return (
-    <div className="mt-6 sm:mt-8">
+    <div className="relative mt-6 overflow-hidden sm:mt-8">
+      {room.status === 'verifying' && (
+        <div
+          className="pointer-events-none absolute right-2 top-0 flex gap-2 text-2xl"
+          aria-hidden="true"
+        >
+          <span className="reveal-orbit">✦</span>
+          <span className="reveal-orbit [animation-delay:120ms]">●</span>
+          <span className="reveal-orbit [animation-delay:220ms]">✦</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-[#a97800]">
         <Trophy size={22} />
         <span className="text-sm font-extrabold uppercase tracking-[.14em]">
@@ -740,13 +1025,22 @@ function ResultsState({
             );
             const percentage = Math.round((count / total) * 100);
             return (
-              <div
+              <motion.div
                 key={choice}
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.09 }}
                 className="relative overflow-hidden rounded-[18px] border border-[#cbd4d9] bg-white p-4"
               >
-                <div
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${percentage}%` }}
+                  transition={{
+                    duration: 0.7,
+                    delay: 0.12 + index * 0.08,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
                   className="absolute inset-y-0 left-0 bg-[#dceeff]"
-                  style={{ width: `${percentage}%` }}
                 />
                 <div className="relative flex items-center justify-between gap-4 font-bold">
                   <span>{choice}</span>
@@ -754,15 +1048,24 @@ function ResultsState({
                     {percentage}%
                   </span>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
       )}
       <div className="mt-7 border-y border-[#cdd3d5]">
         {leaderboard.map((player, index) => (
-          <div
+          <motion.div
             key={player.id}
+            layout
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: Math.min(index * 0.07, 0.35),
+              type: 'spring',
+              stiffness: 240,
+              damping: 23,
+            }}
             className="flex items-center gap-4 border-b border-[#d9dddd] px-2 py-4 last:border-0"
           >
             <span className="font-display text-2xl font-extrabold text-[#7a8995]">
@@ -784,9 +1087,21 @@ function ResultsState({
             <span className="font-display text-xl font-extrabold">
               {player.score.toLocaleString()}
             </span>
-          </div>
+          </motion.div>
         ))}
       </div>
+      {room.rewardMode === 'nim' &&
+        room.status === 'complete' &&
+        leaderboard[0] && (
+          <RewardSettlement
+            room={room}
+            winner={leaderboard[0]}
+            role={role}
+            hostKey={hostKey}
+            nimiq={nimiq}
+            currentPlayerId={currentPlayerId}
+          />
+        )}
       {role === 'host' &&
         (room.status === 'verifying' && room.hasNextRound ? (
           <Button
@@ -823,5 +1138,216 @@ function ResultsState({
         </p>
       )}
     </div>
+  );
+}
+
+function RewardSettlement({
+  room,
+  winner,
+  role,
+  hostKey,
+  nimiq,
+  currentPlayerId,
+}: {
+  room: LiveRoomState;
+  winner: LiveRoomState['players'][number];
+  role: 'host' | 'player';
+  hostKey?: string;
+  nimiq: MimoNimiq;
+  currentPlayerId?: string;
+}) {
+  const [address, setAddress] = useState('');
+  const [state, setState] = useState<
+    | 'idle'
+    | 'connecting'
+    | 'checking'
+    | 'approving'
+    | 'submitted'
+    | 'cancelled'
+    | 'failed'
+    | 'copied'
+  >(room.rewardState === 'payout_submitted' ? 'submitted' : 'idle');
+  const [detail, setDetail] = useState(
+    room.rewardState === 'payout_submitted' && room.payoutTxHash
+      ? `Submitted to Nimiq · proof ${room.payoutTxHash.slice(0, 10)}… Confirmation is not claimed until the network reports it.`
+      : '',
+  );
+  const isWinner =
+    role === 'player' && currentPlayerId === winner.id && winner.walletVerified;
+
+  const copyWinnerAddress = async () => {
+    setState('connecting');
+    const connection = await nimiq.connect();
+    if (connection.status !== 'ready') {
+      setState(connection.status === 'cancelled' ? 'cancelled' : 'failed');
+      setDetail(
+        connection.status === 'cancelled'
+          ? 'You closed Nimiq Pay. Nothing changed.'
+          : 'Open Mimo inside Nimiq Pay to get your address.',
+      );
+      return;
+    }
+    await navigator.clipboard.writeText(connection.account);
+    setState('copied');
+    setDetail(
+      'Address copied. Send it privately to the host for the final wallet check.',
+    );
+  };
+
+  const payWinner = async () => {
+    if (!hostKey || !address.trim()) return;
+    setState('checking');
+    setDetail('Matching this address to the verified winner…');
+    try {
+      const preparedResponse = await fetch(
+        `/api/rooms/${room.code}/reward/prepare`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hostKey,
+            participantId: winner.id,
+            payoutAddress: address,
+          }),
+        },
+      );
+      if (!preparedResponse.ok)
+        throw new Error(await getError(preparedResponse));
+      const prepared = (await preparedResponse.json()) as {
+        amountLuna: string;
+        memo: string;
+      };
+      const connection = await nimiq.connect();
+      if (connection.status !== 'ready') {
+        setState(connection.status === 'cancelled' ? 'cancelled' : 'failed');
+        setDetail(
+          connection.status === 'cancelled'
+            ? 'You cancelled. No NIM moved.'
+            : 'Open the host room inside Nimiq Pay to approve this payout.',
+        );
+        return;
+      }
+      setState('approving');
+      setDetail(
+        `Nimiq Pay will show ${room.rewardAmount} NIM to ${address.slice(0, 6)}…${address.slice(-4)}.`,
+      );
+      const payment = await nimiq.sendNim(
+        address,
+        Number(prepared.amountLuna),
+        prepared.memo,
+      );
+      if (payment.status !== 'funding_submitted') {
+        setState(payment.status === 'cancelled' ? 'cancelled' : 'failed');
+        setDetail(
+          payment.status === 'cancelled'
+            ? 'Payment cancelled. No NIM moved.'
+            : payment.status === 'failed'
+              ? payment.reason
+              : 'The payment was not submitted.',
+        );
+        return;
+      }
+      const submittedResponse = await fetch(
+        `/api/rooms/${room.code}/reward/submit`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hostKey,
+            participantId: winner.id,
+            serializedTransaction: payment.serializedTransaction,
+          }),
+        },
+      );
+      if (!submittedResponse.ok)
+        throw new Error(await getError(submittedResponse));
+      const submitted = (await submittedResponse.json()) as { txHash: string };
+      setState('submitted');
+      setDetail(
+        `Submitted to Nimiq · proof ${submitted.txHash.slice(0, 10)}… Confirmation is not claimed until the network reports it.`,
+      );
+    } catch (cause) {
+      setState('failed');
+      setDetail(
+        cause instanceof Error
+          ? cause.message
+          : 'The payout could not be prepared.',
+      );
+    }
+  };
+
+  return (
+    <section className="mt-7 overflow-hidden rounded-[26px] border border-[#e1c25d] bg-[#fff8d9] p-5 sm:p-6">
+      <div className="flex items-start gap-4">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#f7c933] text-[#624a00]">
+          <WalletCards size={20} />
+        </span>
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[.13em] text-[#896600]">
+            NIM reward · creator-held
+          </p>
+          <h3 className="font-display mt-1 text-2xl font-extrabold">
+            {room.rewardAmount} NIM for {winner.nickname}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-[#675e3e]">
+            Mimo never holds the money. The host checks the verified winner,
+            then Nimiq Pay asks for explicit approval.
+          </p>
+        </div>
+      </div>
+      {role === 'host' ? (
+        <div className="mt-5 border-t border-[#dfcb83] pt-5">
+          <label htmlFor="winner-address" className="text-sm font-extrabold">
+            Winner’s verified Nimiq address
+          </label>
+          <input
+            id="winner-address"
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            placeholder="NQ…"
+            className="mt-2 h-13 w-full rounded-xl border border-[#cfb95f] bg-white px-4 font-mono text-sm outline-none focus:border-[#987000]"
+          />
+          <Button
+            onClick={() => void payWinner()}
+            disabled={
+              !address.trim() ||
+              ['checking', 'approving', 'submitted'].includes(state)
+            }
+            className="mobile-primary mt-3 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
+          >
+            {state === 'checking'
+              ? 'Checking winner…'
+              : state === 'approving'
+                ? 'Waiting for Nimiq Pay…'
+                : state === 'submitted'
+                  ? 'Payout submitted'
+                  : 'Verify and pay in Nimiq Pay'}
+          </Button>
+        </div>
+      ) : isWinner ? (
+        <Button
+          onClick={() => void copyWinnerAddress()}
+          disabled={state === 'connecting'}
+          className="mobile-primary mt-5 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
+        >
+          {state === 'connecting'
+            ? 'Opening Nimiq Pay…'
+            : state === 'copied'
+              ? 'Address copied'
+              : 'Copy my payout address'}
+        </Button>
+      ) : (
+        <p className="mt-5 border-t border-[#dfcb83] pt-4 text-sm font-bold text-[#675e3e]">
+          Only the verified winner can receive this declared skill reward.
+        </p>
+      )}
+      {detail && (
+        <output
+          className={`mt-3 text-sm font-bold ${state === 'failed' ? 'text-[#a13f31]' : 'text-[#675e3e]'}`}
+        >
+          {detail}
+        </output>
+      )}
+    </section>
   );
 }

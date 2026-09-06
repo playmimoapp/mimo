@@ -1,8 +1,5 @@
 import { getD1 } from '@/db';
 import {
-  LIVE_CHOICES,
-  LIVE_CORRECT_CHOICE,
-  LIVE_PROMPT,
   hashToken,
   json,
   makeCode,
@@ -31,12 +28,35 @@ export async function POST(request: Request) {
           .replace(/[^0-9]/g, '')
           .slice(0, 12)
       : '0';
+  const question = (typeof body.question === 'string' ? body.question : '')
+    .trim()
+    .slice(0, 180);
+  const choices = Array.isArray(body.choices)
+    ? body.choices.map((choice) =>
+        (typeof choice === 'string' ? choice : '').trim().slice(0, 80),
+      )
+    : [];
+  const correctChoice =
+    typeof body.correctChoice === 'number' ? body.correctChoice : -1;
 
   if (title.length < 3 || community.length < 2) {
     return json({ error: 'Add an event and community name.' }, 400);
   }
   if (rewardMode === 'nim' && (!rewardAmount || Number(rewardAmount) < 1)) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
+  }
+  if (
+    question.length < 8 ||
+    choices.length !== 4 ||
+    choices.some((choice) => choice.length < 1) ||
+    !Number.isInteger(correctChoice) ||
+    correctChoice < 0 ||
+    correctChoice > 3
+  ) {
+    return json(
+      { error: 'Add one clear question, four answers and the correct answer.' },
+      400,
+    );
   }
 
   const db = getD1();
@@ -52,10 +72,7 @@ export async function POST(request: Request) {
     amount: rewardAmount,
     funded: false,
   });
-  const round = JSON.stringify({
-    choices: LIVE_CHOICES,
-    correctChoice: LIVE_CORRECT_CHOICE,
-  });
+  const round = JSON.stringify({ choices, correctChoice });
 
   try {
     await db.batch([
@@ -89,7 +106,7 @@ export async function POST(request: Request) {
         .prepare(`INSERT INTO rounds
         (id, event_id, position, type, prompt, config_json)
         VALUES (?, ?, 0, 'multiple_choice', ?, ?)`)
-        .bind(roundId, eventId, LIVE_PROMPT, round),
+        .bind(roundId, eventId, question, round),
     ]);
   } catch (error) {
     console.error('room_create_failed', error);

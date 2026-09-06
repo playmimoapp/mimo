@@ -10,6 +10,14 @@
 - Free and proposed-NIM rooms are clearly distinguished; proposed rewards are never shown as funded.
 - A repeatable four-player room simulation verifies creation, joining, play, reveal, scoring, and completion.
 
+## Working milestone — mobile product surface
+
+- The first screen now starts a real room or joins a real room code; scripted attendance is no longer the product entrance.
+- Creators write the live question, four answers and the correct answer before opening the room.
+- The saved event configuration drives the participant screen and server scoring.
+- Mimo follows one mobile host model: full stage on discovery, compact host cue inside the workflow, and a restrained desktop host panel.
+- Mobile pages use consistent safe-area spacing, readable type, large touch targets and full-width primary actions.
+
 ## Product thesis
 
 Mimo is recurring live programming for communities. A host creates a room, people join free, Mimo runs the show, the server verifies play, and a host may attach NIM to declared skill or participation rules. Free events must feel complete; NIM events must feel more meaningful and more trustworthy.

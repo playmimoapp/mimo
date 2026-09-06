@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -14,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MimoCharacter, MimoCue } from '@/components/mimo-host';
 import type { LiveRoomState } from '@/lib/live-room-types';
 
 type LiveRoomProps = {
@@ -155,13 +155,7 @@ export function LiveRoom({
     return (
       <section className="mx-auto grid min-h-[70dvh] max-w-lg place-items-center px-5 text-center">
         <div>
-          <Image
-            src="/mimo-host.png"
-            alt="Mimo"
-            width={180}
-            height={180}
-            className="mx-auto w-36 animate-pulse"
-          />
+          <MimoCharacter className="mx-auto w-36 animate-pulse" />
           <p className="mt-4 font-display text-2xl font-extrabold">
             Opening room {code}…
           </p>
@@ -188,7 +182,7 @@ export function LiveRoom({
       : 'Free room · no wallet needed';
 
   return (
-    <section className="mx-auto max-w-[1080px] px-5 pb-16 pt-3 sm:px-8">
+    <section className="mobile-page mx-auto max-w-[1080px] px-5 pb-16 pt-1 sm:px-8 sm:pt-3">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d1d5d5] pb-4">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
@@ -232,7 +226,7 @@ export function LiveRoom({
           <p className="text-sm font-extrabold text-[#5b7082]">
             {room.community}
           </p>
-          <h1 className="font-display mt-2 text-[clamp(2.6rem,7vw,5.7rem)] font-extrabold leading-[.9] tracking-[-.065em]">
+          <h1 className="mobile-flow-title font-display mt-2 text-[clamp(2.6rem,7vw,5.7rem)] font-extrabold leading-[.9] tracking-[-.065em]">
             {room.title}
           </h1>
           <p
@@ -240,6 +234,23 @@ export function LiveRoom({
           >
             {rewardLabel}
           </p>
+          <MimoCue
+            className="mobile-only mt-5"
+            mood={
+              room.status === 'complete' || room.status === 'verifying'
+                ? 'happy'
+                : room.status === 'live'
+                  ? 'thinking'
+                  : 'calm'
+            }
+            message={
+              room.status === 'lobby'
+                ? `${room.players.length || 'No'} players here. I’ll keep everyone together.`
+                : room.status === 'live'
+                  ? `${answered} answers locked. I’m watching the clock.`
+                  : 'Scores checked. The room result is ready.'
+            }
+          />
 
           {room.status === 'lobby' && (
             <LobbyState
@@ -274,7 +285,7 @@ export function LiveRoom({
           )}
         </div>
 
-        <aside className="relative self-start overflow-hidden rounded-[30px] bg-[#203752] p-5 text-white lg:sticky lg:top-5">
+        <aside className="desktop-only relative self-start overflow-hidden rounded-[30px] bg-[#203752] p-5 text-white lg:sticky lg:top-5">
           <div className="flex items-center justify-between">
             <span className="text-sm font-extrabold text-[#bed0df]">
               Mimo is hosting
@@ -287,13 +298,7 @@ export function LiveRoom({
             animate={{ y: [0, -6, 0], rotate: [-1, 1, -1] }}
             transition={{ duration: 1.8, repeat: Infinity }}
           >
-            <Image
-              src="/mimo-host.png"
-              alt="Mimo, live room host"
-              width={230}
-              height={230}
-              className="mx-auto mt-1 w-48"
-            />
+            <MimoCharacter className="mx-auto mt-1 w-48" />
           </motion.div>
           <p className="font-display text-center text-xl font-extrabold">
             {room.status === 'lobby'
@@ -327,7 +332,7 @@ function LobbyState({
   onStart: () => void;
 }) {
   return (
-    <div className="mt-8">
+    <div className="mt-6 sm:mt-8">
       <div className="flex items-center justify-between gap-3 border-b border-[#d1d5d5] pb-3">
         <p className="flex items-center gap-2 font-extrabold">
           <Users size={19} /> Arriving now
@@ -366,7 +371,7 @@ function LobbyState({
         <Button
           onClick={onStart}
           disabled={busy || room.players.length === 0}
-          className="h-13 rounded-full bg-[#1f72d2] px-7 font-extrabold"
+          className="mobile-primary h-13 rounded-full bg-[#1f72d2] px-7 font-extrabold"
         >
           Start first round
         </Button>
@@ -402,13 +407,13 @@ function QuestionState({
   onReveal: () => void;
 }) {
   return (
-    <div className="mt-8">
-      <div className="flex items-start justify-between gap-5 border-b border-[#d1d5d5] pb-5">
+    <div className="mt-6 sm:mt-8">
+      <div className="mobile-round-top flex items-start justify-between gap-4 border-b border-[#d1d5d5] pb-5">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
             Round 1 · server timed
           </p>
-          <h2 className="font-display mt-3 max-w-3xl text-[clamp(2rem,5vw,3.8rem)] font-extrabold leading-[.98] tracking-[-.05em]">
+          <h2 className="font-display mt-3 max-w-3xl text-[clamp(2rem,9vw,3.8rem)] font-extrabold leading-[.98] tracking-[-.05em]">
             {room.prompt}
           </h2>
         </div>
@@ -423,7 +428,7 @@ function QuestionState({
               key={choice}
               disabled={locked || busy || seconds === 0}
               onClick={() => onAnswer(index)}
-              className={`min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? 'border-[#1f72d2] bg-[#e9f4ff]' : 'border-[#cfd5d8] bg-white hover:-translate-y-1 hover:border-[#80a8cb]'} disabled:cursor-default disabled:hover:translate-y-0`}
+              className={`mobile-answer min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? 'border-[#1f72d2] bg-[#e9f4ff]' : 'border-[#cfd5d8] bg-white hover:-translate-y-1 hover:border-[#80a8cb]'} disabled:cursor-default disabled:hover:translate-y-0`}
             >
               <span className="mr-3 text-sm text-[#718291]">
                 {String.fromCharCode(65 + index)}
@@ -444,7 +449,7 @@ function QuestionState({
           <Button
             onClick={onReveal}
             disabled={busy}
-            className="mt-6 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
+            className="mobile-primary mt-6 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
           >
             Reveal verified result
           </Button>
@@ -487,14 +492,14 @@ function ResultsState({
   onReset: () => void;
 }) {
   return (
-    <div className="mt-8">
+    <div className="mt-6 sm:mt-8">
       <div className="flex items-center gap-2 text-[#a97800]">
         <Trophy size={22} />
         <span className="text-sm font-extrabold uppercase tracking-[.14em]">
           Verified result
         </span>
       </div>
-      <h2 className="font-display mt-3 text-[clamp(2.6rem,6vw,5rem)] font-extrabold leading-[.9] tracking-[-.06em]">
+      <h2 className="mobile-flow-title font-display mt-3 text-[clamp(2.6rem,6vw,5rem)] font-extrabold leading-[.9] tracking-[-.06em]">
         The room has spoken.
       </h2>
       {room.correctChoice !== null && (
@@ -531,7 +536,7 @@ function ResultsState({
           <Button
             onClick={onFinish}
             disabled={busy}
-            className="mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
+            className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
             Finish event
           </Button>
@@ -539,7 +544,7 @@ function ResultsState({
           <Button
             onClick={onReset}
             disabled={busy}
-            className="mt-6 rounded-full bg-[#203752] px-6 font-extrabold"
+            className="mobile-primary mt-6 rounded-full bg-[#203752] px-6 font-extrabold"
           >
             Open a rematch
           </Button>

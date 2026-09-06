@@ -21,6 +21,14 @@ const room = await request('/api/rooms', {
     community: 'Mimo QA',
     rewardMode: 'free',
     rewardAmount: '0',
+    question: 'What must a host lock before a fair reward event begins?',
+    choices: [
+      'The scoring rules',
+      'The winner',
+      'The result card',
+      'The reactions',
+    ],
+    correctChoice: 0,
   }),
 });
 
@@ -52,7 +60,7 @@ await Promise.all(
       method: 'POST',
       body: JSON.stringify({
         participantToken: player.participantToken,
-        choice: index === 3 ? 0 : 1,
+        choice: index === 3 ? 2 : 0,
       }),
     }),
   ),
@@ -65,7 +73,7 @@ await request(`/api/rooms/${room.code}/action`, {
 
 const result = await request(`/api/rooms/${room.code}`);
 assert(result.status === 'verifying', 'The room must reach verification.');
-assert(result.correctChoice === 1, 'The reveal must show the server answer.');
+assert(result.correctChoice === 0, 'The reveal must show the server answer.');
 assert(
   result.players.filter((player) => player.score > 0).length === 3,
   'Three correct answers must score.',

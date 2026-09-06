@@ -1,15 +1,5 @@
 import { getD1 } from '@/db';
 
-export const LIVE_PROMPT =
-  'Which action should come first when a community runs a NIM reward night?';
-export const LIVE_CHOICES = [
-  'Announce winners',
-  'Lock the rules',
-  'Send the payouts',
-  'Post the leaderboard',
-];
-export const LIVE_CORRECT_CHOICE = 1;
-
 export function cleanCode(value: string) {
   return value
     .trim()

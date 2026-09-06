@@ -135,6 +135,23 @@ export async function canViewRoom(
   return Boolean(participant);
 }
 
+export async function getParticipantBySession(
+  eventId: string,
+  participantToken: unknown,
+) {
+  if (typeof participantToken !== 'string' || participantToken.length < 20) {
+    return null;
+  }
+  return getD1()
+    .prepare(
+      `SELECT id, nickname, wallet_hash AS walletHash
+      FROM participants
+      WHERE event_id = ? AND session_token_hash = ? LIMIT 1`,
+    )
+    .bind(eventId, await hashToken(participantToken))
+    .first<{ id: string; nickname: string; walletHash: string | null }>();
+}
+
 export function json(data: unknown, status = 200) {
   return Response.json(data, {
     status,

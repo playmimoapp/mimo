@@ -12,10 +12,12 @@ import {
   ShieldCheck,
   Trophy,
   Users,
+  WalletCards,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MimoCharacter, MimoCue } from '@/components/mimo-host';
 import type { LiveRoomState } from '@/lib/live-room-types';
+import { MimoNimiq } from '@/lib/nimiq';
 
 type LiveRoomProps = {
   code: string;
@@ -25,6 +27,18 @@ type LiveRoomProps = {
   inviteToken?: string;
   nickname?: string;
   onExit: () => void;
+};
+
+type WalletProofUi = {
+  status:
+    | 'idle'
+    | 'connecting'
+    | 'signing'
+    | 'verified'
+    | 'cancelled'
+    | 'unavailable'
+    | 'failed';
+  detail?: string;
 };
 
 async function getError(response: Response) {
@@ -50,6 +64,10 @@ export function LiveRoom({
   const [locked, setLocked] = useState(false);
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [nimiq] = useState(() => new MimoNimiq());
+  const [walletProof, setWalletProof] = useState<WalletProofUi>({
+    status: 'idle',
+  });
 
   const refresh = useCallback(async () => {
     try {
@@ -153,6 +171,94 @@ export function LiveRoom({
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const verifyWallet = async () => {
+    if (!participantToken || walletProof.status === 'connecting') return;
+    setWalletProof({ status: 'connecting' });
+    setError('');
+    try {
+      const connection = await nimiq.connect();
+      if (connection.status !== 'ready') {
+        setWalletProof({
+          status:
+            connection.status === 'cancelled'
+              ? 'cancelled'
+              : connection.status === 'unavailable'
+                ? 'unavailable'
+                : 'failed',
+          detail:
+            connection.status === 'cancelled'
+              ? 'Nothing changed. Connect whenever you are ready.'
+              : 'reason' in connection
+                ? connection.reason
+                : 'Nimiq Pay is not ready yet.',
+        });
+        return;
+      }
+
+      const challengeResponse = await fetch(
+        `/api/rooms/${code}/wallet/challenge`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantToken }),
+        },
+      );
+      if (!challengeResponse.ok) {
+        throw new Error(await getError(challengeResponse));
+      }
+      const challenge = (await challengeResponse.json()) as {
+        challengeId: string;
+        message: string;
+      };
+
+      setWalletProof({ status: 'signing', detail: connection.maskedAccount });
+      const proof = await nimiq.signChallenge(challenge.message);
+      if ('status' in proof) {
+        setWalletProof({
+          status:
+            proof.status === 'cancelled'
+              ? 'cancelled'
+              : proof.status === 'unavailable'
+                ? 'unavailable'
+                : 'failed',
+          detail:
+            proof.status === 'cancelled'
+              ? 'Signature cancelled. No wallet was linked.'
+              : 'reason' in proof
+                ? proof.reason
+                : 'Nimiq Pay is not ready yet.',
+        });
+        return;
+      }
+
+      const verifyResponse = await fetch(`/api/rooms/${code}/wallet/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participantToken,
+          challengeId: challenge.challengeId,
+          account: connection.account,
+          publicKey: proof.publicKey,
+          signature: proof.signature,
+        }),
+      });
+      if (!verifyResponse.ok) throw new Error(await getError(verifyResponse));
+      setWalletProof({
+        status: 'verified',
+        detail: connection.maskedAccount,
+      });
+      await refresh();
+    } catch (cause) {
+      setWalletProof({
+        status: 'failed',
+        detail:
+          cause instanceof Error
+            ? cause.message
+            : 'The wallet could not be verified.',
+      });
     }
   };
 
@@ -271,6 +377,14 @@ export function LiveRoom({
             }
           />
 
+          {room.rewardMode === 'nim' && mode === 'player' && (
+            <WalletProofCard
+              verified={Boolean(me?.walletVerified)}
+              state={walletProof}
+              onVerify={() => void verifyWallet()}
+            />
+          )}
+
           {room.status === 'lobby' && (
             <LobbyState
               room={room}
@@ -342,6 +456,58 @@ export function LiveRoom({
   );
 }
 
+function WalletProofCard({
+  verified,
+  state,
+  onVerify,
+}: {
+  verified: boolean;
+  state: WalletProofUi;
+  onVerify: () => void;
+}) {
+  const working = state.status === 'connecting' || state.status === 'signing';
+  const done = verified || state.status === 'verified';
+  return (
+    <div
+      className={`mt-5 flex flex-col gap-4 border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${done ? 'border-[#9cd6b2] bg-[#edf9f1]' : 'border-[#e2c564] bg-[#fff8dd]'}`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${done ? 'bg-[#d7f1df] text-[#237044]' : 'bg-[#ffe99c] text-[#765700]'}`}
+        >
+          {done ? <ShieldCheck size={19} /> : <WalletCards size={19} />}
+        </span>
+        <div>
+          <strong className="block">
+            {done ? 'Wallet verified for this room' : 'Verify for NIM rewards'}
+          </strong>
+          <p className="mt-1 text-sm leading-5 text-[#5b7082]">
+            {done
+              ? `${state.detail ? `${state.detail} · ` : ''}Only a private wallet fingerprint is saved.`
+              : state.detail ||
+                'Nimiq Pay will ask you to connect and sign. This sends no money.'}
+          </p>
+        </div>
+      </div>
+      {!done && (
+        <Button
+          onClick={onVerify}
+          disabled={working}
+          className="h-11 shrink-0 rounded-full bg-[#203752] px-5 font-extrabold"
+        >
+          {state.status === 'connecting'
+            ? 'Opening Nimiq Pay…'
+            : state.status === 'signing'
+              ? 'Awaiting signature…'
+              : state.status === 'cancelled'
+                ? 'Try again'
+                : 'Verify wallet'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function LobbyState({
   room,
   isHost,
@@ -353,15 +519,23 @@ function LobbyState({
   busy: boolean;
   onStart: () => void;
 }) {
+  const verifiedWallets = room.players.filter(
+    (player) => player.walletVerified,
+  ).length;
   return (
     <div className="mt-6 sm:mt-8">
       <div className="flex items-center justify-between gap-3 border-b border-[#d1d5d5] pb-3">
         <p className="flex items-center gap-2 font-extrabold">
           <Users size={19} /> Arriving now
         </p>
-        <span className="text-sm font-bold text-[#607486]">
-          {room.players.length}/80
-        </span>
+        <div className="flex items-center gap-3 text-sm font-bold text-[#607486]">
+          {room.rewardMode === 'nim' && (
+            <span className="flex items-center gap-1 text-[#237044]">
+              <ShieldCheck size={15} /> {verifiedWallets} verified
+            </span>
+          )}
+          <span>{room.players.length}/80</span>
+        </div>
       </div>
       {room.players.length ? (
         <div className="flex min-h-36 flex-wrap content-start gap-3 py-5">
@@ -378,6 +552,13 @@ function LobbyState({
                 {player.nickname[0]?.toUpperCase()}
               </span>
               <strong>{player.nickname}</strong>
+              {player.walletVerified && (
+                <ShieldCheck
+                  size={15}
+                  className="text-[#2d8a55]"
+                  aria-label="Wallet verified"
+                />
+              )}
               <span className="text-xs font-bold text-[#718291]">
                 {index + 1}
               </span>
@@ -593,6 +774,13 @@ function ResultsState({
               {player.nickname[0]?.toUpperCase()}
             </span>
             <strong className="flex-1">{player.nickname}</strong>
+            {room.rewardMode === 'nim' && (
+              <span
+                className={`text-xs font-extrabold ${player.walletVerified ? 'text-[#237044]' : 'text-[#9a6a00]'}`}
+              >
+                {player.walletVerified ? 'Wallet verified' : 'Wallet needed'}
+              </span>
+            )}
             <span className="font-display text-xl font-extrabold">
               {player.score.toLocaleString()}
             </span>

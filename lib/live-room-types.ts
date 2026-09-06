@@ -4,6 +4,7 @@ export type LivePlayer = {
   teamId: 'signal' | 'spark';
   score: number;
   answerLocked: boolean;
+  walletVerified: boolean;
 };
 
 export type LiveRoomState = {

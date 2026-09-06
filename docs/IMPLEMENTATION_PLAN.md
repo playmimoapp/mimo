@@ -86,6 +86,7 @@ Mimo's opening is host-led, synchronous community entertainment: reusable events
 - [x] Add assisted and manual creation entrances that converge on one editable event.
 - [x] Expand live rooms to a multi-round Pulse → Play → Finale sequence with cumulative scoring.
 - [x] Add public rooms and secure private invite rooms for communities.
+- [x] Add one-time Nimiq Pay wallet challenges and server-verified participant signatures.
 - [ ] **Next:** connect the existing typed `@nimiq/mini-app-sdk` adapter to real account access, signed identity, NIM funding intent, and explicit payout transactions inside Nimiq Pay.
 - [ ] Expand the creator from one working round to modular round editing, validation, preview, rehearsal, scheduling, and locked launch snapshots.
 - [ ] Add transaction monitoring, partial payout recovery, moderation, structured logs, and privacy-conscious usage events.

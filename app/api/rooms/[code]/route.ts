@@ -35,7 +35,7 @@ export async function GET(
       .first<{ total: number }>(),
     db
       .prepare(`SELECT id, nickname, team_id AS teamId, score,
-        answer_locked AS answerLocked
+        answer_locked AS answerLocked, wallet_hash AS walletHash
       FROM participants
       WHERE event_id = ?
       ORDER BY joined_at ASC`)
@@ -46,6 +46,7 @@ export async function GET(
         teamId: 'signal' | 'spark';
         score: number;
         answerLocked: number;
+        walletHash: string | null;
       }>(),
     db
       .prepare(
@@ -104,9 +105,10 @@ export async function GET(
     choices: room.status === 'lobby' ? [] : (config?.choices ?? []),
     choiceCounts: room.status === 'lobby' ? [] : choiceCounts,
     correctChoice: reveal ? (config?.correctChoice ?? null) : null,
-    players: playerRows.results.map((player) => ({
+    players: playerRows.results.map(({ walletHash, ...player }) => ({
       ...player,
       answerLocked: Boolean(player.answerLocked),
+      walletVerified: Boolean(walletHash),
     })),
   });
 }

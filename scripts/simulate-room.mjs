@@ -1,3 +1,5 @@
+import { KeyPair } from '@nimiq/core';
+
 const base = (process.argv[2] || 'http://127.0.0.1:8787').replace(/\/$/, '');
 
 async function request(path, options = {}) {
@@ -231,6 +233,62 @@ assert(
   'An invited participant must be able to restore the private room.',
 );
 
+const walletRoom = await request('/api/rooms', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: 'Wallet proof simulation',
+    community: 'Mimo QA',
+    accessMode: 'public',
+    rewardMode: 'nim',
+    rewardAmount: '10',
+    rounds: [
+      {
+        type: 'multiple_choice',
+        question: 'Which wallet signed this room proof?',
+        choices: ['Nimiq Pay', 'A fake wallet', 'Nobody', 'The room server'],
+        correctChoice: 0,
+      },
+    ],
+  }),
+});
+const walletPlayer = await request(`/api/rooms/${walletRoom.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({ nickname: `Wallet-${walletRoom.code.slice(0, 2)}` }),
+});
+const challenge = await request(
+  `/api/rooms/${walletRoom.code}/wallet/challenge`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: walletPlayer.participantToken,
+    }),
+  },
+);
+const keyPair = KeyPair.generate();
+const account = keyPair.toAddress().toUserFriendlyAddress();
+const signature = keyPair.sign(new TextEncoder().encode(challenge.message));
+const walletProof = await request(
+  `/api/rooms/${walletRoom.code}/wallet/verify`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: walletPlayer.participantToken,
+      challengeId: challenge.challengeId,
+      account,
+      publicKey: keyPair.publicKey.toHex(),
+      signature: signature.toHex(),
+    }),
+  },
+);
+assert(walletProof.verified === true, 'The Nimiq wallet proof must verify.');
+const walletLobby = await request(`/api/rooms/${walletRoom.code}`, {
+  headers: { 'x-mimo-session': walletPlayer.participantToken },
+});
+assert(
+  walletLobby.players[0]?.walletVerified === true,
+  'The room must expose verified-wallet status without exposing an address.',
+);
+
 console.log(
   JSON.stringify({
     ok: true,
@@ -239,5 +297,6 @@ console.log(
     rounds: finale.roundCount,
     scoredPlayers: finale.players.filter((player) => player.score > 0).length,
     privateAccess: true,
+    walletProof: true,
   }),
 );

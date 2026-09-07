@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import QRCode from 'qrcode';
@@ -9,6 +9,8 @@ import {
   Clock3,
   Link2,
   LockKeyhole,
+  PauseCircle,
+  PlayCircle,
   QrCode,
   Radio,
   RefreshCw,
@@ -29,7 +31,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { MimoCharacter, MimoCue } from '@/components/mimo-host';
+import {
+  MimoCharacter,
+  MimoCue,
+  MimoProfileAvatar,
+} from '@/components/mimo-host';
 import type { LiveRoomState } from '@/lib/live-room-types';
 import { MimoNimiq } from '@/lib/nimiq';
 
@@ -54,6 +60,15 @@ type WalletProofUi = {
     | 'failed';
   detail?: string;
 };
+
+type HostAction =
+  | 'start'
+  | 'reveal'
+  | 'next'
+  | 'finish'
+  | 'reset'
+  | 'extend'
+  | 'cancel';
 
 const CHOICE_TONES = [
   {
@@ -114,6 +129,8 @@ export function LiveRoom({
   });
   const reduceMotion = useReducedMotion();
   const [reactionBusy, setReactionBusy] = useState(false);
+  const [autoHost, setAutoHost] = useState(mode === 'host');
+  const autoHandled = useRef('');
 
   const inviteUrl = useCallback(
     () =>
@@ -134,7 +151,10 @@ export function LiveRoom({
         if (active) setInviteQr(dataUrl);
       })
       .catch(() => {
-        if (active) setInviteError('The QR code could not be made. Copy the link instead.');
+        if (active)
+          setInviteError(
+            'The QR code could not be made. Copy the link instead.',
+          );
       });
     return () => {
       active = false;
@@ -162,7 +182,20 @@ export function LiveRoom({
         );
         const answerIsLocked = Boolean(me?.answerLocked);
         setLocked(answerIsLocked);
-        if (!answerIsLocked) setSelected(null);
+        if (!answerIsLocked) {
+          setSelected(null);
+        } else {
+          const savedChoice = window.sessionStorage.getItem(
+            `mimo:${code}:${next.activeRoundId}:choice`,
+          );
+          setSelected(
+            (current) =>
+              current ??
+              (savedChoice !== null && Number.isInteger(Number(savedChoice))
+                ? Number(savedChoice)
+                : null),
+          );
+        }
       }
     } catch (cause) {
       setError(
@@ -187,6 +220,8 @@ export function LiveRoom({
   const seconds = room?.deadline
     ? Math.max(0, Math.ceil((room.deadline - now) / 1000))
     : null;
+  const answeredCount =
+    room?.players.filter((player) => player.answerLocked).length ?? 0;
   const me = useMemo(
     () =>
       room?.players.find(
@@ -195,39 +230,77 @@ export function LiveRoom({
     [nickname, room],
   );
 
-  const hostAction = async (
-    action:
-      | 'start'
-      | 'reveal'
-      | 'next'
-      | 'finish'
-      | 'reset'
-      | 'extend'
-      | 'cancel',
-  ) => {
-    if (!hostKey || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/rooms/${code}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, hostKey }),
-      });
-      if (!response.ok) throw new Error(await getError(response));
-      if (action === 'start' || action === 'reset') {
-        setLocked(false);
-        setSelected(null);
+  const hostAction = useCallback(
+    async (action: HostAction) => {
+      if (!hostKey || busy) return;
+      setBusy(true);
+      setError('');
+      try {
+        const response = await fetch(`/api/rooms/${code}/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, hostKey }),
+        });
+        if (!response.ok) throw new Error(await getError(response));
+        if (action === 'start' || action === 'reset') {
+          setLocked(false);
+          setSelected(null);
+        }
+        await refresh();
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : 'The room did not change.',
+        );
+      } finally {
+        setBusy(false);
       }
-      await refresh();
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'The room did not change.',
-      );
-    } finally {
-      setBusy(false);
+    },
+    [busy, code, hostKey, refresh],
+  );
+
+  const allAnswered = Boolean(
+    room?.status === 'live' &&
+    room.players.length > 0 &&
+    answeredCount === room.players.length,
+  );
+  const autoAction: HostAction | null =
+    room?.status === 'live' && (allAnswered || seconds === 0)
+      ? 'reveal'
+      : room?.status === 'verifying'
+        ? room.hasNextRound
+          ? 'next'
+          : 'finish'
+        : null;
+  const autoKey = autoAction
+    ? `${room?.activeRoundId}:${room?.status}:${autoAction}`
+    : '';
+
+  useEffect(() => {
+    if (
+      mode !== 'host' ||
+      !autoHost ||
+      !autoAction ||
+      busy ||
+      autoHandled.current === autoKey
+    ) {
+      return;
     }
-  };
+    const delay = autoAction === 'reveal' ? (allAnswered ? 900 : 250) : 5000;
+    const timer = window.setTimeout(() => {
+      autoHandled.current = autoKey;
+      void hostAction(autoAction);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [allAnswered, autoAction, autoHost, autoKey, busy, hostAction, mode]);
+
+  const [mimoLineIndex, setMimoLineIndex] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setMimoLineIndex((value) => value + 1),
+      4200,
+    );
+    return () => window.clearInterval(timer);
+  }, [room?.activeRoundId, room?.status]);
 
   const react = async (emoji: '👏' | '🔥' | '🤯' | '💙') => {
     if (!participantToken || reactionBusy) return;
@@ -262,6 +335,11 @@ export function LiveRoom({
       });
       if (!response.ok) throw new Error(await getError(response));
       setLocked(true);
+      window.sessionStorage.setItem(
+        `mimo:${code}:${room?.activeRoundId}:choice`,
+        String(choice),
+      );
+      if ('vibrate' in navigator) navigator.vibrate(35);
       await refresh();
     } catch (cause) {
       setSelected(null);
@@ -410,7 +488,7 @@ export function LiveRoom({
     );
   }
 
-  const answered = room.players.filter((player) => player.answerLocked).length;
+  const answered = answeredCount;
   const leaderboard = [...room.players].sort(
     (a, b) => b.score - a.score || a.nickname.localeCompare(b.nickname),
   );
@@ -424,6 +502,63 @@ export function LiveRoom({
   const sparkScore = room.players
     .filter((player) => player.teamId === 'spark')
     .reduce((sum, player) => sum + player.score, 0);
+  const signalPlayers = room.players.filter(
+    (player) => player.teamId === 'signal',
+  );
+  const sparkPlayers = room.players.filter(
+    (player) => player.teamId === 'spark',
+  );
+  const signalReactions = room.reactions.filter(
+    (reaction) => reaction.teamId === 'signal',
+  ).length;
+  const sparkReactions = room.reactions.filter(
+    (reaction) => reaction.teamId === 'spark',
+  ).length;
+  const liveEnergy = (team: LiveRoomState['players'], reactions: number) =>
+    team.reduce((sum, player) => sum + player.score, 0) +
+    team.filter((player) => player.answerLocked).length * 120 +
+    reactions * 45 +
+    team.length * 30;
+  const scoredRoom = signalScore + sparkScore > 0;
+  const signalEnergy =
+    ['verifying', 'complete'].includes(room.status) && scoredRoom
+      ? signalScore
+      : liveEnergy(signalPlayers, signalReactions);
+  const sparkEnergy =
+    ['verifying', 'complete'].includes(room.status) && scoredRoom
+      ? sparkScore
+      : liveEnergy(sparkPlayers, sparkReactions);
+  const mimoLines =
+    room.status === 'lobby'
+      ? [
+          `${room.players.length || 'No'} players here. I’m balancing the teams.`,
+          'Signal brings the focus. Spark brings the fire.',
+          'Rivals first. One room in the finale.',
+        ]
+      : room.status === 'live'
+        ? [
+            `${answered} answers locked. I’m watching the clock.`,
+            allAnswered
+              ? 'Everyone is in. Reveal coming up.'
+              : `${room.players.length - answered} still choosing. No spoilers.`,
+            seconds !== null && seconds <= 5
+              ? 'Final seconds. Trust your answer.'
+              : 'Every lock and reaction moves the room energy.',
+          ]
+        : room.status === 'verifying'
+          ? [
+              room.hasNextRound
+                ? 'Result checked. Next moment in five.'
+                : 'Final result checked. Bringing it home.',
+              'Look at that team swing.',
+              'Scores came from the server—not the browser.',
+            ]
+          : [
+              'The room has spoken.',
+              'Your result is saved.',
+              'Ready for a rematch?',
+            ];
+  const mimoLine = mimoLines[mimoLineIndex % mimoLines.length];
 
   return (
     <section className="mobile-page relative mx-auto max-w-[1180px] px-5 pb-24 pt-1 sm:px-8 sm:pt-3">
@@ -443,6 +578,28 @@ export function LiveRoom({
           </strong>
         </div>
         <div className="flex items-center gap-2">
+          {mode === 'host' &&
+            !['lobby', 'complete', 'cancelled'].includes(room.status) && (
+              <button
+                onClick={() => setAutoHost((value) => !value)}
+                aria-pressed={autoHost}
+                className={`flex h-10 items-center gap-2 rounded-full border px-3 text-sm font-extrabold ${
+                  autoHost
+                    ? 'border-[#9bc9ae] bg-[#edf9f1] text-[#237044]'
+                    : 'border-[#d7b56a] bg-[#fff8dd] text-[#775900]'
+                }`}
+              >
+                {autoHost ? (
+                  <PauseCircle size={16} />
+                ) : (
+                  <PlayCircle size={16} />
+                )}
+                <span className="hidden sm:inline">
+                  Mimo auto {autoHost ? 'on' : 'paused'}
+                </span>
+                <span className="sm:hidden">Auto</span>
+              </button>
+            )}
           <button
             onClick={() => {
               setInviteError('');
@@ -506,7 +663,9 @@ export function LiveRoom({
               <div className="min-w-0">
                 <p className="truncate text-sm font-extrabold">{room.title}</p>
                 <p className="mt-1 text-xs font-bold text-[#617486]">
-                  {room.accessMode === 'private' ? 'Private invite' : 'Public room'}
+                  {room.accessMode === 'private'
+                    ? 'Private invite'
+                    : 'Public room'}
                   {room.rewardMode === 'nim'
                     ? ` · ${room.rewardAmount} NIM proposed`
                     : ' · Free to join'}
@@ -518,7 +677,10 @@ export function LiveRoom({
             </div>
 
             {inviteError && (
-              <p role="alert" className="mt-3 w-full text-sm font-bold text-[#a33f30]">
+              <p
+                role="alert"
+                className="mt-3 w-full text-sm font-bold text-[#a33f30]"
+              >
                 {inviteError}
               </p>
             )}
@@ -556,9 +718,16 @@ export function LiveRoom({
       )}
 
       <TeamMomentum
-        signal={signalScore}
-        spark={sparkScore}
+        signal={signalEnergy}
+        spark={sparkEnergy}
         live={room.status === 'live'}
+        label={
+          room.status === 'lobby'
+            ? 'Team presence'
+            : room.status === 'live'
+              ? 'Live team energy'
+              : 'Team result'
+        }
       />
 
       <div className="mt-6 grid gap-7 lg:grid-cols-[1fr_340px]">
@@ -583,15 +752,7 @@ export function LiveRoom({
                   ? 'thinking'
                   : 'calm'
             }
-            message={
-              room.status === 'lobby'
-                ? `${room.players.length || 'No'} players here. I’ll keep everyone together.`
-                : room.status === 'live'
-                  ? `${answered} answers locked. I’m watching the clock.`
-                  : room.status === 'verifying' && room.hasNextRound
-                    ? `Moment ${room.roundIndex + 1} is revealed. The next one is ready.`
-                    : 'Scores checked. The room result is ready.'
-            }
+            message={mimoLine}
           />
 
           {room.rewardMode === 'nim' && mode === 'player' && (
@@ -625,6 +786,7 @@ export function LiveRoom({
                 <LobbyState
                   room={room}
                   isHost={mode === 'host'}
+                  currentPlayer={me}
                   busy={busy}
                   onStart={() => void hostAction('start')}
                 />
@@ -638,6 +800,7 @@ export function LiveRoom({
                   locked={locked || Boolean(me?.answerLocked)}
                   busy={busy}
                   answered={answered}
+                  autoHost={autoHost}
                   onAnswer={answer}
                   onReveal={() => void hostAction('reveal')}
                   onExtend={() => void hostAction('extend')}
@@ -649,6 +812,7 @@ export function LiveRoom({
                   leaderboard={leaderboard}
                   role={mode}
                   busy={busy}
+                  autoHost={autoHost}
                   onFinish={() => void hostAction('finish')}
                   onNext={() => void hostAction('next')}
                   onReset={() => void hostAction('reset')}
@@ -692,7 +856,9 @@ export function LiveRoom({
           </p>
           <p className="mt-2 text-center text-sm leading-5 text-[#c5d4e0]">
             {mode === 'host'
-              ? 'You control when the room moves.'
+              ? autoHost
+                ? 'I reveal on time and move the show. You can step in anytime.'
+                : 'Auto-host is paused. You control every move.'
               : me
                 ? `You are on Team ${me.teamId === 'signal' ? 'Signal' : 'Spark'}.`
                 : 'Your place is saved in this room.'}
@@ -755,10 +921,12 @@ function TeamMomentum({
   signal,
   spark,
   live,
+  label,
 }: {
   signal: number;
   spark: number;
   live: boolean;
+  label: string;
 }) {
   const total = signal + spark;
   const signalWidth = total
@@ -767,13 +935,11 @@ function TeamMomentum({
   return (
     <div className="mt-4 overflow-hidden rounded-[22px] border border-[#ccd5dc] bg-white p-3 sm:p-4">
       <div className="mb-2 flex items-center justify-between text-xs font-extrabold uppercase tracking-[.1em]">
-        <span className="text-[#1f72d2]">
-          Signal · {signal.toLocaleString()}
-        </span>
+        <span className="text-[#1f72d2]">Signal</span>
         <span className={live ? 'text-[#c25340]' : 'text-[#73828e]'}>
-          {live ? 'Live momentum' : 'Team energy'}
+          {label}
         </span>
-        <span className="text-[#c75d4a]">{spark.toLocaleString()} · Spark</span>
+        <span className="text-[#c75d4a]">Spark</span>
       </div>
       <div className="flex h-3 overflow-hidden rounded-full bg-[#edf0f2]">
         <motion.div
@@ -920,11 +1086,13 @@ function WalletProofCard({
 function LobbyState({
   room,
   isHost,
+  currentPlayer,
   busy,
   onStart,
 }: {
   room: LiveRoomState;
   isHost: boolean;
+  currentPlayer?: LiveRoomState['players'][number];
   busy: boolean;
   onStart: () => void;
 }) {
@@ -973,6 +1141,67 @@ function LobbyState({
           <span>{arrivalLabel}</span>
         </div>
       </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="border-l-4 border-[#1f72d2] bg-[#eaf4ff] px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <strong className="font-display text-lg text-[#175fa9]">
+              Team Signal
+            </strong>
+            <span className="text-sm font-extrabold text-[#175fa9]">
+              {
+                room.players.filter((player) => player.teamId === 'signal')
+                  .length
+              }
+            </span>
+          </div>
+          <p className="mt-1 text-sm font-medium text-[#526a7e]">
+            Correct answers and participation push the blue side.
+          </p>
+        </div>
+        <div className="border-l-4 border-[#d56552] bg-[#fff0ec] px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <strong className="font-display text-lg text-[#b64c39]">
+              Team Spark
+            </strong>
+            <span className="text-sm font-extrabold text-[#b64c39]">
+              {
+                room.players.filter((player) => player.teamId === 'spark')
+                  .length
+              }
+            </span>
+          </div>
+          <p className="mt-1 text-sm font-medium text-[#526a7e]">
+            Correct answers and participation push the coral side.
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
+        <Zap size={16} className="text-[#b17900]" /> Compete as teams first. In
+        the finale, everyone joins forces against Mimo.
+      </p>
+      {!isHost && currentPlayer && (
+        <div
+          className={`mt-4 flex items-center gap-3 border px-4 py-3 ${
+            currentPlayer.teamId === 'signal'
+              ? 'border-[#8cb9e4] bg-[#eaf4ff] text-[#175fa9]'
+              : 'border-[#e2a194] bg-[#fff0ec] text-[#a94837]'
+          }`}
+        >
+          <MimoProfileAvatar
+            profile={currentPlayer.profileStyle}
+            nickname={currentPlayer.nickname}
+          />
+          <span>
+            <strong className="block font-display text-lg">
+              You’re Team{' '}
+              {currentPlayer.teamId === 'signal' ? 'Signal' : 'Spark'}
+            </strong>
+            <span className="text-sm font-bold opacity-80">
+              Your answers help move your whole team.
+            </span>
+          </span>
+        </div>
+      )}
       {room.players.length ? (
         <div className="flex min-h-36 flex-wrap content-start gap-3 py-5">
           {room.players.map((player, index) => (
@@ -982,11 +1211,15 @@ function LobbyState({
               key={player.id}
               className="flex h-12 items-center gap-2 rounded-full bg-white py-1 pl-1 pr-4"
             >
-              <span
-                className={`grid h-10 w-10 place-items-center rounded-full text-sm font-extrabold text-white ${player.teamId === 'signal' ? 'bg-[#1f72d2]' : 'bg-[#d56552]'}`}
-              >
-                {player.nickname[0]?.toUpperCase()}
-              </span>
+              <MimoProfileAvatar
+                profile={player.profileStyle}
+                nickname={player.nickname}
+                className={`h-10 w-10 ${
+                  player.teamId === 'signal'
+                    ? 'ring-2 ring-[#1f72d2]/25'
+                    : 'ring-2 ring-[#d56552]/25'
+                }`}
+              />
               <strong>{player.nickname}</strong>
               {player.walletVerified && (
                 <ShieldCheck
@@ -1032,6 +1265,7 @@ function QuestionState({
   locked,
   busy,
   answered,
+  autoHost,
   onAnswer,
   onReveal,
   onExtend,
@@ -1043,6 +1277,7 @@ function QuestionState({
   locked: boolean;
   busy: boolean;
   answered: number;
+  autoHost: boolean;
   onAnswer: (choice: number) => void;
   onReveal: () => void;
   onExtend: () => void;
@@ -1058,6 +1293,15 @@ function QuestionState({
               : room.roundType === 'finale'
                 ? 'Final challenge'
                 : 'Skill question'}
+            {room.roundType !== 'pulse' && (
+              <>
+                {' '}
+                ·{' '}
+                {room.scoringMode === 'speed'
+                  ? 'Accuracy + speed'
+                  : 'Accuracy only'}
+              </>
+            )}
           </p>
           <h2 className="font-display mt-3 max-w-3xl text-[clamp(2rem,9vw,3.8rem)] font-extrabold leading-[.98] tracking-[-.05em]">
             {room.prompt}
@@ -1072,21 +1316,27 @@ function QuestionState({
           {room.choices.map((choice, index) => {
             const tone = CHOICE_TONES[index];
             return (
-            <button
-              key={choice}
-              disabled={locked || busy || seconds === 0}
-              onClick={() => onAnswer(index)}
-              className={`mobile-answer min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? tone.selected : `${tone.surface} hover:-translate-y-1`} disabled:cursor-default disabled:hover:translate-y-0`}
-            >
-              <span className={`mr-3 inline-grid h-7 w-7 place-items-center rounded-full text-sm ${tone.badge}`}>
-                {String.fromCharCode(65 + index)}
-              </span>
-              {choice}
-              {locked && selected === index && (
-                <Check className="mt-3 text-[#1f72d2]" />
-              )}
-            </button>
-          )})}
+              <button
+                key={choice}
+                disabled={locked || busy || seconds === 0}
+                onClick={() => onAnswer(index)}
+                aria-pressed={selected === index}
+                className={`mobile-answer relative min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? tone.selected : `${tone.surface} hover:-translate-y-1`} ${locked && selected !== index ? 'opacity-45 saturate-50' : ''} disabled:cursor-default disabled:hover:translate-y-0`}
+              >
+                <span
+                  className={`mr-3 inline-grid h-7 w-7 place-items-center rounded-full text-sm ${tone.badge}`}
+                >
+                  {String.fromCharCode(65 + index)}
+                </span>
+                {choice}
+                {locked && selected === index && (
+                  <span className="mt-4 flex w-fit items-center gap-1.5 rounded-full bg-[#203752] px-3 py-1.5 font-sans text-xs font-extrabold text-white">
+                    <Check size={15} /> Locked in
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="mt-7 overflow-hidden rounded-[26px] bg-[#203752] p-5 text-white sm:p-6">
@@ -1099,7 +1349,9 @@ function QuestionState({
                 {answered} / {room.players.length}
               </p>
               <p className="mt-1 text-sm text-[#c1d1de]">
-                answers locked safely
+                {autoHost
+                  ? 'Mimo reveals when all are in or time ends'
+                  : 'answers locked safely'}
               </p>
             </div>
             <div className="text-right">
@@ -1130,29 +1382,45 @@ function QuestionState({
               className="h-12 rounded-full bg-[#f7c933] px-6 font-extrabold text-[#203752] hover:bg-[#ffda4e]"
             >
               <Zap />{' '}
-              {room.roundType === 'pulse' ? 'Reveal poll' : 'Reveal result'}
+              {room.roundType === 'pulse' ? 'Reveal poll now' : 'Reveal now'}
             </Button>
           </div>
         </div>
       )}
       {role === 'player' && (
-        <p
-          aria-live="polite"
-          className="mt-5 flex items-center gap-2 font-bold text-[#536b7e]"
-        >
+        <AnimatePresence mode="wait">
           {locked ? (
-            <>
-              <ShieldCheck size={18} />
-              {room.roundType === 'pulse'
-                ? 'Your side is saved.'
-                : 'Answer saved. It cannot be changed.'}
-            </>
-          ) : seconds === 0 ? (
-            'Time is up. Waiting for the reveal.'
+            <motion.div
+              key="locked"
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              aria-live="polite"
+              className="mt-5 flex items-center gap-3 border border-[#8fc9aa] bg-[#edf9f1] p-4 text-[#245f3c]"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#d5f0df]">
+                <ShieldCheck size={20} />
+              </span>
+              <span>
+                <strong className="block font-display text-lg">
+                  Locked in
+                </strong>
+                <span className="text-sm font-bold">
+                  Your choice is safe. Mimo will reveal it automatically.
+                </span>
+              </span>
+            </motion.div>
           ) : (
-            'Choose once. Mimo locks it on the server.'
+            <p
+              key="choosing"
+              aria-live="polite"
+              className="mt-5 flex items-center gap-2 font-bold text-[#536b7e]"
+            >
+              {seconds === 0
+                ? 'Time is up. Mimo is revealing the room.'
+                : 'Choose once. Mimo locks it on the server.'}
+            </p>
           )}
-        </p>
+        </AnimatePresence>
       )}
     </div>
   );
@@ -1163,6 +1431,7 @@ function ResultsState({
   leaderboard,
   role,
   busy,
+  autoHost,
   onNext,
   onFinish,
   onReset,
@@ -1174,6 +1443,7 @@ function ResultsState({
   leaderboard: LiveRoomState['players'];
   role: 'host' | 'player';
   busy: boolean;
+  autoHost: boolean;
   onNext: () => void;
   onFinish: () => void;
   onReset: () => void;
@@ -1191,6 +1461,14 @@ function ResultsState({
   const finaleProgress = room.players.length
     ? Math.min(100, (finaleCorrect / room.players.length) * 100)
     : 0;
+  const signalTotal = room.players
+    .filter((player) => player.teamId === 'signal')
+    .reduce((sum, player) => sum + player.score, 0);
+  const sparkTotal = room.players
+    .filter((player) => player.teamId === 'spark')
+    .reduce((sum, player) => sum + player.score, 0);
+  const teamTotal = signalTotal + sparkTotal;
+  const signalShare = teamTotal ? (signalTotal / teamTotal) * 100 : 50;
   return (
     <div className="relative mt-6 overflow-hidden sm:mt-8">
       {room.status === 'verifying' && (
@@ -1229,7 +1507,10 @@ function ResultsState({
         </p>
       )}
       {room.roundType === 'pulse' && room.status === 'verifying' && (
-        <div className="mt-7 grid gap-3">
+        <div
+          className="mt-7 grid gap-3"
+          aria-label="Live poll result bar chart"
+        >
           {room.choices.map((choice, index) => {
             const count = room.choiceCounts[index] ?? 0;
             const total = Math.max(
@@ -1267,7 +1548,9 @@ function ResultsState({
         </div>
       )}
       {room.roundType === 'finale' && room.status === 'verifying' && (
-        <div className={`mt-7 overflow-hidden rounded-[24px] border-2 p-5 ${room.finalePassed ? 'border-[#58a978] bg-[#eef9f2]' : 'border-[#e0b752] bg-[#fff8dc]'}`}>
+        <div
+          className={`mt-7 overflow-hidden rounded-[24px] border-2 p-5 ${room.finalePassed ? 'border-[#58a978] bg-[#eef9f2]' : 'border-[#e0b752] bg-[#fff8dc]'}`}
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#607486]">
@@ -1277,10 +1560,21 @@ function ResultsState({
                 {finaleCorrect} of {room.players.length} got it
               </p>
             </div>
-            <MimoCharacter
-              mood={room.finalePassed ? 'happy' : 'thinking'}
+            <motion.div
               className="w-20 shrink-0"
-            />
+              initial={{ scale: 0.82 }}
+              animate={
+                room.finalePassed
+                  ? { scale: [0.82, 1.12, 1], rotate: [0, -12, 360] }
+                  : { scale: [0.82, 1.04, 1], rotate: [0, -4, 0] }
+              }
+              transition={{ duration: room.finalePassed ? 1.05 : 0.6 }}
+            >
+              <MimoCharacter
+                mood={room.finalePassed ? 'happy' : 'thinking'}
+                className="w-full"
+              />
+            </motion.div>
           </div>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/80">
             <motion.div
@@ -1290,7 +1584,47 @@ function ResultsState({
             />
           </div>
           <p className="mt-3 text-sm font-bold text-[#526a7e]">
-            The room needed {finaleTarget} correct answer{finaleTarget === 1 ? '' : 's'} to beat Mimo’s {room.collectiveTargetPercent}% target.
+            The room needed {finaleTarget} correct answer
+            {finaleTarget === 1 ? '' : 's'} to beat Mimo’s{' '}
+            {room.collectiveTargetPercent}% target.
+          </p>
+        </div>
+      )}
+      {room.roundType !== 'pulse' && teamTotal > 0 && (
+        <div
+          className="mt-7 border border-[#ccd5dc] bg-white p-5"
+          aria-label="Team score bar chart"
+        >
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#607486]">
+                Team score
+              </p>
+              <strong className="font-display mt-1 block text-2xl text-[#1f72d2]">
+                Signal · {signalTotal.toLocaleString()}
+              </strong>
+            </div>
+            <strong className="font-display text-right text-2xl text-[#c75d4a]">
+              {sparkTotal.toLocaleString()} · Spark
+            </strong>
+          </div>
+          <div className="mt-4 flex h-5 overflow-hidden rounded-full bg-[#edf0f2]">
+            <motion.div
+              initial={{ width: '50%' }}
+              animate={{ width: `${signalShare}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              className="bg-[#1f72d2]"
+            />
+            <motion.div
+              initial={{ width: '50%' }}
+              animate={{ width: `${100 - signalShare}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              className="bg-[#e06b56]"
+            />
+          </div>
+          <p className="mt-3 text-sm font-bold text-[#526a7e]">
+            Individual answers build the team total. The finale belongs to the
+            whole room.
           </p>
         </div>
       )}
@@ -1312,11 +1646,11 @@ function ResultsState({
             <span className="font-display text-2xl font-extrabold text-[#7a8995]">
               {index + 1}
             </span>
-            <span
-              className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white ${player.teamId === 'signal' ? 'bg-[#1f72d2]' : 'bg-[#d56552]'}`}
-            >
-              {player.nickname[0]?.toUpperCase()}
-            </span>
+            <MimoProfileAvatar
+              profile={player.profileStyle}
+              nickname={player.nickname}
+              className="h-9 w-9"
+            />
             <strong className="flex-1">{player.nickname}</strong>
             {room.rewardMode === 'nim' && (
               <span
@@ -1350,7 +1684,7 @@ function ResultsState({
             disabled={busy}
             className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
-            Next moment
+            {autoHost ? 'Next now' : 'Next moment'}
           </Button>
         ) : room.status === 'verifying' ? (
           <Button
@@ -1358,7 +1692,7 @@ function ResultsState({
             disabled={busy}
             className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
-            Finish event
+            {autoHost ? 'Finish now' : 'Finish event'}
           </Button>
         ) : (
           <Button
@@ -1374,8 +1708,8 @@ function ResultsState({
           {room.status === 'complete'
             ? 'Event complete. Your result is saved.'
             : room.hasNextRound
-              ? 'Mimo is getting the next moment ready.'
-              : 'The host is checking the final result.'}
+              ? 'Mimo is moving to the next moment automatically.'
+              : 'Mimo is checking the final result.'}
         </p>
       )}
     </div>

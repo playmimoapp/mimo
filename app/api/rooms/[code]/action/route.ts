@@ -32,14 +32,30 @@ export async function POST(
   const db = getD1();
   const roundRows = await db
     .prepare(
-      `SELECT id, position FROM rounds WHERE event_id = ? ORDER BY position`,
+      `SELECT id, position, config_json AS configJson
+       FROM rounds WHERE event_id = ? ORDER BY position`,
     )
     .bind(room.id)
-    .all<{ id: string; position: number }>();
+    .all<{ id: string; position: number; configJson: string }>();
   const currentRoundIndex = roundRows.results.findIndex(
     (round) => round.id === room.activeRoundId,
   );
+  if (currentRoundIndex < 0) {
+    return json({ error: 'The active moment could not be loaded.' }, 500);
+  }
+  const currentRound = roundRows.results[currentRoundIndex];
   const nextRound = roundRows.results[currentRoundIndex + 1];
+  const roundDuration = (configJson: string) => {
+    try {
+      const duration = Number(
+        (JSON.parse(configJson) as { durationSeconds?: unknown })
+          .durationSeconds,
+      );
+      return Math.max(10, Math.min(60, duration || 20));
+    } catch {
+      return 20;
+    }
+  };
   const allowed =
     (action === 'start' && room.status === 'lobby') ||
     (action === 'reveal' && room.status === 'live') ||
@@ -70,9 +86,10 @@ export async function POST(
     await db.batch([
       db
         .prepare(
-          `UPDATE events SET status = 'live', round_started_at = ? WHERE id = ?`,
+          `UPDATE events SET status = 'live', round_started_at = ?,
+            round_duration_seconds = ? WHERE id = ?`,
         )
-        .bind(Date.now(), room.id),
+        .bind(Date.now(), roundDuration(currentRound.configJson), room.id),
       db
         .prepare(
           `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
@@ -84,9 +101,15 @@ export async function POST(
     await db.batch([
       db
         .prepare(
-          `UPDATE events SET status = 'live', active_round_id = ?, round_started_at = ? WHERE id = ?`,
+          `UPDATE events SET status = 'live', active_round_id = ?, round_started_at = ?,
+            round_duration_seconds = ? WHERE id = ?`,
         )
-        .bind(nextRound.id, Date.now(), room.id),
+        .bind(
+          nextRound.id,
+          Date.now(),
+          roundDuration(nextRound.configJson),
+          room.id,
+        ),
       db
         .prepare(`UPDATE participants SET answer_locked = 0 WHERE event_id = ?`)
         .bind(room.id),
@@ -96,9 +119,10 @@ export async function POST(
     await db.batch([
       db
         .prepare(
-          `UPDATE events SET status = 'lobby', active_round_id = ?, round_started_at = NULL WHERE id = ?`,
+          `UPDATE events SET status = 'lobby', active_round_id = ?,
+            round_started_at = NULL, round_duration_seconds = ? WHERE id = ?`,
         )
-        .bind(firstRound.id, room.id),
+        .bind(firstRound.id, roundDuration(firstRound.configJson), room.id),
       db
         .prepare(
           `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,

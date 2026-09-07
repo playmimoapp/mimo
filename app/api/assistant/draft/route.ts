@@ -190,6 +190,9 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
           question: round.question.trim().slice(0, 180),
           choices: round.choices.map((choice) => choice.trim().slice(0, 80)),
           correctChoice: round.type === 'pulse' ? null : round.correctChoice,
+          durationSeconds:
+            round.type === 'pulse' ? 15 : round.type === 'finale' ? 30 : 20,
+          scoringMode: round.type === 'multiple_choice' ? 'speed' : 'accuracy',
         })),
       },
     });

@@ -90,6 +90,7 @@ export const participants = sqliteTable(
       .notNull()
       .references(() => events.id),
     nickname: text('nickname').notNull(),
+    profileStyle: text('profile_style').notNull().default('hype'),
     walletHash: text('wallet_hash'),
     deviceHash: text('device_hash'),
     teamId: text('team_id'),

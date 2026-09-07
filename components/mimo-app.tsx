@@ -24,7 +24,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LiveRoom } from '@/components/live-room';
-import { MimoCharacter, MimoCue } from '@/components/mimo-host';
+import {
+  MimoCharacter,
+  MimoCue,
+  MimoProfileAvatar,
+} from '@/components/mimo-host';
+import { MIMO_PROFILES, type MimoProfileStyle } from '@/lib/mimo-profile';
 
 type Screen =
   | 'home'
@@ -57,12 +62,21 @@ const CHOICE_TONES = [
   },
 ] as const;
 
+const HOME_LINES = [
+  'You bring the people. I’ll run the room.',
+  'I’ll balance the teams and keep the pace.',
+  'Answers locked? I handle the reveal.',
+  'Rivals now. One team in the finale.',
+] as const;
+
 type RoundDraft = {
   id: string;
   type: RoundType;
   question: string;
   choices: string[];
   correctChoice: number | null;
+  durationSeconds: number;
+  scoringMode: 'accuracy' | 'speed';
 };
 
 type AssistantBrief = {
@@ -89,6 +103,8 @@ function blankRound(type: RoundType = 'multiple_choice'): RoundDraft {
     question: '',
     choices: ['', ''],
     correctChoice: type === 'pulse' ? null : 0,
+    durationSeconds: type === 'finale' ? 30 : 20,
+    scoringMode: type === 'multiple_choice' ? 'speed' : 'accuracy',
   };
 }
 
@@ -156,6 +172,7 @@ export function MimoApp() {
   const reduceMotion = useReducedMotion();
   const [screen, setScreen] = useState<Screen>('home');
   const [name, setName] = useState('');
+  const [profileStyle, setProfileStyle] = useState<MimoProfileStyle>('hype');
   const [joinCode, setJoinCode] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [hostKey, setHostKey] = useState('');
@@ -219,6 +236,12 @@ export function MimoApp() {
         window.sessionStorage.getItem(`mimo:${code}:token`) ?? '';
       const savedName =
         window.sessionStorage.getItem(`mimo:${code}:name`) ?? '';
+      const savedProfile = window.sessionStorage.getItem(
+        `mimo:${code}:profile`,
+      ) as MimoProfileStyle | null;
+      if (savedProfile && MIMO_PROFILES.some(({ id }) => id === savedProfile)) {
+        setProfileStyle(savedProfile);
+      }
       if (savedToken && savedName) {
         setParticipantToken(savedToken);
         setName(savedName);
@@ -358,7 +381,7 @@ export function MimoApp() {
       const response = await fetch(`/api/rooms/${roomCode}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: name, inviteToken }),
+        body: JSON.stringify({ nickname: name, profileStyle, inviteToken }),
       });
       const body = (await response.json()) as {
         participantToken?: string;
@@ -372,6 +395,7 @@ export function MimoApp() {
         body.participantToken,
       );
       window.sessionStorage.setItem(`mimo:${roomCode}:name`, name.trim());
+      window.sessionStorage.setItem(`mimo:${roomCode}:profile`, profileStyle);
       setScreen('live_player');
     } catch (cause) {
       setRoomError(
@@ -470,6 +494,8 @@ export function MimoApp() {
             <Join
               name={name}
               setName={setName}
+              profileStyle={profileStyle}
+              setProfileStyle={setProfileStyle}
               next={() => void joinLiveRoom()}
               roomCode={roomCode}
               working={working}
@@ -515,6 +541,15 @@ function ProductHome({
   host: () => void;
   error: string;
 }) {
+  const reduceMotion = useReducedMotion();
+  const [homeLineIndex, setHomeLineIndex] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setHomeLineIndex((value) => (value + 1) % HOME_LINES.length),
+      4800,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
   return (
     <section className="mobile-page mx-auto grid min-h-[calc(100dvh-60px)] max-w-[1080px] gap-6 px-5 pb-10 pt-2 sm:min-h-[calc(100dvh-72px)] sm:px-8 lg:grid-cols-[.92fr_1.08fr] lg:items-center">
       <div className="order-2 pb-3 lg:order-1">
@@ -574,12 +609,41 @@ function ProductHome({
         <div className="absolute left-4 top-4 z-20 rounded-full bg-white px-3 py-2 text-xs font-extrabold text-[#31506b] shadow-[0_6px_20px_rgba(39,77,111,.1)] sm:left-6 sm:top-6">
           MIMO IS READY
         </div>
-        <div className="absolute -bottom-7 left-1/2 z-10 w-[230px] -translate-x-1/2 sm:-bottom-10 sm:w-[370px]">
+        <motion.div
+          className="absolute -bottom-7 left-1/2 z-10 w-[230px] -translate-x-1/2 sm:-bottom-10 sm:w-[370px]"
+          animate={
+            reduceMotion
+              ? undefined
+              : homeLineIndex % HOME_LINES.length === 3
+                ? {
+                    x: [0, -12, 12, 0],
+                    y: [0, -18, -4, 0],
+                    rotate: [0, -8, 360],
+                  }
+                : {
+                    x: [0, homeLineIndex % 2 ? 13 : -13, 0],
+                    y: [0, -7, 0],
+                    rotate: [0, homeLineIndex % 2 ? 3 : -3, 0],
+                  }
+          }
+          transition={{
+            duration: homeLineIndex % HOME_LINES.length === 3 ? 1.05 : 0.8,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        >
           <MimoCharacter mood="happy" priority className="w-full" />
-        </div>
-        <div className="host-line absolute right-4 top-[74px] z-30 max-w-[165px] bg-[#203752] px-3 py-2 text-xs font-bold leading-4 text-white sm:right-6 sm:top-24 sm:max-w-[220px] sm:px-4 sm:py-3 sm:text-sm sm:leading-5">
-          You bring the people. I’ll run the room.
-        </div>
+        </motion.div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={homeLineIndex}
+            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -5 }}
+            className="host-line absolute right-4 top-[74px] z-30 max-w-[165px] bg-[#203752] px-3 py-2 text-xs font-bold leading-4 text-white sm:right-6 sm:top-24 sm:max-w-[220px] sm:px-4 sm:py-3 sm:text-sm sm:leading-5"
+          >
+            {HOME_LINES[homeLineIndex]}
+          </motion.div>
+        </AnimatePresence>
         <div className="absolute inset-x-0 bottom-0 h-16 bg-[linear-gradient(180deg,transparent,#cfe6fb)]" />
       </div>
     </section>
@@ -977,6 +1041,14 @@ function CreateEvent({
                                 type === 'pulse'
                                   ? null
                                   : (round.correctChoice ?? 0),
+                              durationSeconds:
+                                type === 'finale'
+                                  ? Math.max(30, round.durationSeconds)
+                                  : round.durationSeconds,
+                              scoringMode:
+                                type === 'multiple_choice'
+                                  ? round.scoringMode
+                                  : 'accuracy',
                             })
                           }
                           className={`flex min-h-10 items-center gap-2 rounded-full px-3 text-sm font-extrabold ${round.type === type ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
@@ -994,6 +1066,65 @@ function CreateEvent({
                       >
                         <Trash2 size={17} />
                       </button>
+                    )}
+                  </div>
+                  <div className="mt-4 grid gap-4 border-y border-[#e0e4e6] py-4 sm:grid-cols-2">
+                    <fieldset>
+                      <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
+                        Answer time
+                      </legend>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {[10, 20, 30, 45, 60].map((duration) => (
+                          <button
+                            key={duration}
+                            type="button"
+                            aria-pressed={round.durationSeconds === duration}
+                            onClick={() =>
+                              updateRound(roundIndex, {
+                                durationSeconds: duration,
+                              })
+                            }
+                            className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
+                              round.durationSeconds === duration
+                                ? 'bg-[#203752] text-white'
+                                : 'bg-[#edf1f3] text-[#526a7c]'
+                            }`}
+                          >
+                            {duration}s
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+                    {round.type !== 'pulse' && (
+                      <fieldset>
+                        <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
+                          Scoring
+                        </legend>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              ['accuracy', 'Accuracy only'],
+                              ['speed', 'Accuracy + speed'],
+                            ] as const
+                          ).map(([mode, label]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              aria-pressed={round.scoringMode === mode}
+                              onClick={() =>
+                                updateRound(roundIndex, { scoringMode: mode })
+                              }
+                              className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
+                                round.scoringMode === mode
+                                  ? 'bg-[#1f72d2] text-white'
+                                  : 'bg-[#edf1f3] text-[#526a7c]'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
                     )}
                   </div>
                   <textarea
@@ -1063,7 +1194,9 @@ function CreateEvent({
                         {round.choices.length > 2 && (
                           <button
                             type="button"
-                            onClick={() => removeChoice(roundIndex, choiceIndex)}
+                            onClick={() =>
+                              removeChoice(roundIndex, choiceIndex)
+                            }
                             aria-label={`Remove choice ${String.fromCharCode(65 + choiceIndex)}`}
                             className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8d5b53] hover:bg-white/70"
                           >
@@ -1103,7 +1236,18 @@ function CreateEvent({
               >
                 <Plus size={16} /> Pulse poll
               </button>
+              <button
+                type="button"
+                disabled={event.rounds.length >= 8}
+                onClick={() => addRound('finale')}
+                className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
+              >
+                <Plus size={16} /> Final challenge
+              </button>
             </div>
+            <p className="mt-3 text-sm font-bold text-[#617486]">
+              One moment is enough. Mix formats only when your event needs them.
+            </p>
           </div>
           <fieldset>
             <legend className="text-sm font-extrabold">Who can join?</legend>
@@ -1353,6 +1497,8 @@ function CreatorRehearsal({
 function Join({
   name,
   setName,
+  profileStyle,
+  setProfileStyle,
   next,
   roomCode,
   working,
@@ -1361,6 +1507,8 @@ function Join({
 }: {
   name: string;
   setName: (value: string) => void;
+  profileStyle: MimoProfileStyle;
+  setProfileStyle: (value: MimoProfileStyle) => void;
   next: () => void;
   roomCode: string;
   working: boolean;
@@ -1397,6 +1545,39 @@ function Join({
           placeholder="e.g. River"
           className="mt-2 h-16 w-full border-0 border-b-2 border-[#a9b4bd] bg-transparent text-2xl font-bold outline-none placeholder:text-[#a8afb6] focus:border-[#1f72d2]"
         />
+        <fieldset className="mt-7">
+          <legend className="text-sm font-extrabold">
+            Pick your Mimo vibe
+          </legend>
+          <p className="mt-1 text-sm text-[#647789]">
+            This is how the room recognises you.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {MIMO_PROFILES.map((profile) => {
+              const active = profileStyle === profile.id;
+              return (
+                <button
+                  key={profile.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setProfileStyle(profile.id)}
+                  className={`flex min-h-16 items-center gap-3 border px-3 text-left transition ${
+                    active
+                      ? 'border-[#1f72d2] bg-[#e7f2ff] ring-2 ring-[#1f72d2]/15'
+                      : 'border-[#cbd3d9] bg-white hover:border-[#8fa5b7]'
+                  }`}
+                >
+                  <MimoProfileAvatar
+                    profile={profile.id}
+                    nickname={name.trim() || 'You'}
+                    className="h-10 w-10"
+                  />
+                  <span className="font-extrabold">{profile.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
         {error && (
           <p
             role="alert"

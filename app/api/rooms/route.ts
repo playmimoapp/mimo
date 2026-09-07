@@ -63,7 +63,20 @@ export async function POST(request: Request) {
         : typeof record.correctChoice === 'number'
           ? record.correctChoice
           : -1;
-    return { type, question, choices, correctChoice };
+    const durationSeconds = Math.max(
+      10,
+      Math.min(60, Number(record.durationSeconds) || 20),
+    );
+    const scoringMode =
+      type !== 'pulse' && record.scoringMode === 'speed' ? 'speed' : 'accuracy';
+    return {
+      type,
+      question,
+      choices,
+      correctChoice,
+      durationSeconds,
+      scoringMode,
+    };
   });
 
   if (title.length < 3 || community.length < 2) {
@@ -133,7 +146,7 @@ export async function POST(request: Request) {
         .prepare(`INSERT INTO events
         (id, community_id, title, status, launched_config_json, config_version,
           room_code, host_key_hash, active_round_id, round_duration_seconds, created_at)
-        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, 20, ?)`)
+        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?)`)
         .bind(
           eventId,
           communityId,
@@ -142,6 +155,7 @@ export async function POST(request: Request) {
           code,
           hostKeyHash,
           roundIds[0],
+          parsedRounds[0].durationSeconds,
           now,
         ),
       ...parsedRounds.map((round, index) =>
@@ -159,6 +173,8 @@ export async function POST(request: Request) {
               choices: round.choices,
               correctChoice: round.correctChoice,
               scored: round.type !== 'pulse',
+              durationSeconds: round.durationSeconds,
+              scoringMode: round.scoringMode,
               collectiveTargetPercent: round.type === 'finale' ? 60 : undefined,
             }),
           ),

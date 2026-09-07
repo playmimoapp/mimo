@@ -41,7 +41,7 @@ export async function GET(
       .bind(room.id)
       .first<{ total: number }>(),
     db
-      .prepare(`SELECT id, nickname, team_id AS teamId, score,
+      .prepare(`SELECT id, nickname, profile_style AS profileStyle, team_id AS teamId, score,
         answer_locked AS answerLocked, wallet_hash AS walletHash
       FROM participants
       WHERE event_id = ?
@@ -50,6 +50,7 @@ export async function GET(
       .all<{
         id: string;
         nickname: string;
+        profileStyle: 'hype' | 'cool' | 'clever' | 'bold';
         teamId: 'signal' | 'spark';
         score: number;
         answerLocked: number;
@@ -86,6 +87,8 @@ export async function GET(
         correctChoice: number | null;
         scored?: boolean;
         collectiveTargetPercent?: number;
+        durationSeconds?: number;
+        scoringMode?: 'accuracy' | 'speed';
       })
     : null;
   const reward = getRoomConfig(room.launchedConfigJson);
@@ -145,6 +148,7 @@ export async function GET(
     roundCount,
     roundType: round?.type ?? 'multiple_choice',
     scored: config?.scored ?? round?.type !== 'pulse',
+    scoringMode: config?.scoringMode ?? 'accuracy',
     hasNextRound: roundIndex + 1 < roundCount,
     prompt: room.status === 'lobby' ? null : (round?.prompt ?? null),
     choices: room.status === 'lobby' ? [] : (config?.choices ?? []),

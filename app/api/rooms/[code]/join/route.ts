@@ -8,6 +8,7 @@ import {
   makeToken,
   readJson,
 } from '@/lib/live-room';
+import { isMimoProfileStyle } from '@/lib/mimo-profile';
 
 export async function POST(
   request: Request,
@@ -46,6 +47,9 @@ export async function POST(
   const nickname = cleanNickname(body?.nickname);
   if (nickname.length < 2)
     return json({ error: 'Use at least two characters.' }, 400);
+  const profileStyle = isMimoProfileStyle(body?.profileStyle)
+    ? body.profileStyle
+    : 'hype';
 
   const existing = await db
     .prepare(`SELECT id FROM participants
@@ -71,15 +75,24 @@ export async function POST(
   try {
     await db
       .prepare(`INSERT INTO participants
-      (id, event_id, nickname, team_id, session_token_hash, score,
+      (id, event_id, nickname, profile_style, team_id, session_token_hash, score,
         answer_locked, session_version, joined_at, last_seen_at)
-      VALUES (?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`)
-      .bind(participantId, room.id, nickname, teamId, tokenHash, now, now)
+      VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`)
+      .bind(
+        participantId,
+        room.id,
+        nickname,
+        profileStyle,
+        teamId,
+        tokenHash,
+        now,
+        now,
+      )
       .run();
   } catch (error) {
     console.error('room_join_failed', error);
     return json({ error: 'You could not join. Try once more.' }, 500);
   }
 
-  return json({ participantId, participantToken, teamId }, 201);
+  return json({ participantId, participantToken, teamId, profileStyle }, 201);
 }

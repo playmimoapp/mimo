@@ -34,6 +34,8 @@ const room = await request('/api/rooms', {
           'A shared finale',
         ],
         correctChoice: null,
+        durationSeconds: 10,
+        scoringMode: 'accuracy',
       },
       {
         type: 'multiple_choice',
@@ -45,23 +47,28 @@ const room = await request('/api/rooms', {
           'The reactions',
         ],
         correctChoice: 0,
+        durationSeconds: 30,
+        scoringMode: 'speed',
       },
       {
         type: 'finale',
         question: 'Who should explicitly approve a NIM reward payout?',
         choices: ['The AI', 'The wallet owner', 'The fastest phone', 'Nobody'],
         correctChoice: 1,
+        durationSeconds: 30,
+        scoringMode: 'accuracy',
       },
     ],
   }),
 });
 
 const players = await Promise.all(
-  ['Ada', 'Kofi', 'Maya', 'Tobi'].map((nickname) =>
+  ['Ada', 'Kofi', 'Maya', 'Tobi'].map((nickname, index) =>
     request(`/api/rooms/${room.code}/join`, {
       method: 'POST',
       body: JSON.stringify({
         nickname: `${nickname}-${room.code.slice(0, 2)}`,
+        profileStyle: ['hype', 'cool', 'clever', 'bold'][index],
       }),
     }),
   ),
@@ -71,6 +78,10 @@ const lobby = await request(`/api/rooms/${room.code}`);
 assert(
   lobby.players.length === 4,
   'All four players must appear in the lobby.',
+);
+assert(
+  new Set(lobby.players.map((player) => player.profileStyle)).size === 4,
+  'Each saved Mimo profile must return to the live room.',
 );
 
 await request(`/api/rooms/${room.code}/action`, {
@@ -156,6 +167,10 @@ assert(
   playResult.players.filter((player) => player.score > 0).length === 3,
   'Three correct answers must score.',
 );
+assert(
+  Math.max(...playResult.players.map((player) => player.score)) > 1000,
+  'Speed scoring must add a server-calculated time bonus.',
+);
 
 await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
@@ -192,7 +207,10 @@ assert(
   finale.players.every((player) => player.score > 0),
   'Every player must keep cumulative skill points after the finale.',
 );
-assert(finale.finalePassed === true, 'The room must beat the 60% final target.');
+assert(
+  finale.finalePassed === true,
+  'The room must beat the 60% final target.',
+);
 assert(
   finale.collectiveTargetPercent === 60,
   'The final challenge must publish its collective target.',

@@ -1,6 +1,7 @@
 export type LivePlayer = {
   id: string;
   nickname: string;
+  profileStyle: import('@/lib/mimo-profile').MimoProfileStyle;
   teamId: 'signal' | 'spark';
   score: number;
   answerLocked: boolean;
@@ -38,6 +39,7 @@ export type LiveRoomState = {
   roundCount: number;
   roundType: 'pulse' | 'multiple_choice' | 'finale';
   scored: boolean;
+  scoringMode: 'accuracy' | 'speed';
   hasNextRound: boolean;
   prompt: string | null;
   choices: string[];

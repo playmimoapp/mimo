@@ -10,11 +10,7 @@ export async function POST(
   const participantToken =
     typeof body?.participantToken === 'string' ? body.participantToken : '';
   const choice = Number(body?.choice);
-  if (
-    !participantToken ||
-    !Number.isInteger(choice) ||
-    choice < 0
-  ) {
+  if (!participantToken || !Number.isInteger(choice) || choice < 0) {
     return json({ error: 'Choose one answer.' }, 400);
   }
 
@@ -51,6 +47,7 @@ export async function POST(
     choices: string[];
     correctChoice: number | null;
     scored?: boolean;
+    scoringMode?: 'accuracy' | 'speed';
   };
   if (!Array.isArray(config.choices) || choice >= config.choices.length) {
     return json({ error: 'That choice is not available.' }, 400);
@@ -58,7 +55,9 @@ export async function POST(
   const scored = config.scored ?? config.correctChoice !== null;
   const correct = scored ? choice === config.correctChoice : null;
   const remaining = Math.max(0, Math.ceil((deadline - now) / 1000));
-  const score = correct ? 1000 + remaining * 10 : 0;
+  const score = correct
+    ? 1000 + (config.scoringMode === 'speed' ? remaining * 10 : 0)
+    : 0;
 
   try {
     await db.batch([

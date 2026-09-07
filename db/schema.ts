@@ -48,6 +48,13 @@ export const events = sqliteTable(
     roundDurationSeconds: integer('round_duration_seconds')
       .notNull()
       .default(20),
+    stateChangedAt: integer('state_changed_at').notNull().default(0),
+    autoHostEnabled: integer('auto_host_enabled', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    mimoCueKey: text('mimo_cue_key'),
+    mimoCue: text('mimo_cue'),
+    mimoCueUpdatedAt: integer('mimo_cue_updated_at'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [

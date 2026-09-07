@@ -44,6 +44,8 @@ export async function getRoom(codeValue: string) {
       e.host_key_hash AS hostKeyHash, e.active_round_id AS activeRoundId,
       e.round_started_at AS roundStartedAt,
       e.round_duration_seconds AS roundDurationSeconds,
+      e.state_changed_at AS stateChangedAt,
+      e.auto_host_enabled AS autoHostEnabled,
       e.launched_config_json AS launchedConfigJson,
       c.name AS communityName
     FROM events e
@@ -61,9 +63,115 @@ export async function getRoom(codeValue: string) {
       activeRoundId: string;
       roundStartedAt: number | null;
       roundDurationSeconds: number;
+      stateChangedAt: number;
+      autoHostEnabled: number;
       launchedConfigJson: string | null;
       communityName: string;
     }>();
+}
+
+type RoomRecord = NonNullable<Awaited<ReturnType<typeof getRoom>>>;
+
+function durationFromConfig(configJson: string) {
+  try {
+    const value = Number(
+      (JSON.parse(configJson) as { durationSeconds?: unknown }).durationSeconds,
+    );
+    return Math.max(10, Math.min(60, value || 20));
+  } catch {
+    return 20;
+  }
+}
+
+export async function reconcileRoom(room: RoomRecord) {
+  if (!room.autoHostEnabled || !['live', 'verifying'].includes(room.status)) {
+    return room;
+  }
+
+  const db = getD1();
+  const now = Date.now();
+
+  if (room.status === 'live' && room.roundStartedAt) {
+    const counts = await db
+      .prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN answer_locked = 1 THEN 1 ELSE 0 END) AS locked
+        FROM participants WHERE event_id = ?`)
+      .bind(room.id)
+      .first<{ total: number; locked: number | null }>();
+    const deadline = room.roundStartedAt + room.roundDurationSeconds * 1000;
+    const everyoneAnswered =
+      (counts?.total ?? 0) > 0 && (counts?.locked ?? 0) >= (counts?.total ?? 0);
+    if (now >= deadline || everyoneAnswered) {
+      const changed = await db
+        .prepare(`UPDATE events SET status = 'verifying', state_changed_at = ?
+          WHERE id = ? AND status = 'live' AND auto_host_enabled = 1`)
+        .bind(now, room.id)
+        .run();
+      if ((changed.meta.changes ?? 0) > 0) {
+        await db
+          .prepare(`INSERT INTO event_audit
+            (id, event_id, actor_hash, action, payload_json, created_at)
+            VALUES (?, ?, 'mimo:show-engine', 'auto_reveal', ?, ?)`)
+          .bind(
+            crypto.randomUUID(),
+            room.id,
+            JSON.stringify({
+              reason: everyoneAnswered ? 'all_answered' : 'timer',
+            }),
+            now,
+          )
+          .run();
+      }
+      return (await getRoom(room.roomCode)) ?? room;
+    }
+  }
+
+  if (
+    room.status === 'verifying' &&
+    room.stateChangedAt > 0 &&
+    now - room.stateChangedAt >= 5000
+  ) {
+    const nextRound = await db
+      .prepare(`SELECT next.id, next.config_json AS configJson
+        FROM rounds current
+        JOIN rounds next ON next.event_id = current.event_id
+          AND next.position = current.position + 1
+        WHERE current.id = ? LIMIT 1`)
+      .bind(room.activeRoundId)
+      .first<{ id: string; configJson: string }>();
+
+    if (nextRound) {
+      const changed = await db
+        .prepare(`UPDATE events SET status = 'live', active_round_id = ?,
+          round_started_at = ?, round_duration_seconds = ?, state_changed_at = ?
+          WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
+        .bind(
+          nextRound.id,
+          now,
+          durationFromConfig(nextRound.configJson),
+          now,
+          room.id,
+        )
+        .run();
+      if ((changed.meta.changes ?? 0) > 0) {
+        await db
+          .prepare(
+            `UPDATE participants SET answer_locked = 0 WHERE event_id = ?`,
+          )
+          .bind(room.id)
+          .run();
+      }
+    } else {
+      await db
+        .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
+          WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
+        .bind(now, room.id)
+        .run();
+    }
+    return (await getRoom(room.roomCode)) ?? room;
+  }
+
+  return room;
 }
 
 export type RoomAccessMode = 'public' | 'private';

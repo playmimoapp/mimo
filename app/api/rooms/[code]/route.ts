@@ -1,12 +1,18 @@
 import { getD1 } from '@/db';
-import { canViewRoom, getRoom, getRoomConfig, json } from '@/lib/live-room';
+import {
+  canViewRoom,
+  getRoom,
+  getRoomConfig,
+  json,
+  reconcileRoom,
+} from '@/lib/live-room';
 
 export async function GET(
   request: Request,
   context: { params: Promise<{ code: string }> },
 ) {
   const { code } = await context.params;
-  const room = await getRoom(code);
+  let room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
   if (!(await canViewRoom(request, room))) {
     return json(
@@ -14,6 +20,7 @@ export async function GET(
       403,
     );
   }
+  room = await reconcileRoom(room);
 
   const db = getD1();
   const [
@@ -141,6 +148,7 @@ export async function GET(
     rewardState: rewardRow?.state ?? 'none',
     payoutTxHash: rewardRow?.payoutTxHash ?? null,
     accessMode: reward.accessMode,
+    autoHostEnabled: Boolean(room.autoHostEnabled),
     serverNow,
     deadline,
     activeRoundId: room.activeRoundId,

@@ -145,8 +145,9 @@ export async function POST(request: Request) {
       db
         .prepare(`INSERT INTO events
         (id, community_id, title, status, launched_config_json, config_version,
-          room_code, host_key_hash, active_round_id, round_duration_seconds, created_at)
-        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?)`)
+          room_code, host_key_hash, active_round_id, round_duration_seconds,
+          state_changed_at, auto_host_enabled, created_at)
+        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, 1, ?)`)
         .bind(
           eventId,
           communityId,
@@ -156,6 +157,7 @@ export async function POST(request: Request) {
           hostKeyHash,
           roundIds[0],
           parsedRounds[0].durationSeconds,
+          now,
           now,
         ),
       ...parsedRounds.map((round, index) =>

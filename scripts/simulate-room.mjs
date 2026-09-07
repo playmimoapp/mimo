@@ -16,6 +16,9 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const wait = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 const room = await request('/api/rooms', {
   method: 'POST',
   body: JSON.stringify({
@@ -83,10 +86,25 @@ assert(
   new Set(lobby.players.map((player) => player.profileStyle)).size === 4,
   'Each saved Mimo profile must return to the live room.',
 );
+const lobbyCue = await request(`/api/rooms/${room.code}/cue`, {
+  method: 'POST',
+});
+assert(
+  typeof lobbyCue.line === 'string' && lobbyCue.line.length > 2,
+  'Mimo must always have a room-aware host line.',
+);
+assert(
+  ['ai', 'fallback'].includes(lobbyCue.source),
+  'Mimo must explain whether its live line came from AI or the safe fallback.',
+);
 
 await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'start', hostKey: room.hostKey }),
+});
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'pause_auto', hostKey: room.hostKey }),
 });
 
 await request(`/api/rooms/${room.code}/reaction`, {
@@ -113,11 +131,15 @@ await Promise.all(
   ),
 );
 
+const pausedRoom = await request(`/api/rooms/${room.code}`);
+assert(
+  pausedRoom.status === 'live' && pausedRoom.autoHostEnabled === false,
+  'Pausing Mimo must keep a fully answered room open for the host.',
+);
 await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
-  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
+  body: JSON.stringify({ action: 'resume_auto', hostKey: room.hostKey }),
 });
-
 const pulse = await request(`/api/rooms/${room.code}`);
 assert(pulse.status === 'verifying', 'The pulse must reach its reveal.');
 assert(pulse.roundType === 'pulse', 'The first round must be a pulse.');
@@ -135,10 +157,12 @@ assert(
   'A safe live reaction must reach the room.',
 );
 
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'next', hostKey: room.hostKey }),
-});
+await wait(5200);
+const secondRound = await request(`/api/rooms/${room.code}`);
+assert(
+  secondRound.status === 'live' && secondRound.roundIndex === 1,
+  'Mimo must start the next moment without the host device.',
+);
 
 await Promise.all(
   players.map((player, index) =>
@@ -151,11 +175,6 @@ await Promise.all(
     }),
   ),
 );
-
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
-});
 
 const playResult = await request(`/api/rooms/${room.code}`);
 assert(playResult.roundIndex === 1, 'The show must move to round two.');
@@ -172,10 +191,12 @@ assert(
   'Speed scoring must add a server-calculated time bonus.',
 );
 
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'next', hostKey: room.hostKey }),
-});
+await wait(5200);
+const finalRound = await request(`/api/rooms/${room.code}`);
+assert(
+  finalRound.status === 'live' && finalRound.roundType === 'finale',
+  'Mimo must open the finale automatically.',
+);
 
 await Promise.all(
   players.map((player) =>
@@ -188,11 +209,6 @@ await Promise.all(
     }),
   ),
 );
-
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
-});
 
 const finale = await request(`/api/rooms/${room.code}`);
 assert(
@@ -216,10 +232,12 @@ assert(
   'The final challenge must publish its collective target.',
 );
 
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'finish', hostKey: room.hostKey }),
-});
+await wait(5200);
+const completed = await request(`/api/rooms/${room.code}`);
+assert(
+  completed.status === 'complete',
+  'Mimo must close the event without the host device.',
+);
 
 const privateRoom = await request('/api/rooms', {
   method: 'POST',

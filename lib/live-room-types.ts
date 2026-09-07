@@ -32,6 +32,7 @@ export type LiveRoomState = {
     | 'cancelled';
   payoutTxHash: string | null;
   accessMode: 'public' | 'private';
+  autoHostEnabled: boolean;
   serverNow: number;
   deadline: number | null;
   activeRoundId: string;
@@ -49,4 +50,10 @@ export type LiveRoomState = {
   finalePassed: boolean | null;
   players: LivePlayer[];
   reactions: LiveReaction[];
+};
+
+export type MimoHostCue = {
+  line: string;
+  mood: 'happy' | 'thinking' | 'calm';
+  source: 'ai' | 'fallback';
 };

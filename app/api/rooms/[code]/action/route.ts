@@ -11,18 +11,28 @@ const nextStatus = {
   cancel: 'cancelled',
 } as const;
 
+type HostAction = keyof typeof nextStatus | 'pause_auto' | 'resume_auto';
+const hostActions: HostAction[] = [
+  ...(Object.keys(nextStatus) as Array<keyof typeof nextStatus>),
+  'pause_auto',
+  'resume_auto',
+];
+
+function isHostAction(value: string): value is HostAction {
+  return hostActions.includes(value as HostAction);
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ code: string }> },
 ) {
   const { code } = await context.params;
   const body = await readJson(request);
-  const action = (
-    typeof body?.action === 'string' ? body.action : ''
-  ) as keyof typeof nextStatus;
+  const actionValue = typeof body?.action === 'string' ? body.action : '';
   const hostKey = typeof body?.hostKey === 'string' ? body.hostKey : '';
-  if (!nextStatus[action] || !hostKey)
+  if (!isHostAction(actionValue) || !hostKey)
     return json({ error: 'That host action is not valid.' }, 400);
+  const action = actionValue;
 
   const room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
@@ -65,12 +75,27 @@ export async function POST(
     (action === 'extend' &&
       room.status === 'live' &&
       room.roundDurationSeconds < 90) ||
-    (action === 'cancel' && !['complete', 'cancelled'].includes(room.status));
+    (action === 'cancel' && !['complete', 'cancelled'].includes(room.status)) ||
+    (action === 'pause_auto' &&
+      Boolean(room.autoHostEnabled) &&
+      !['complete', 'cancelled'].includes(room.status)) ||
+    (action === 'resume_auto' &&
+      !room.autoHostEnabled &&
+      !['complete', 'cancelled'].includes(room.status));
   if (!allowed)
     return json({ error: 'That action is not available right now.' }, 409);
 
-  const status = nextStatus[action];
-  if (action === 'extend') {
+  const now = Date.now();
+  const status =
+    action === 'pause_auto' || action === 'resume_auto'
+      ? room.status
+      : nextStatus[action];
+  if (action === 'pause_auto' || action === 'resume_auto') {
+    await db
+      .prepare(`UPDATE events SET auto_host_enabled = ? WHERE id = ?`)
+      .bind(action === 'resume_auto' ? 1 : 0, room.id)
+      .run();
+  } else if (action === 'extend') {
     await db
       .prepare(
         `UPDATE events SET round_duration_seconds = MIN(round_duration_seconds + 10, 90) WHERE id = ?`,
@@ -79,17 +104,19 @@ export async function POST(
       .run();
   } else if (action === 'cancel') {
     await db
-      .prepare(`UPDATE events SET status = 'cancelled' WHERE id = ?`)
-      .bind(room.id)
+      .prepare(
+        `UPDATE events SET status = 'cancelled', state_changed_at = ? WHERE id = ?`,
+      )
+      .bind(now, room.id)
       .run();
   } else if (action === 'start') {
     await db.batch([
       db
         .prepare(
           `UPDATE events SET status = 'live', round_started_at = ?,
-            round_duration_seconds = ? WHERE id = ?`,
+            round_duration_seconds = ?, state_changed_at = ? WHERE id = ?`,
         )
-        .bind(Date.now(), roundDuration(currentRound.configJson), room.id),
+        .bind(now, roundDuration(currentRound.configJson), now, room.id),
       db
         .prepare(
           `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
@@ -102,12 +129,13 @@ export async function POST(
       db
         .prepare(
           `UPDATE events SET status = 'live', active_round_id = ?, round_started_at = ?,
-            round_duration_seconds = ? WHERE id = ?`,
+            round_duration_seconds = ?, state_changed_at = ? WHERE id = ?`,
         )
         .bind(
           nextRound.id,
-          Date.now(),
+          now,
           roundDuration(nextRound.configJson),
+          now,
           room.id,
         ),
       db
@@ -120,9 +148,15 @@ export async function POST(
       db
         .prepare(
           `UPDATE events SET status = 'lobby', active_round_id = ?,
-            round_started_at = NULL, round_duration_seconds = ? WHERE id = ?`,
+            round_started_at = NULL, round_duration_seconds = ?,
+            state_changed_at = ? WHERE id = ?`,
         )
-        .bind(firstRound.id, roundDuration(firstRound.configJson), room.id),
+        .bind(
+          firstRound.id,
+          roundDuration(firstRound.configJson),
+          now,
+          room.id,
+        ),
       db
         .prepare(
           `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
@@ -132,10 +166,21 @@ export async function POST(
     ]);
   } else {
     await db
-      .prepare(`UPDATE events SET status = ? WHERE id = ?`)
-      .bind(status, room.id)
+      .prepare(
+        `UPDATE events SET status = ?, state_changed_at = ? WHERE id = ?`,
+      )
+      .bind(status, now, room.id)
       .run();
   }
 
-  return json({ status, extendedBy: action === 'extend' ? 10 : undefined });
+  return json({
+    status,
+    autoHostEnabled:
+      action === 'pause_auto'
+        ? false
+        : action === 'resume_auto'
+          ? true
+          : Boolean(room.autoHostEnabled),
+    extendedBy: action === 'extend' ? 10 : undefined,
+  });
 }

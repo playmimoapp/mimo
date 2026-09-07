@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import QRCode from 'qrcode';
@@ -36,7 +36,7 @@ import {
   MimoCue,
   MimoProfileAvatar,
 } from '@/components/mimo-host';
-import type { LiveRoomState } from '@/lib/live-room-types';
+import type { LiveRoomState, MimoHostCue } from '@/lib/live-room-types';
 import { MimoNimiq } from '@/lib/nimiq';
 
 type LiveRoomProps = {
@@ -68,7 +68,9 @@ type HostAction =
   | 'finish'
   | 'reset'
   | 'extend'
-  | 'cancel';
+  | 'cancel'
+  | 'pause_auto'
+  | 'resume_auto';
 
 const CHOICE_TONES = [
   {
@@ -129,8 +131,7 @@ export function LiveRoom({
   });
   const reduceMotion = useReducedMotion();
   const [reactionBusy, setReactionBusy] = useState(false);
-  const [autoHost, setAutoHost] = useState(mode === 'host');
-  const autoHandled = useRef('');
+  const [aiCue, setAiCue] = useState<MimoHostCue | null>(null);
 
   const inviteUrl = useCallback(
     () =>
@@ -222,6 +223,7 @@ export function LiveRoom({
     : null;
   const answeredCount =
     room?.players.filter((player) => player.answerLocked).length ?? 0;
+  const autoHost = room?.autoHostEnabled ?? true;
   const me = useMemo(
     () =>
       room?.players.find(
@@ -263,44 +265,61 @@ export function LiveRoom({
     room.players.length > 0 &&
     answeredCount === room.players.length,
   );
-  const autoAction: HostAction | null =
-    room?.status === 'live' && (allAnswered || seconds === 0)
-      ? 'reveal'
-      : room?.status === 'verifying'
-        ? room.hasNextRound
-          ? 'next'
-          : 'finish'
-        : null;
-  const autoKey = autoAction
-    ? `${room?.activeRoundId}:${room?.status}:${autoAction}`
+
+  const cueProgress = room
+    ? room.status === 'lobby'
+      ? room.players.length <= 3
+        ? room.players.length
+        : room.players.length <= 7
+          ? 5
+          : room.players.length <= 15
+            ? 10
+            : 20
+      : room.status === 'live' && room.players.length > 0
+        ? answeredCount >= room.players.length
+          ? 4
+          : Math.min(3, Math.floor((answeredCount / room.players.length) * 4))
+        : 0
+    : 0;
+  const cueMoment = room
+    ? `${room.status}:${room.activeRoundId}:${cueProgress}:${seconds !== null && seconds <= 5 ? 'closing' : 'open'}`
     : '';
 
   useEffect(() => {
-    if (
-      mode !== 'host' ||
-      !autoHost ||
-      !autoAction ||
-      busy ||
-      autoHandled.current === autoKey
-    ) {
-      return;
-    }
-    const delay = autoAction === 'reveal' ? (allAnswered ? 900 : 250) : 5000;
-    const timer = window.setTimeout(() => {
-      autoHandled.current = autoKey;
-      void hostAction(autoAction);
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [allAnswered, autoAction, autoHost, autoKey, busy, hostAction, mode]);
+    if (!cueMoment) return;
+    const controller = new AbortController();
+    let retry: number | undefined;
 
-  const [mimoLineIndex, setMimoLineIndex] = useState(0);
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => setMimoLineIndex((value) => value + 1),
-      4200,
-    );
-    return () => window.clearInterval(timer);
-  }, [room?.activeRoundId, room?.status]);
+    const loadCue = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (hostKey) headers['x-mimo-host'] = hostKey;
+        else if (participantToken) headers['x-mimo-session'] = participantToken;
+        else if (inviteToken) headers['x-mimo-invite'] = inviteToken;
+        const response = await fetch(`/api/rooms/${code}/cue`, {
+          method: 'POST',
+          headers,
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const cue = (await response.json()) as MimoHostCue & {
+          pending?: boolean;
+        };
+        if (!cue.pending) setAiCue(cue);
+        else retry = window.setTimeout(() => void loadCue(), 1400);
+      } catch (cause) {
+        if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
+          // Live commentary is optional; the factual fallback remains visible.
+        }
+      }
+    };
+
+    void loadCue();
+    return () => {
+      controller.abort();
+      if (retry) window.clearTimeout(retry);
+    };
+  }, [code, cueMoment, hostKey, inviteToken, participantToken]);
 
   const react = async (emoji: '👏' | '🔥' | '🤯' | '💙') => {
     if (!participantToken || reactionBusy) return;
@@ -528,37 +547,30 @@ export function LiveRoom({
     ['verifying', 'complete'].includes(room.status) && scoredRoom
       ? sparkScore
       : liveEnergy(sparkPlayers, sparkReactions);
-  const mimoLines =
+  const fallbackMimoLine =
     room.status === 'lobby'
-      ? [
-          `${room.players.length || 'No'} players here. I’m balancing the teams.`,
-          'Signal brings the focus. Spark brings the fire.',
-          'Rivals first. One room in the finale.',
-        ]
+      ? room.players.length === 0
+        ? 'The room is ready. Bring your people in.'
+        : `${room.players.length} ${room.players.length === 1 ? 'player is' : 'players are'} here. I’m balancing the teams.`
       : room.status === 'live'
-        ? [
-            `${answered} answers locked. I’m watching the clock.`,
-            allAnswered
-              ? 'Everyone is in. Reveal coming up.'
-              : `${room.players.length - answered} still choosing. No spoilers.`,
-            seconds !== null && seconds <= 5
-              ? 'Final seconds. Trust your answer.'
-              : 'Every lock and reaction moves the room energy.',
-          ]
+        ? allAnswered
+          ? 'Everyone is locked in. Let’s reveal it.'
+          : `${answered} of ${room.players.length} locked in. I’m watching the clock.`
         : room.status === 'verifying'
-          ? [
-              room.hasNextRound
-                ? 'Result checked. Next moment in five.'
-                : 'Final result checked. Bringing it home.',
-              'Look at that team swing.',
-              'Scores came from the server—not the browser.',
-            ]
-          : [
-              'The room has spoken.',
-              'Your result is saved.',
-              'Ready for a rematch?',
-            ];
-  const mimoLine = mimoLines[mimoLineIndex % mimoLines.length];
+          ? room.hasNextRound
+            ? 'Result checked. The next moment is nearly here.'
+            : 'Final result checked. Let’s bring this home.'
+          : room.status === 'cancelled'
+            ? 'The room stopped safely. Nothing was lost.'
+            : 'That room had energy. Who wants the rematch?';
+  const mimoLine = aiCue?.line ?? fallbackMimoLine;
+  const mimoMood =
+    aiCue?.mood ??
+    (room.status === 'live'
+      ? 'thinking'
+      : room.status === 'cancelled'
+        ? 'calm'
+        : 'happy');
 
   return (
     <section className="mobile-page relative mx-auto max-w-[1180px] px-5 pb-24 pt-1 sm:px-8 sm:pt-3">
@@ -581,7 +593,9 @@ export function LiveRoom({
           {mode === 'host' &&
             !['lobby', 'complete', 'cancelled'].includes(room.status) && (
               <button
-                onClick={() => setAutoHost((value) => !value)}
+                onClick={() =>
+                  void hostAction(autoHost ? 'pause_auto' : 'resume_auto')
+                }
                 aria-pressed={autoHost}
                 className={`flex h-10 items-center gap-2 rounded-full border px-3 text-sm font-extrabold ${
                   autoHost
@@ -745,13 +759,7 @@ export function LiveRoom({
           </p>
           <MimoCue
             className="mobile-only mt-5"
-            mood={
-              room.status === 'complete' || room.status === 'verifying'
-                ? 'happy'
-                : room.status === 'live'
-                  ? 'thinking'
-                  : 'calm'
-            }
+            mood={mimoMood}
             message={mimoLine}
           />
 
@@ -843,7 +851,7 @@ export function LiveRoom({
             animate={{ y: [0, -6, 0], rotate: [-1, 1, -1] }}
             transition={{ duration: 1.8, repeat: Infinity }}
           >
-            <MimoCharacter className="mx-auto mt-1 w-48" />
+            <MimoCharacter mood={mimoMood} className="mx-auto mt-1 w-48" />
           </motion.div>
           <p className="font-display text-center text-xl font-extrabold">
             {room.status === 'lobby'
@@ -854,7 +862,23 @@ export function LiveRoom({
                   ? `Moment ${room.roundIndex + 1} revealed`
                   : 'Scores verified'}
           </p>
-          <p className="mt-2 text-center text-sm leading-5 text-[#c5d4e0]">
+          <motion.div
+            key={mimoLine}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="relative mt-3 rounded-2xl bg-white/10 px-4 py-3"
+          >
+            <span className="absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 bg-[#364c65]" />
+            <p className="relative text-center text-sm font-bold leading-5 text-white">
+              {mimoLine}
+            </p>
+            {aiCue?.source === 'ai' && (
+              <span className="relative mt-2 block text-center text-[10px] font-extrabold uppercase tracking-[.14em] text-[#8ed9ae]">
+                AI host · live room read
+              </span>
+            )}
+          </motion.div>
+          <p className="mt-3 text-center text-xs leading-4 text-[#aebfce]">
             {mode === 'host'
               ? autoHost
                 ? 'I reveal on time and move the show. You can step in anytime.'
@@ -1405,7 +1429,9 @@ function QuestionState({
                   Locked in
                 </strong>
                 <span className="text-sm font-bold">
-                  Your choice is safe. Mimo will reveal it automatically.
+                  {autoHost
+                    ? 'Your choice is safe. Mimo will reveal it automatically.'
+                    : 'Your choice is safe. The host will reveal it.'}
                 </span>
               </span>
             </motion.div>
@@ -1708,8 +1734,12 @@ function ResultsState({
           {room.status === 'complete'
             ? 'Event complete. Your result is saved.'
             : room.hasNextRound
-              ? 'Mimo is moving to the next moment automatically.'
-              : 'Mimo is checking the final result.'}
+              ? autoHost
+                ? 'Mimo is moving to the next moment automatically.'
+                : 'The host will start the next moment.'
+              : autoHost
+                ? 'Mimo is checking the final result.'
+                : 'The host will close the final result.'}
         </p>
       )}
     </div>

@@ -12,7 +12,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate",
-    "test:room": "node scripts/simulate-room.mjs"
+    "test:room": "node scripts/simulate-room.mjs",
+    "vault:create:test": "node scripts/create-test-vault.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

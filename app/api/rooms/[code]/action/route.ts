@@ -1,5 +1,11 @@
 import { getD1 } from '@/db';
-import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
+import {
+  getRoom,
+  getRoomConfig,
+  hashToken,
+  json,
+  readJson,
+} from '@/lib/live-room';
 
 const nextStatus = {
   start: 'live',
@@ -40,6 +46,23 @@ export async function POST(
     return json({ error: 'Host access was rejected.' }, 403);
 
   const db = getD1();
+  const roomConfig = getRoomConfig(room.launchedConfigJson);
+  if (
+    action === 'start' &&
+    roomConfig.mode === 'nim' &&
+    roomConfig.custody === 'mimo_vault'
+  ) {
+    const reward = await db
+      .prepare(`SELECT state FROM rewards WHERE event_id = ? LIMIT 1`)
+      .bind(room.id)
+      .first<{ state: string }>();
+    if (reward?.state !== 'funded') {
+      return json(
+        { error: 'Confirm the NIM reward funding before starting this room.' },
+        409,
+      );
+    }
+  }
   const roundRows = await db
     .prepare(
       `SELECT id, position, config_json AS configJson
@@ -71,7 +94,9 @@ export async function POST(
     (action === 'reveal' && room.status === 'live') ||
     (action === 'next' && room.status === 'verifying' && Boolean(nextRound)) ||
     (action === 'finish' && room.status === 'verifying' && !nextRound) ||
-    (action === 'reset' && room.status === 'complete') ||
+    (action === 'reset' &&
+      room.status === 'complete' &&
+      roomConfig.custody !== 'mimo_vault') ||
     (action === 'extend' &&
       room.status === 'live' &&
       room.roundDurationSeconds < 90) ||
@@ -123,6 +148,14 @@ export async function POST(
         )
         .bind(room.id),
       db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
+      ...(roomConfig.custody === 'mimo_vault'
+        ? [
+            db
+              .prepare(`UPDATE rewards SET state = 'event_live', updated_at = ?
+                WHERE event_id = ? AND state = 'funded'`)
+              .bind(now, room.id),
+          ]
+        : []),
     ]);
   } else if (action === 'next' && nextRound) {
     await db.batch([
@@ -163,6 +196,22 @@ export async function POST(
         )
         .bind(room.id),
       db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
+    ]);
+  } else if (action === 'finish') {
+    await db.batch([
+      db
+        .prepare(
+          `UPDATE events SET status = ?, state_changed_at = ? WHERE id = ?`,
+        )
+        .bind(status, now, room.id),
+      ...(roomConfig.custody === 'mimo_vault'
+        ? [
+            db
+              .prepare(`UPDATE rewards SET state = 'results_under_verification',
+                updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
+              .bind(now, room.id),
+          ]
+        : []),
     ]);
   } else {
     await db

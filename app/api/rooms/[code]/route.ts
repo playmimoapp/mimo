@@ -6,6 +6,7 @@ import {
   json,
   reconcileRoom,
 } from '@/lib/live-room';
+import { getVaultConfig } from '@/lib/reward-vault';
 
 export async function GET(
   request: Request,
@@ -23,6 +24,11 @@ export async function GET(
   room = await reconcileRoom(room);
 
   const db = getD1();
+  const reward = getRoomConfig(room.launchedConfigJson);
+  const vault =
+    reward.mode === 'nim' && reward.custody === 'mimo_vault'
+      ? await getVaultConfig()
+      : null;
   const [
     round,
     roundCountRow,
@@ -80,12 +86,17 @@ export async function GET(
       .all<{ id: string; payloadJson: string; createdAt: number }>(),
     db
       .prepare(
-        `SELECT r.state, p.tx_hash AS payoutTxHash
+        `SELECT r.state, r.funding_tx_hash AS fundingTxHash,
+          p.tx_hash AS payoutTxHash
            FROM rewards r LEFT JOIN payouts p ON p.reward_id = r.id
            WHERE r.event_id = ? LIMIT 1`,
       )
       .bind(room.id)
-      .first<{ state: string; payoutTxHash: string | null }>(),
+      .first<{
+        state: string;
+        fundingTxHash: string | null;
+        payoutTxHash: string | null;
+      }>(),
   ]);
 
   const config = round
@@ -98,7 +109,6 @@ export async function GET(
         scoringMode?: 'accuracy' | 'speed';
       })
     : null;
-  const reward = getRoomConfig(room.launchedConfigJson);
   const serverNow = Date.now();
   const deadline = room.roundStartedAt
     ? room.roundStartedAt + room.roundDurationSeconds * 1000
@@ -146,6 +156,10 @@ export async function GET(
     rewardMode: reward.mode,
     rewardAmount: reward.amount,
     rewardState: rewardRow?.state ?? 'none',
+    rewardCustody: reward.custody,
+    fundingTxHash: rewardRow?.fundingTxHash ?? null,
+    vaultAddress: vault?.address ?? null,
+    vaultNetwork: vault?.network ?? null,
     payoutTxHash: rewardRow?.payoutTxHash ?? null,
     accessMode: reward.accessMode,
     autoHostEnabled: Boolean(room.autoHostEnabled),

@@ -162,11 +162,20 @@ export async function reconcileRoom(room: RoomRecord) {
           .run();
       }
     } else {
-      await db
-        .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
-          WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
-        .bind(now, room.id)
-        .run();
+      await db.batch([
+        db
+          .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
+            WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
+          .bind(now, room.id),
+        ...(getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault'
+          ? [
+              db
+                .prepare(`UPDATE rewards SET state = 'results_under_verification',
+                  updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
+                .bind(now, room.id),
+            ]
+          : []),
+      ]);
     }
     return (await getRoom(room.roomCode)) ?? room;
   }
@@ -182,6 +191,7 @@ export function getRoomConfig(value: string | null) {
     amount: '0',
     accessMode: 'public' as RoomAccessMode,
     inviteTokenHash: '',
+    custody: 'host_wallet' as const,
   };
   if (!value) return fallback;
   try {
@@ -198,6 +208,10 @@ export function getRoomConfig(value: string | null) {
         typeof config.inviteTokenHash === 'string'
           ? config.inviteTokenHash
           : '',
+      custody:
+        config.custody === 'mimo_vault'
+          ? ('mimo_vault' as const)
+          : ('host_wallet' as const),
     };
   } catch {
     return fallback;

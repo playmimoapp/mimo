@@ -513,7 +513,13 @@ export function LiveRoom({
   );
   const rewardLabel =
     room.rewardMode === 'nim'
-      ? `${room.rewardAmount} NIM proposed · not funded`
+      ? ['funded', 'event_live', 'results_under_verification'].includes(
+          room.rewardState,
+        )
+        ? `${room.rewardAmount} NIM · funded`
+        : room.rewardState === 'funding_submitted'
+          ? `${room.rewardAmount} NIM · confirming`
+          : `${room.rewardAmount} NIM · funding required`
       : 'Free room · no wallet needed';
   const signalScore = room.players
     .filter((player) => player.teamId === 'signal')
@@ -796,6 +802,9 @@ export function LiveRoom({
                   isHost={mode === 'host'}
                   currentPlayer={me}
                   busy={busy}
+                  hostKey={hostKey}
+                  nimiq={nimiq}
+                  onRefresh={refresh}
                   onStart={() => void hostAction('start')}
                 />
               )}
@@ -1107,17 +1116,242 @@ function WalletProofCard({
   );
 }
 
+function RewardFundingPanel({
+  room,
+  isHost,
+  hostKey,
+  nimiq,
+  onRefresh,
+}: {
+  room: LiveRoomState;
+  isHost: boolean;
+  hostKey?: string;
+  nimiq: MimoNimiq;
+  onRefresh: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState('');
+  const funded = [
+    'funded',
+    'event_live',
+    'results_under_verification',
+  ].includes(room.rewardState);
+
+  const fundReward = async () => {
+    if (!hostKey || busy) return;
+    setBusy(true);
+    setDetail('Preparing the exact vault payment…');
+    try {
+      const preparedResponse = await fetch(
+        `/api/rooms/${room.code}/reward/funding/prepare`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostKey }),
+        },
+      );
+      if (!preparedResponse.ok) {
+        throw new Error(await getError(preparedResponse));
+      }
+      const prepared = (await preparedResponse.json()) as {
+        amountLuna: string;
+        recipient: string;
+        memo: string;
+        network: 'MainAlbatross' | 'TestAlbatross';
+        testOnly: boolean;
+      };
+      if (prepared.testOnly) {
+        setDetail(
+          'The safe TestAlbatross vault is active. Mainnet wallet payments stay disabled during testing.',
+        );
+        return;
+      }
+
+      const connection = await nimiq.connect();
+      if (connection.status !== 'ready') {
+        setDetail(
+          connection.status === 'cancelled'
+            ? 'You cancelled. No NIM moved.'
+            : 'Open this host room inside Nimiq Pay to fund it.',
+        );
+        return;
+      }
+      setDetail(
+        `Nimiq Pay will ask you to approve exactly ${room.rewardAmount} NIM.`,
+      );
+      const payment = await nimiq.sendNim(
+        prepared.recipient,
+        Number(prepared.amountLuna),
+        prepared.memo,
+      );
+      if (payment.status !== 'funding_submitted') {
+        setDetail(
+          payment.status === 'cancelled'
+            ? 'You cancelled. No NIM moved.'
+            : payment.status === 'failed'
+              ? payment.reason
+              : 'The funding payment was not submitted.',
+        );
+        return;
+      }
+      const submittedResponse = await fetch(
+        `/api/rooms/${room.code}/reward/funding/submit`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hostKey,
+            serializedTransaction: payment.serializedTransaction,
+          }),
+        },
+      );
+      if (!submittedResponse.ok) {
+        throw new Error(await getError(submittedResponse));
+      }
+      setDetail('Payment submitted. Waiting for the Nimiq network.');
+      await onRefresh();
+    } catch (cause) {
+      setDetail(
+        cause instanceof Error
+          ? cause.message
+          : 'The reward could not be funded.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const checkFunding = async () => {
+    if (!hostKey || busy) return;
+    setBusy(true);
+    setDetail('Checking the Nimiq network…');
+    try {
+      const response = await fetch(
+        `/api/rooms/${room.code}/reward/funding/status`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostKey }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const status = (await response.json()) as {
+        state: string;
+        confirmations?: number;
+      };
+      setDetail(
+        status.state === 'funded'
+          ? `Funding confirmed${status.confirmations ? ` · ${status.confirmations} confirmation${status.confirmations === 1 ? '' : 's'}` : ''}.`
+          : 'Still waiting for the transaction to enter a block.',
+      );
+      await onRefresh();
+    } catch (cause) {
+      setDetail(
+        cause instanceof Error
+          ? cause.message
+          : 'The network check did not finish.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (room.rewardCustody === 'host_wallet') {
+    return (
+      <section className="mt-5 border-l-4 border-[#e1b928] bg-[#fff8d9] px-4 py-3">
+        <p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#806000]">
+          Creator-held reward
+        </p>
+        <p className="mt-1 text-sm font-bold text-[#675e3e]">
+          {room.rewardAmount} NIM stays with the host until the verified result.
+          It is promised, not locked.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-[24px] border border-[#e2c55c] bg-[#fff9dc] p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${funded ? 'bg-[#d9f2e2] text-[#237044]' : 'bg-[#f7c933] text-[#6b5100]'}`}
+          >
+            {funded ? <ShieldCheck size={19} /> : <WalletCards size={19} />}
+          </span>
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#806000]">
+              {funded ? 'Funded reward' : 'Reward funding required'}
+            </p>
+            <h3 className="font-display mt-1 text-xl font-extrabold">
+              {room.rewardAmount} NIM {funded ? 'is ready' : 'for this room'}
+            </h3>
+            <p className="mt-1 text-sm leading-5 text-[#675e3e]">
+              {funded
+                ? 'The Nimiq network confirmed the vault payment. The reward rules are now fixed.'
+                : `One payment funds the event before play. Mimo will not start on a promise.`}
+            </p>
+          </div>
+        </div>
+        {room.vaultNetwork && (
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.1em] text-[#6f6040]">
+            {room.vaultNetwork === 'TestAlbatross' ? 'Testnet' : 'Mainnet'}
+          </span>
+        )}
+      </div>
+
+      {room.fundingTxHash && (
+        <p className="mt-3 font-mono text-xs font-bold text-[#746334]">
+          Proof {room.fundingTxHash.slice(0, 12)}…
+        </p>
+      )}
+      {isHost && !funded && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {room.rewardState === 'funding_submitted' ? (
+            <Button
+              onClick={() => void checkFunding()}
+              disabled={busy}
+              className="h-11 rounded-full bg-[#203752] px-5 font-extrabold"
+            >
+              {busy ? 'Checking…' : 'Check confirmation'}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void fundReward()}
+              disabled={busy || !room.vaultAddress}
+              className="h-11 rounded-full bg-[#203752] px-5 font-extrabold"
+            >
+              {busy ? 'Preparing…' : `Fund ${room.rewardAmount} NIM`}
+            </Button>
+          )}
+        </div>
+      )}
+      {detail && (
+        <output className="mt-3 block text-sm font-bold text-[#675e3e]">
+          {detail}
+        </output>
+      )}
+    </section>
+  );
+}
+
 function LobbyState({
   room,
   isHost,
   currentPlayer,
   busy,
+  hostKey,
+  nimiq,
+  onRefresh,
   onStart,
 }: {
   room: LiveRoomState;
   isHost: boolean;
   currentPlayer?: LiveRoomState['players'][number];
   busy: boolean;
+  hostKey?: string;
+  nimiq: MimoNimiq;
+  onRefresh: () => Promise<void>;
   onStart: () => void;
 }) {
   const verifiedWallets = room.players.filter(
@@ -1203,6 +1437,15 @@ function LobbyState({
         <Zap size={16} className="text-[#b17900]" /> Compete as teams first. In
         the finale, everyone joins forces against Mimo.
       </p>
+      {room.rewardMode === 'nim' && (
+        <RewardFundingPanel
+          room={room}
+          isHost={isHost}
+          hostKey={hostKey}
+          nimiq={nimiq}
+          onRefresh={onRefresh}
+        />
+      )}
       {!isHost && currentPlayer && (
         <div
           className={`mt-4 flex items-center gap-3 border px-4 py-3 ${
@@ -1266,10 +1509,17 @@ function LobbyState({
       {isHost ? (
         <Button
           onClick={onStart}
-          disabled={busy || room.players.length === 0}
+          disabled={
+            busy ||
+            room.players.length === 0 ||
+            (room.rewardCustody === 'mimo_vault' &&
+              room.rewardState !== 'funded')
+          }
           className="mobile-primary h-13 rounded-full bg-[#1f72d2] px-7 font-extrabold"
         >
-          Start the show
+          {room.rewardCustody === 'mimo_vault' && room.rewardState !== 'funded'
+            ? 'Fund reward to start'
+            : 'Start the show'}
         </Button>
       ) : (
         <p className="flex items-center gap-2 border-t border-[#d1d5d5] pt-5 font-bold text-[#526a7e]">
@@ -1779,6 +2029,35 @@ function RewardSettlement({
   );
   const isWinner =
     role === 'player' && currentPlayerId === winner.id && winner.walletVerified;
+
+  if (room.rewardCustody === 'mimo_vault') {
+    return (
+      <section className="mt-7 overflow-hidden rounded-[26px] border border-[#e1c25d] bg-[#fff8d9] p-5 sm:p-6">
+        <div className="flex items-start gap-4">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#d9f2e2] text-[#237044]">
+            <ShieldCheck size={20} />
+          </span>
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-[.13em] text-[#896600]">
+              Funded NIM reward · held by Mimo
+            </p>
+            <h3 className="font-display mt-1 text-2xl font-extrabold">
+              {room.rewardAmount} NIM for {winner.nickname}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-[#675e3e]">
+              The event funding is confirmed. Mimo is checking the locked result
+              rules before creating the payout transaction.
+            </p>
+          </div>
+        </div>
+        {room.fundingTxHash && (
+          <p className="mt-4 border-t border-[#dfcb83] pt-4 font-mono text-xs font-bold text-[#675e3e]">
+            Funding proof {room.fundingTxHash.slice(0, 14)}…
+          </p>
+        )}
+      </section>
+    );
+  }
 
   const copyWinnerAddress = async () => {
     setState('connecting');

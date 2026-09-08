@@ -1,7 +1,13 @@
 import initNimiqCore, { Transaction } from '@nimiq/core/web';
 import { getD1 } from '@/db';
 import nimiqCoreModule from '@/lib/nimiq-core.wasm';
-import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
+import {
+  getRoom,
+  getRoomConfig,
+  hashToken,
+  json,
+  readJson,
+} from '@/lib/live-room';
 
 let nimiqCoreReady: Promise<unknown> | null = null;
 function ensureNimiqCore() {
@@ -25,6 +31,14 @@ export async function POST(
   const hostKey = typeof body?.hostKey === 'string' ? body.hostKey : '';
   if (!hostKey || (await hashToken(hostKey)) !== room.hostKeyHash)
     return json({ error: 'Host access was rejected.' }, 403);
+  if (getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault') {
+    return json(
+      {
+        error: 'This funded reward is settled automatically by the Mimo vault.',
+      },
+      409,
+    );
+  }
   const participantId =
     typeof body?.participantId === 'string' ? body.participantId : '';
   const serialized =

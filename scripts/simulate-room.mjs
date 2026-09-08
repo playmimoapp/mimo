@@ -1,4 +1,4 @@
-import { KeyPair } from '@nimiq/core';
+import { Address, KeyPair, TransactionBuilder } from '@nimiq/core';
 
 const base = (process.argv[2] || 'http://127.0.0.1:8787').replace(/\/$/, '');
 
@@ -96,6 +96,81 @@ assert(
 assert(
   ['ai', 'fallback'].includes(lobbyCue.source),
   'Mimo must explain whether its live line came from AI or the safe fallback.',
+);
+
+const vaultRoom = await request('/api/rooms', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: 'Mimo vault proof simulation',
+    community: 'Mimo QA',
+    rewardMode: 'nim',
+    rewardAmount: '25',
+    rounds: [
+      {
+        type: 'multiple_choice',
+        question: 'Which system must confirm a funded NIM reward?',
+        choices: ['The blockchain', 'The browser'],
+        correctChoice: 0,
+        durationSeconds: 20,
+        scoringMode: 'accuracy',
+      },
+    ],
+  }),
+});
+const vaultFunding = await request(
+  `/api/rooms/${vaultRoom.code}/reward/funding/prepare`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ hostKey: vaultRoom.hostKey }),
+  },
+);
+assert(
+  vaultFunding.testOnly === true && vaultFunding.network === 'TestAlbatross',
+  'The local vault must stay on valueless TestAlbatross.',
+);
+const fundingSender = KeyPair.generate();
+const fundingTransaction = TransactionBuilder.newBasicWithData(
+  fundingSender.toAddress(),
+  Address.fromUserFriendlyAddress(vaultFunding.recipient),
+  new TextEncoder().encode(vaultFunding.memo),
+  BigInt(vaultFunding.amountLuna),
+  0n,
+  1,
+  5,
+);
+fundingTransaction.sign(fundingSender, undefined);
+const fundingProof = await request(
+  `/api/rooms/${vaultRoom.code}/reward/funding/submit`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      hostKey: vaultRoom.hostKey,
+      serializedTransaction: fundingTransaction.toHex(),
+    }),
+  },
+);
+assert(
+  fundingProof.state === 'funding_submitted',
+  'A valid signed vault payment must wait for chain confirmation.',
+);
+const vaultLobby = await request(`/api/rooms/${vaultRoom.code}`);
+assert(
+  vaultLobby.rewardState === 'funding_submitted' &&
+    vaultLobby.rewardCustody === 'mimo_vault' &&
+    Boolean(vaultLobby.fundingTxHash),
+  'The room must expose an honest pending funding state and proof hash.',
+);
+const unfundedStart = await fetch(
+  `${base}/api/rooms/${vaultRoom.code}/action`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'start', hostKey: vaultRoom.hostKey }),
+  },
+);
+assert(
+  unfundedStart.status === 409,
+  'A vault-backed event must not start before on-chain confirmation.',
 );
 
 await request(`/api/rooms/${room.code}/action`, {
@@ -302,6 +377,7 @@ const walletRoom = await request('/api/rooms', {
     accessMode: 'public',
     rewardMode: 'nim',
     rewardAmount: '10',
+    custodyMode: 'host_wallet',
     rounds: [
       {
         type: 'multiple_choice',
@@ -396,5 +472,6 @@ console.log(
     walletProof: true,
     reactions: true,
     rewardPrepared: true,
+    vaultFundingProof: true,
   }),
 );

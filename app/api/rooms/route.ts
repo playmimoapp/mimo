@@ -6,6 +6,7 @@ import {
   makeToken,
   readJson,
 } from '@/lib/live-room';
+import { getVaultConfig } from '@/lib/reward-vault';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -18,6 +19,11 @@ export async function POST(request: Request) {
     .trim()
     .slice(0, 60);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
+  const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
+  const rewardCustody =
+    rewardMode === 'nim' && vault && body.custodyMode !== 'host_wallet'
+      ? 'mimo_vault'
+      : 'host_wallet';
   const accessMode = body.accessMode === 'private' ? 'private' : 'public';
   const rewardAmount =
     rewardMode === 'nim'
@@ -127,6 +133,7 @@ export async function POST(request: Request) {
     accessMode,
     inviteTokenHash,
     collectiveTargetPercent: 60,
+    custody: rewardCustody,
   });
 
   try {
@@ -186,16 +193,19 @@ export async function POST(request: Request) {
             db
               .prepare(`INSERT INTO rewards
               (id, event_id, state, amount_luna, funding_tx_hash, rules_json, updated_at)
-              VALUES (?, ?, 'proposed', ?, NULL, ?, ?)`)
+              VALUES (?, ?, ?, ?, NULL, ?, ?)`)
               .bind(
                 rewardId,
                 eventId,
+                rewardCustody === 'mimo_vault'
+                  ? 'funding_required'
+                  : 'proposed',
                 (BigInt(rewardAmount) * BigInt(100000)).toString(),
                 JSON.stringify({
                   type: 'skill',
                   winners: 1,
                   distribution: 'winner_takes_all',
-                  custody: 'host_wallet',
+                  custody: rewardCustody,
                 }),
                 now,
               ),

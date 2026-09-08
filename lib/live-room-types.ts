@@ -26,10 +26,23 @@ export type LiveRoomState = {
   rewardState:
     | 'none'
     | 'proposed'
+    | 'funding_required'
+    | 'awaiting_wallet_confirmation'
+    | 'funding_submitted'
+    | 'funding_confirmed'
+    | 'funded'
+    | 'event_live'
+    | 'results_under_verification'
+    | 'creator_approval_required'
     | 'payout_submitted'
     | 'payout_confirmed'
+    | 'partially_paid'
     | 'payment_failed'
     | 'cancelled';
+  rewardCustody: 'host_wallet' | 'mimo_vault';
+  fundingTxHash: string | null;
+  vaultAddress: string | null;
+  vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
   payoutTxHash: string | null;
   accessMode: 'public' | 'private';
   autoHostEnabled: boolean;

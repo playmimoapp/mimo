@@ -1,5 +1,11 @@
 import { getD1 } from '@/db';
-import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
+import {
+  getRoom,
+  getRoomConfig,
+  hashToken,
+  json,
+  readJson,
+} from '@/lib/live-room';
 
 function normalizeAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -23,6 +29,14 @@ export async function POST(
       { error: 'Finish and verify the event before paying a reward.' },
       409,
     );
+  if (getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault') {
+    return json(
+      {
+        error: 'This funded reward is settled automatically by the Mimo vault.',
+      },
+      409,
+    );
+  }
 
   const payoutAddress = normalizeAddress(body?.payoutAddress);
   const participantId =

@@ -20,6 +20,15 @@ export async function POST(request: Request) {
     .slice(0, 60);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
+  if (rewardMode === 'nim' && body.custodyMode === 'mimo_vault' && !vault) {
+    return json(
+      {
+        error:
+          'Mimo-funded rewards are not available on this deployment yet. Choose a host-promised reward instead.',
+      },
+      503,
+    );
+  }
   const rewardCustody =
     rewardMode === 'nim' && vault && body.custodyMode !== 'host_wallet'
       ? 'mimo_vault'
@@ -75,6 +84,13 @@ export async function POST(request: Request) {
     );
     const scoringMode =
       type !== 'pulse' && record.scoringMode === 'speed' ? 'speed' : 'accuracy';
+    const collectiveTargetPercent =
+      type === 'finale'
+        ? Math.max(
+            50,
+            Math.min(80, Number(record.collectiveTargetPercent) || 60),
+          )
+        : 60;
     return {
       type,
       question,
@@ -82,6 +98,7 @@ export async function POST(request: Request) {
       correctChoice,
       durationSeconds,
       scoringMode,
+      collectiveTargetPercent,
     };
   });
 
@@ -184,7 +201,10 @@ export async function POST(request: Request) {
               scored: round.type !== 'pulse',
               durationSeconds: round.durationSeconds,
               scoringMode: round.scoringMode,
-              collectiveTargetPercent: round.type === 'finale' ? 60 : undefined,
+              collectiveTargetPercent:
+                round.type === 'finale'
+                  ? round.collectiveTargetPercent
+                  : undefined,
             }),
           ),
       ),

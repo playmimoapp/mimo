@@ -183,6 +183,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
         community,
         accessMode: 'public',
         rewardMode: 'free',
+        custodyMode: 'host_wallet',
         rewardAmount: '',
         rounds: draft.rounds.map((round) => ({
           id: crypto.randomUUID(),
@@ -193,6 +194,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
           durationSeconds:
             round.type === 'pulse' ? 15 : round.type === 'finale' ? 30 : 20,
           scoringMode: round.type === 'multiple_choice' ? 'speed' : 'accuracy',
+          collectiveTargetPercent: 60,
         })),
       },
     });

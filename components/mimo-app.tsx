@@ -41,6 +41,7 @@ type Screen =
   | 'live_host'
   | 'live_player';
 type RewardMode = 'free' | 'nim';
+type RewardCustody = 'host_wallet' | 'mimo_vault';
 type RoundType = 'pulse' | 'multiple_choice' | 'finale';
 
 const CHOICE_TONES = [
@@ -66,7 +67,7 @@ const HOME_LINES = [
   'You bring the people. I’ll run the room.',
   'I’ll balance the teams and keep the pace.',
   'Answers locked? I handle the reveal.',
-  'Rivals now. One team in the finale.',
+  'One last question. Can the room beat me?',
 ] as const;
 
 type RoundDraft = {
@@ -77,6 +78,7 @@ type RoundDraft = {
   correctChoice: number | null;
   durationSeconds: number;
   scoringMode: 'accuracy' | 'speed';
+  collectiveTargetPercent: number;
 };
 
 type AssistantBrief = {
@@ -92,6 +94,7 @@ type EventDraft = {
   community: string;
   accessMode: 'public' | 'private';
   rewardMode: RewardMode;
+  custodyMode: RewardCustody;
   rewardAmount: string;
   rounds: RoundDraft[];
 };
@@ -105,6 +108,7 @@ function blankRound(type: RoundType = 'multiple_choice'): RoundDraft {
     correctChoice: type === 'pulse' ? null : 0,
     durationSeconds: type === 'finale' ? 30 : 20,
     scoringMode: type === 'multiple_choice' ? 'speed' : 'accuracy',
+    collectiveTargetPercent: 60,
   };
 }
 
@@ -180,6 +184,10 @@ export function MimoApp() {
   const [inviteToken, setInviteToken] = useState('');
   const [working, setWorking] = useState(false);
   const [roomError, setRoomError] = useState('');
+  const [rewardCapabilities, setRewardCapabilities] = useState<{
+    mimoFundingAvailable: boolean;
+    network: 'MainAlbatross' | 'TestAlbatross' | null;
+  }>({ mimoFundingAvailable: false, network: null });
   const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
     community: '',
     topic: '',
@@ -192,9 +200,31 @@ export function MimoApp() {
     community: '',
     accessMode: 'public',
     rewardMode: 'free',
+    custodyMode: 'host_wallet',
     rewardAmount: '',
     rounds: [blankRound()],
   });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/rewards/capabilities', {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const capabilities = (await response.json()) as {
+          mimoFundingAvailable?: boolean;
+          network?: 'MainAlbatross' | 'TestAlbatross' | null;
+        };
+        setRewardCapabilities({
+          mimoFundingAvailable: Boolean(capabilities.mimoFundingAvailable),
+          network: capabilities.network ?? null,
+        });
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const initial = window.setTimeout(() => {
@@ -319,7 +349,12 @@ export function MimoApp() {
       if (!response.ok || !body.draft) {
         throw new Error(body.error || 'Mimo could not make the draft.');
       }
-      setEvent(body.draft);
+      setEvent({
+        ...body.draft,
+        custodyMode: rewardCapabilities.mimoFundingAvailable
+          ? 'mimo_vault'
+          : 'host_wallet',
+      });
       setScreen('create');
     } catch (cause) {
       setRoomError(
@@ -480,6 +515,8 @@ export function MimoApp() {
               preview={() => setScreen('preview')}
               working={working}
               error={roomError}
+              mimoFundingAvailable={rewardCapabilities.mimoFundingAvailable}
+              vaultNetwork={rewardCapabilities.network}
             />
           )}
           {screen === 'preview' && (
@@ -554,21 +591,21 @@ function ProductHome({
     <section className="mobile-page mx-auto grid min-h-[calc(100dvh-60px)] max-w-[1080px] gap-6 px-5 pb-10 pt-2 sm:min-h-[calc(100dvh-72px)] sm:px-8 lg:grid-cols-[.92fr_1.08fr] lg:items-center">
       <div className="order-2 pb-3 lg:order-1">
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
-          Inside Nimiq Pay
+          Live inside Nimiq Pay
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-2xl text-[clamp(3rem,8vw,6.5rem)] font-extrabold leading-[.88] tracking-[-.072em]">
-          Live games for your community.
+          Bring your community. Mimo makes it live.
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#53697c] sm:text-lg">
-          Open a room, bring everyone in and play together. Add NIM rewards when
-          the moment calls for it.
+          Run games, live polls and scored challenges. Fund rewards in NIM and
+          let Mimo host the room.
         </p>
         <div className="mt-6 grid gap-3 sm:flex sm:items-center">
           <Button
             onClick={host}
             className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold"
           >
-            Host a game <ArrowRight />
+            Create a live room <ArrowRight />
           </Button>
           <div className="flex h-14 overflow-hidden rounded-[18px] border border-[#bdc9d1] bg-white sm:rounded-full">
             <input
@@ -601,8 +638,8 @@ function ProductHome({
           </p>
         )}
         <p className="mt-5 flex items-center gap-2 text-sm font-bold leading-5 text-[#627687]">
-          <ShieldCheck className="shrink-0" size={17} /> Free rooms need no
-          wallet. Funded rewards require clear wallet confirmation.
+          <ShieldCheck className="shrink-0" size={17} /> Join free rooms in
+          seconds. Nimiq Pay confirms wallets and funded rewards when needed.
         </p>
       </div>
       <div className="mimo-stage relative order-1 mx-auto h-[250px] w-full max-w-[520px] overflow-hidden rounded-[28px] bg-[#e8f3ff] sm:h-[440px] sm:rounded-[36px] lg:order-2 lg:h-[520px]">
@@ -665,13 +702,13 @@ function CreateChoice({
             Start a new Mimo
           </p>
           <h1 className="mobile-flow-title font-display mt-3 max-w-[720px] text-[clamp(3rem,7vw,5.6rem)] font-extrabold leading-[.9] tracking-[-.065em]">
-            What are we making tonight?
+            What should Mimo host?
           </h1>
         </div>
         <MimoCue
           className="md:justify-self-end"
           mood="thinking"
-          message="Give me the spark and I’ll build the first draft. You approve every word."
+          message="Tell me the crowd and the idea. I’ll draft it; you approve every word."
         />
       </div>
 
@@ -691,7 +728,8 @@ function CreateChoice({
                 Let Mimo draft it
               </h2>
               <p className="mt-3 max-w-md text-base font-semibold leading-6 text-[#dceeff]">
-                Tell Mimo the topic. Get a complete editable show in seconds.
+                Describe the event. Get editable polls, questions and timing in
+                seconds.
               </p>
             </div>
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[#1f72d2] transition group-hover:translate-x-1">
@@ -714,7 +752,7 @@ function CreateChoice({
                 Start from blank
               </h2>
               <p className="mt-3 max-w-md text-base font-medium leading-6 text-[#5e7283]">
-                You already know the room. Shape every moment yourself.
+                Build only the polls, questions or challenges you need.
               </p>
             </div>
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#203752] text-white transition group-hover:translate-x-1">
@@ -724,7 +762,7 @@ function CreateChoice({
         </motion.button>
       </div>
       <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-[#607486]">
-        <ShieldCheck size={17} /> Nothing goes live until you review it.
+        <ShieldCheck size={17} /> You review every detail before it goes live.
       </p>
     </section>
   );
@@ -759,10 +797,10 @@ function AssistedCreate({
           <Bot size={17} /> Make it with Mimo
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
-          Give Mimo the spark.
+          Tell Mimo what you’re hosting.
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#5d7182]">
-          A short brief is enough. Add source text when accuracy matters.
+          A short brief is enough. Add trusted source text when facts matter.
         </p>
 
         <MimoCue
@@ -894,6 +932,8 @@ function CreateEvent({
   preview,
   working,
   error,
+  mimoFundingAvailable,
+  vaultNetwork,
 }: {
   event: EventDraft;
   setEvent: (event: EventDraft) => void;
@@ -901,6 +941,8 @@ function CreateEvent({
   preview: () => void;
   working: boolean;
   error: string;
+  mimoFundingAvailable: boolean;
+  vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
 }) {
   const update = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
     setEvent({ ...event, [key]: value });
@@ -973,11 +1015,11 @@ function CreateEvent({
           Create a live event
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
-          Shape the whole show.
+          Build your live room.
         </h1>
         <MimoCue
           className="mobile-only mt-5"
-          message={`${event.rounds.length} ${event.rounds.length === 1 ? 'moment' : 'moments'} in your show. I’ll keep the room moving.`}
+          message={`${event.rounds.length} ${event.rounds.length === 1 ? 'round' : 'rounds'} ready. I’ll keep everyone moving together.`}
         />
         <div className="creator-form-shell mt-8 grid gap-7">
           <label className="grid gap-2 text-sm font-extrabold">
@@ -1003,9 +1045,9 @@ function CreateEvent({
           <div className="border-y border-[#cfd5d8] py-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-extrabold">Show moments</p>
+                <p className="text-sm font-extrabold">Room flow</p>
                 <p className="mt-1 text-sm font-medium text-[#6a7b89]">
-                  Each moment is one poll or question, played in this order.
+                  Add only the polls, questions or team challenges you need.
                 </p>
               </div>
               <span className="font-display text-2xl font-extrabold text-[#84919b]">
@@ -1020,15 +1062,15 @@ function CreateEvent({
                   className="creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5"
                 >
                   <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
-                    Moment {roundIndex + 1}
+                    Round {roundIndex + 1}
                   </legend>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       {(
                         [
-                          ['pulse', 'Pulse poll', CircleDot],
-                          ['multiple_choice', 'Skill question', Gamepad2],
-                          ['finale', 'Final challenge', Trophy],
+                          ['pulse', 'Live poll', CircleDot],
+                          ['multiple_choice', 'Scored question', Gamepad2],
+                          ['finale', 'Beat Mimo', Trophy],
                         ] as const
                       ).map(([type, label, Icon]) => (
                         <button
@@ -1061,7 +1103,7 @@ function CreateEvent({
                       <button
                         type="button"
                         onClick={() => removeRound(roundIndex)}
-                        aria-label={`Remove moment ${roundIndex + 1}`}
+                        aria-label={`Remove round ${roundIndex + 1}`}
                         className="grid h-10 w-10 place-items-center rounded-full text-[#9f4a3c] hover:bg-[#fff0ec]"
                       >
                         <Trash2 size={17} />
@@ -1126,6 +1168,36 @@ function CreateEvent({
                         </div>
                       </fieldset>
                     )}
+                    {round.type === 'finale' && (
+                      <fieldset>
+                        <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
+                          Room target
+                        </legend>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[50, 60, 70, 80].map((target) => (
+                            <button
+                              key={target}
+                              type="button"
+                              aria-pressed={
+                                round.collectiveTargetPercent === target
+                              }
+                              onClick={() =>
+                                updateRound(roundIndex, {
+                                  collectiveTargetPercent: target,
+                                })
+                              }
+                              className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
+                                round.collectiveTargetPercent === target
+                                  ? 'bg-[#d09a00] text-white'
+                                  : 'bg-[#f6efd6] text-[#6f5700]'
+                              }`}
+                            >
+                              {target}%
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+                    )}
                   </div>
                   <textarea
                     value={round.question}
@@ -1135,18 +1207,18 @@ function CreateEvent({
                     maxLength={180}
                     placeholder={
                       round.type === 'pulse'
-                        ? 'Ask what the room thinks—there is no wrong side'
+                        ? 'Ask what the room thinks—there is no correct answer'
                         : round.type === 'finale'
-                          ? 'Write the final challenge everyone will answer'
+                          ? 'Write one final question for the whole room'
                           : 'Write one clear, objectively scored question'
                     }
                     className="mt-4 min-h-20 w-full resize-none border-b-2 border-[#c5cdd2] bg-transparent text-lg font-bold leading-7 outline-none placeholder:text-[#97a2ab] focus:border-[#1f72d2]"
                   />
                   <p className="mt-5 text-sm font-extrabold text-[#5a6e80]">
                     {round.type === 'pulse'
-                      ? 'Poll choices · add between two and four'
+                      ? 'Poll choices · choose between two and four'
                       : round.type === 'finale'
-                        ? 'Everyone plays · 60% correct beats Mimo'
+                        ? `Everyone answers · ${round.collectiveTargetPercent}% correct means the room wins`
                         : 'Answer choices · select the correct one'}
                   </p>
                   <div className="mt-2 grid gap-2">
@@ -1183,7 +1255,7 @@ function CreateEvent({
                             )
                           }
                           maxLength={80}
-                          aria-label={`Moment ${roundIndex + 1}, choice ${String.fromCharCode(65 + choiceIndex)}`}
+                          aria-label={`Round ${roundIndex + 1}, choice ${String.fromCharCode(65 + choiceIndex)}`}
                           placeholder={
                             round.type === 'pulse'
                               ? `Side ${String.fromCharCode(65 + choiceIndex)}`
@@ -1226,7 +1298,7 @@ function CreateEvent({
                 onClick={() => addRound('multiple_choice')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
-                <Plus size={16} /> Skill question
+                <Plus size={16} /> Scored question
               </button>
               <button
                 type="button"
@@ -1234,7 +1306,7 @@ function CreateEvent({
                 onClick={() => addRound('pulse')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
-                <Plus size={16} /> Pulse poll
+                <Plus size={16} /> Live poll
               </button>
               <button
                 type="button"
@@ -1242,11 +1314,11 @@ function CreateEvent({
                 onClick={() => addRound('finale')}
                 className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
-                <Plus size={16} /> Final challenge
+                <Plus size={16} /> Beat Mimo
               </button>
             </div>
             <p className="mt-3 text-sm font-bold text-[#617486]">
-              One moment is enough. Mix formats only when your event needs them.
+              One round is enough. Mix formats only when your event needs them.
             </p>
           </div>
           <fieldset>
@@ -1283,7 +1355,13 @@ function CreateEvent({
             <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
               <motion.button
                 whileTap={{ scale: 0.985 }}
-                onClick={() => update('rewardMode', 'free')}
+                onClick={() =>
+                  setEvent({
+                    ...event,
+                    rewardMode: 'free',
+                    custodyMode: 'host_wallet',
+                  })
+                }
                 className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'free' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
               >
                 <Gamepad2 className="text-[#1f72d2]" />
@@ -1294,33 +1372,105 @@ function CreateEvent({
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.985 }}
-                onClick={() => update('rewardMode', 'nim')}
+                onClick={() =>
+                  setEvent({
+                    ...event,
+                    rewardMode: 'nim',
+                    custodyMode: mimoFundingAvailable
+                      ? 'mimo_vault'
+                      : 'host_wallet',
+                  })
+                }
                 className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
               >
                 <Gift className="text-[#a87600]" />
                 <strong className="mt-3 block text-lg">NIM reward</strong>
                 <span className="mt-1 block text-sm text-[#617486]">
-                  Propose a skill reward.
+                  Reward verified skill or participation.
                 </span>
               </motion.button>
             </div>
           </fieldset>
           {event.rewardMode === 'nim' && (
-            <label className="grid gap-2 text-sm font-extrabold">
-              Total proposed reward
-              <input
-                inputMode="numeric"
-                maxLength={8}
-                value={event.rewardAmount}
-                onChange={(e) =>
-                  update('rewardAmount', e.target.value.replace(/[^0-9]/g, ''))
-                }
-                className="h-14 max-w-[260px] border-0 border-b-2 border-[#d0a62d] bg-transparent text-2xl font-extrabold outline-none"
-              />
-              <span className="text-sm font-medium text-[#6f7e8b]">
-                NIM · shown as proposed until wallet funding is confirmed
-              </span>
-            </label>
+            <div className="grid gap-6">
+              <fieldset>
+                <legend className="text-sm font-extrabold">
+                  Where is the reward held?
+                </legend>
+                {mimoFundingAvailable ? (
+                  <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.985 }}
+                      onClick={() => update('custodyMode', 'mimo_vault')}
+                      className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'mimo_vault' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                    >
+                      <span className="inline-flex rounded-full bg-[#f7c933] px-2.5 py-1 text-xs font-extrabold text-[#624a00]">
+                        Recommended
+                      </span>
+                      <strong className="mt-3 block text-lg">
+                        Mimo Funded
+                      </strong>
+                      <span className="mt-1 block text-sm leading-5 text-[#617486]">
+                        Deposit before play. Nimiq confirms the reward before
+                        the room opens.
+                      </span>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.985 }}
+                      onClick={() => update('custodyMode', 'host_wallet')}
+                      className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
+                    >
+                      <strong className="block text-lg">Host promise</strong>
+                      <span className="mt-1 block text-sm leading-5 text-[#617486]">
+                        Keep the NIM in your wallet and approve payment after
+                        Mimo verifies the result.
+                      </span>
+                    </motion.button>
+                  </div>
+                ) : (
+                  <div className="mt-3 border-l-4 border-[#d7b13f] bg-[#fff8dc] px-4 py-3">
+                    <strong className="block">Host promise</strong>
+                    <span className="mt-1 block text-sm leading-5 text-[#675e3e]">
+                      The NIM stays in your wallet. You approve payment in Nimiq
+                      Pay after Mimo verifies the result.
+                    </span>
+                  </div>
+                )}
+                {mimoFundingAvailable && vaultNetwork && (
+                  <p className="mt-2 text-xs font-bold text-[#71808c]">
+                    Mimo Funded uses the{' '}
+                    {vaultNetwork === 'TestAlbatross'
+                      ? 'Nimiq test network'
+                      : 'Nimiq network'}
+                    .
+                  </p>
+                )}
+              </fieldset>
+              <label className="grid gap-2 text-sm font-extrabold">
+                {event.custodyMode === 'mimo_vault'
+                  ? 'Total reward to fund'
+                  : 'Reward promised by host'}
+                <input
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={event.rewardAmount}
+                  onChange={(e) =>
+                    update(
+                      'rewardAmount',
+                      e.target.value.replace(/[^0-9]/g, ''),
+                    )
+                  }
+                  className="h-14 max-w-[260px] border-0 border-b-2 border-[#d0a62d] bg-transparent text-2xl font-extrabold outline-none"
+                />
+                <span className="text-sm font-medium text-[#6f7e8b]">
+                  {event.custodyMode === 'mimo_vault'
+                    ? 'NIM · confirmed on the Nimiq network before play'
+                    : 'NIM · paid from your wallet after the verified result'}
+                </span>
+              </label>
+            </div>
           )}
         </div>
         {error && (
@@ -1355,8 +1505,8 @@ function CreateEvent({
           Mimo takes it live.
         </p>
         <p className="mt-3 text-sm leading-6 text-[#c9d8e5]">
-          Every moment, correct answer and reward rule is saved with the room.
-          Mimo moves everyone through the same server-controlled show.
+          Every round, correct answer and reward rule is saved with the room.
+          Mimo keeps every phone in sync and runs the timing.
         </p>
       </aside>
     </section>
@@ -1397,7 +1547,7 @@ function CreatorRehearsal({
           Private rehearsal · nothing is live
         </p>
         <h1 className="mobile-flow-title font-display mt-3 text-[clamp(2.7rem,7vw,5rem)] font-extrabold leading-[.92] tracking-[-.06em]">
-          Feel the show before your guests do.
+          Test the room before your guests join.
         </h1>
         <MimoCue
           className="mt-5"
@@ -1405,11 +1555,11 @@ function CreatorRehearsal({
           message={
             revealed
               ? round.type === 'pulse'
-                ? 'Nice. The room will see every side move together.'
+                ? 'Nice. The room will see the poll move live.'
                 : selected === round.correctChoice
                   ? 'That reveal lands. Keep the pace.'
                   : 'Good catch—this is why we rehearse.'
-              : `Moment ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
+              : `Round ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
           }
         />
         <div className="mt-7 flex flex-wrap gap-2">
@@ -1427,8 +1577,8 @@ function CreatorRehearsal({
               {item.type === 'pulse'
                 ? 'Poll'
                 : item.type === 'finale'
-                  ? 'Final challenge'
-                  : 'Skill'}
+                  ? 'Beat Mimo'
+                  : 'Scored'}
             </button>
           ))}
         </div>
@@ -1452,11 +1602,16 @@ function CreatorRehearsal({
       <div className="mx-auto w-full max-w-[390px] self-start rounded-[38px] border-[8px] border-[#203752] bg-[#f8f7f3] p-4 shadow-[0_30px_80px_rgba(25,49,76,.18)] lg:sticky lg:top-5">
         <div className="mx-auto mb-5 h-1.5 w-20 rounded-full bg-[#203752]/20" />
         <p className="text-xs font-extrabold uppercase tracking-[.13em] text-[#c65340]">
-          Moment {roundIndex + 1} of {event.rounds.length}
+          Round {roundIndex + 1} of {event.rounds.length}
         </p>
         <h2 className="font-display mt-3 text-3xl font-extrabold leading-[1.02] tracking-[-.04em]">
           {round.question}
         </h2>
+        {round.type === 'finale' && (
+          <p className="mt-3 rounded-[14px] bg-[#fff2bd] px-3 py-2 text-sm font-bold text-[#715600]">
+            The room wins with {round.collectiveTargetPercent}% correct.
+          </p>
+        )}
         <div className="mt-5 grid gap-2">
           {round.choices.map((choice, index) => {
             const correct = revealed && round.correctChoice === index;
@@ -1484,7 +1639,7 @@ function CreatorRehearsal({
             ? 'Rehearse reveal'
             : last
               ? 'Rehearsal complete'
-              : 'Next moment'}
+              : 'Next round'}
         </Button>
         <p className="mt-3 text-center text-xs font-bold text-[#74838e]">
           Participant-sized preview · safe rehearsal
@@ -1530,8 +1685,8 @@ function Join({
           What should everyone call you?
         </h1>
         <p className="mt-4 text-base leading-7 text-[#5b7082] sm:text-lg">
-          No account. No password. Your wallet waits until a funded reward needs
-          it.
+          No account. No password. Joining never needs a wallet. Funded rewards
+          use Nimiq Pay later.
         </p>
         <label htmlFor="nickname" className="mt-8 block text-sm font-extrabold">
           Your room name

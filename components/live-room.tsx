@@ -513,13 +513,15 @@ export function LiveRoom({
   );
   const rewardLabel =
     room.rewardMode === 'nim'
-      ? ['funded', 'event_live', 'results_under_verification'].includes(
-          room.rewardState,
-        )
-        ? `${room.rewardAmount} NIM · funded`
-        : room.rewardState === 'funding_submitted'
-          ? `${room.rewardAmount} NIM · confirming`
-          : `${room.rewardAmount} NIM · funding required`
+      ? room.rewardCustody === 'host_wallet'
+        ? `${room.rewardAmount} NIM · host promise`
+        : ['funded', 'event_live', 'results_under_verification'].includes(
+              room.rewardState,
+            )
+          ? `${room.rewardAmount} NIM · funded`
+          : room.rewardState === 'funding_submitted'
+            ? `${room.rewardAmount} NIM · funding confirmation pending`
+            : `${room.rewardAmount} NIM · awaiting funding`
       : 'Free room · no wallet needed';
   const signalScore = room.players
     .filter((player) => player.teamId === 'signal')
@@ -564,10 +566,10 @@ export function LiveRoom({
           : `${answered} of ${room.players.length} locked in. I’m watching the clock.`
         : room.status === 'verifying'
           ? room.hasNextRound
-            ? 'Result checked. The next moment is nearly here.'
+            ? 'Result checked. The next round is nearly here.'
             : 'Final result checked. Let’s bring this home.'
           : room.status === 'cancelled'
-            ? 'The room stopped safely. Nothing was lost.'
+            ? 'The room was cancelled. No result or payout was created.'
             : 'That room had energy. Who wants the rematch?';
   const mimoLine = aiCue?.line ?? fallbackMimoLine;
   const mimoMood =
@@ -687,7 +689,15 @@ export function LiveRoom({
                     ? 'Private invite'
                     : 'Public room'}
                   {room.rewardMode === 'nim'
-                    ? ` · ${room.rewardAmount} NIM proposed`
+                    ? room.rewardCustody === 'host_wallet'
+                      ? ` · ${room.rewardAmount} NIM host promise`
+                      : [
+                            'funded',
+                            'event_live',
+                            'results_under_verification',
+                          ].includes(room.rewardState)
+                        ? ` · ${room.rewardAmount} NIM funded`
+                        : ` · ${room.rewardAmount} NIM awaiting funding`
                     : ' · Free to join'}
                 </p>
               </div>
@@ -838,7 +848,7 @@ export function LiveRoom({
                   currentPlayerId={me?.id}
                 />
               )}
-              {room.status === 'cancelled' && <CancelledState />}
+              {room.status === 'cancelled' && <CancelledState room={room} />}
             </motion.div>
           </AnimatePresence>
 
@@ -868,7 +878,7 @@ export function LiveRoom({
               : room.status === 'live'
                 ? `${answered} of ${room.players.length} locked`
                 : room.status === 'verifying' && room.hasNextRound
-                  ? `Moment ${room.roundIndex + 1} revealed`
+                  ? `Round ${room.roundIndex + 1} revealed`
                   : 'Scores verified'}
           </p>
           <motion.div
@@ -883,7 +893,7 @@ export function LiveRoom({
             </p>
             {aiCue?.source === 'ai' && (
               <span className="relative mt-2 block text-center text-[10px] font-extrabold uppercase tracking-[.14em] text-[#8ed9ae]">
-                AI host · live room read
+                Mimo AI · reacting live
               </span>
             )}
           </motion.div>
@@ -913,7 +923,7 @@ export function LiveRoom({
               <strong className="font-display block text-2xl">
                 {room.players.filter((p) => p.walletVerified).length}
               </strong>
-              <span className="text-xs text-[#aebfce]">verified</span>
+              <span className="text-xs text-[#aebfce]">confirmed</span>
             </div>
           </div>
           {mode === 'host' && room.status === 'live' && (
@@ -1050,7 +1060,11 @@ function ReactionBar({
   );
 }
 
-function CancelledState() {
+function CancelledState({ room }: { room: LiveRoomState }) {
+  const vaultHadFunding =
+    room.rewardCustody === 'mimo_vault' &&
+    room.rewardMode === 'nim' &&
+    Boolean(room.fundingTxHash);
   return (
     <div className="mt-8 border-y border-[#d0d6da] py-10 text-center">
       <MimoCharacter mood="thinking" className="mx-auto w-32 grayscale-[.25]" />
@@ -1058,7 +1072,9 @@ function CancelledState() {
         This room has ended.
       </h2>
       <p className="mx-auto mt-3 max-w-md text-[#607486]">
-        Nobody was charged. Any wallet prompt can be safely closed.
+        {vaultHadFunding
+          ? 'No payout was created. The funded NIM remains in Mimo’s vault.'
+          : 'Mimo did not request or move any NIM. Any open wallet prompt can be safely closed.'}
       </p>
     </div>
   );
@@ -1087,11 +1103,13 @@ function WalletProofCard({
         </span>
         <div>
           <strong className="block">
-            {done ? 'Wallet verified for this room' : 'Verify for NIM rewards'}
+            {done
+              ? 'Wallet ownership confirmed'
+              : 'Confirm your wallet for NIM rewards'}
           </strong>
           <p className="mt-1 text-sm leading-5 text-[#5b7082]">
             {done
-              ? `${state.detail ? `${state.detail} · ` : ''}Only a private wallet fingerprint is saved.`
+              ? `${state.detail ? `${state.detail} · ` : ''}Mimo stores a private code instead of your wallet address.`
               : state.detail ||
                 'Nimiq Pay will ask you to connect and sign. This sends no money.'}
           </p>
@@ -1109,7 +1127,7 @@ function WalletProofCard({
               ? 'Awaiting signature…'
               : state.status === 'cancelled'
                 ? 'Try again'
-                : 'Verify wallet'}
+                : 'Confirm wallet'}
         </Button>
       )}
     </div>
@@ -1260,11 +1278,11 @@ function RewardFundingPanel({
     return (
       <section className="mt-5 border-l-4 border-[#e1b928] bg-[#fff8d9] px-4 py-3">
         <p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#806000]">
-          Creator-held reward
+          Host promise
         </p>
         <p className="mt-1 text-sm font-bold text-[#675e3e]">
-          {room.rewardAmount} NIM stays with the host until the verified result.
-          It is promised, not locked.
+          {room.rewardAmount} NIM stays in the host’s wallet. Mimo verifies the
+          result; the host approves payment in Nimiq Pay.
         </p>
       </section>
     );
@@ -1281,7 +1299,7 @@ function RewardFundingPanel({
           </span>
           <div>
             <p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#806000]">
-              {funded ? 'Funded reward' : 'Reward funding required'}
+              {funded ? 'Funded reward' : 'Fund this reward'}
             </p>
             <h3 className="font-display mt-1 text-xl font-extrabold">
               {room.rewardAmount} NIM {funded ? 'is ready' : 'for this room'}
@@ -1434,8 +1452,9 @@ function LobbyState({
         </div>
       </div>
       <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
-        <Zap size={16} className="text-[#b17900]" /> Compete as teams first. In
-        the finale, everyone joins forces against Mimo.
+        <Zap size={16} className="text-[#b17900]" /> Teams build separate
+        scores. An optional Beat Mimo round gives the whole room one final
+        target.
       </p>
       {room.rewardMode === 'nim' && (
         <RewardFundingPanel
@@ -1492,7 +1511,7 @@ function LobbyState({
                 <ShieldCheck
                   size={15}
                   className="text-[#2d8a55]"
-                  aria-label="Wallet verified"
+                  aria-label="Wallet ownership confirmed"
                 />
               )}
               <span className="text-xs font-bold text-[#718291]">
@@ -1561,12 +1580,12 @@ function QuestionState({
       <div className="mobile-round-top flex items-start justify-between gap-4 border-b border-[#d1d5d5] pb-5">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
-            Moment {room.roundIndex + 1} of {room.roundCount} ·{' '}
+            Round {room.roundIndex + 1} of {room.roundCount} ·{' '}
             {room.roundType === 'pulse'
-              ? 'Pulse poll'
+              ? 'Live poll'
               : room.roundType === 'finale'
-                ? 'Final challenge'
-                : 'Skill question'}
+                ? 'Beat Mimo'
+                : 'Scored question'}
             {room.roundType !== 'pulse' && (
               <>
                 {' '}
@@ -1693,7 +1712,7 @@ function QuestionState({
             >
               {seconds === 0
                 ? 'Time is up. Mimo is revealing the room.'
-                : 'Choose once. Mimo locks it on the server.'}
+                : 'Choose once. Mimo saves it instantly.'}
             </p>
           )}
         </AnimatePresence>
@@ -1772,7 +1791,7 @@ function ResultsState({
               ? room.finalePassed
                 ? 'The room beat Mimo!'
                 : 'Mimo takes this one.'
-              : 'Moment revealed.'}
+              : 'Round revealed.'}
       </h2>
       {room.correctChoice !== null && (
         <p className="mt-4 text-lg text-[#526a7e]">
@@ -1830,7 +1849,7 @@ function ResultsState({
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#607486]">
-                Everyone versus Mimo
+                Beat Mimo target
               </p>
               <p className="font-display mt-2 text-3xl font-extrabold">
                 {finaleCorrect} of {room.players.length} got it
@@ -1899,8 +1918,8 @@ function ResultsState({
             />
           </div>
           <p className="mt-3 text-sm font-bold text-[#526a7e]">
-            Individual answers build the team total. The finale belongs to the
-            whole room.
+            Individual answers build the team total. Beat Mimo gives the whole
+            room one final target.
           </p>
         </div>
       )}
@@ -1932,7 +1951,7 @@ function ResultsState({
               <span
                 className={`text-xs font-extrabold ${player.walletVerified ? 'text-[#237044]' : 'text-[#9a6a00]'}`}
               >
-                {player.walletVerified ? 'Wallet verified' : 'Wallet needed'}
+                {player.walletVerified ? 'Wallet confirmed' : 'Wallet needed'}
               </span>
             )}
             <span className="font-display text-xl font-extrabold">
@@ -1960,7 +1979,7 @@ function ResultsState({
             disabled={busy}
             className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
-            {autoHost ? 'Next now' : 'Next moment'}
+            {autoHost ? 'Next now' : 'Next round'}
           </Button>
         ) : room.status === 'verifying' ? (
           <Button
@@ -1985,8 +2004,8 @@ function ResultsState({
             ? 'Event complete. Your result is saved.'
             : room.hasNextRound
               ? autoHost
-                ? 'Mimo is moving to the next moment automatically.'
-                : 'The host will start the next moment.'
+                ? 'Mimo is moving to the next round automatically.'
+                : 'The host will start the next round.'
               : autoHost
                 ? 'Mimo is checking the final result.'
                 : 'The host will close the final result.'}
@@ -2024,7 +2043,7 @@ function RewardSettlement({
   >(room.rewardState === 'payout_submitted' ? 'submitted' : 'idle');
   const [detail, setDetail] = useState(
     room.rewardState === 'payout_submitted' && room.payoutTxHash
-      ? `Submitted to Nimiq · proof ${room.payoutTxHash.slice(0, 10)}… Confirmation is not claimed until the network reports it.`
+      ? `Submitted to Nimiq · proof ${room.payoutTxHash.slice(0, 10)}… Network confirmation pending.`
       : '',
   );
   const isWinner =
@@ -2148,7 +2167,7 @@ function RewardSettlement({
       const submitted = (await submittedResponse.json()) as { txHash: string };
       setState('submitted');
       setDetail(
-        `Submitted to Nimiq · proof ${submitted.txHash.slice(0, 10)}… Confirmation is not claimed until the network reports it.`,
+        `Submitted to Nimiq · proof ${submitted.txHash.slice(0, 10)}… Network confirmation pending.`,
       );
     } catch (cause) {
       setState('failed');

@@ -23,6 +23,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { LiveRoom } from '@/components/live-room';
 import {
   MimoCharacter,
@@ -96,6 +97,7 @@ type EventDraft = {
   rewardMode: RewardMode;
   custodyMode: RewardCustody;
   rewardAmount: string;
+  adaptiveMoments: boolean;
   rounds: RoundDraft[];
 };
 
@@ -202,6 +204,7 @@ export function MimoApp() {
     rewardMode: 'free',
     custodyMode: 'host_wallet',
     rewardAmount: '',
+    adaptiveMoments: true,
     rounds: [blankRound()],
   });
 
@@ -351,6 +354,7 @@ export function MimoApp() {
       }
       setEvent({
         ...body.draft,
+        adaptiveMoments: true,
         custodyMode: rewardCapabilities.mimoFundingAvailable
           ? 'mimo_vault'
           : 'host_wallet',
@@ -1320,6 +1324,26 @@ function CreateEvent({
             <p className="mt-3 text-sm font-bold text-[#617486]">
               One round is enough. Mix formats only when your event needs them.
             </p>
+          </div>
+          <div className="flex items-start justify-between gap-5 border-y border-[#cfd5d8] py-5">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-extrabold">
+                <Sparkles size={17} className="text-[#1f72d2]" /> Living Room
+                moments
+              </p>
+              <p className="mt-1 max-w-[560px] text-sm font-medium leading-5 text-[#617486]">
+                Let Mimo hold close poll reveals for a quick room face-off. This
+                never changes your scoring or reward rules.
+              </p>
+            </div>
+            <Switch
+              checked={event.adaptiveMoments}
+              onCheckedChange={(checked) =>
+                update('adaptiveMoments', Boolean(checked))
+              }
+              aria-label="Enable Living Room moments"
+              className="mt-1 data-checked:bg-[#1f72d2]"
+            />
           </div>
           <fieldset>
             <legend className="text-sm font-extrabold">Who can join?</legend>

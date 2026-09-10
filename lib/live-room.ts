@@ -1,4 +1,5 @@
 import { getD1 } from '@/db';
+import { detectLivingRoomSignal } from '@/lib/living-room-engine';
 
 export function cleanCode(value: string) {
   return value
@@ -126,11 +127,66 @@ export async function reconcileRoom(room: RoomRecord) {
     }
   }
 
-  if (
-    room.status === 'verifying' &&
-    room.stateChangedAt > 0 &&
-    now - room.stateChangedAt >= 5000
-  ) {
+  if (room.status === 'verifying' && room.stateChangedAt > 0) {
+    let revealDuration = 5000;
+    if (getRoomConfig(room.launchedConfigJson).adaptiveMoments) {
+      const [currentRound, answers] = await Promise.all([
+        db
+          .prepare(`SELECT type, config_json AS configJson
+            FROM rounds WHERE id = ? LIMIT 1`)
+          .bind(room.activeRoundId)
+          .first<{ type: string; configJson: string }>(),
+        db
+          .prepare(`SELECT answer_json AS answerJson
+            FROM answers WHERE round_id = ?`)
+          .bind(room.activeRoundId)
+          .all<{ answerJson: string }>(),
+      ]);
+      if (currentRound?.type === 'pulse') {
+        let choiceCount = 0;
+        try {
+          const config = JSON.parse(currentRound.configJson) as {
+            choices?: unknown;
+          };
+          choiceCount = Array.isArray(config.choices)
+            ? config.choices.length
+            : 0;
+        } catch {
+          choiceCount = 0;
+        }
+        const choiceCounts = Array.from({ length: choiceCount }, () => 0);
+        for (const answer of answers.results) {
+          try {
+            const choice = Number(
+              (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
+            );
+            if (
+              Number.isInteger(choice) &&
+              choice >= 0 &&
+              choice < choiceCounts.length
+            ) {
+              choiceCounts[choice] += 1;
+            }
+          } catch {
+            // Ignore malformed historical answers.
+          }
+        }
+        const signal = detectLivingRoomSignal({
+          status: room.status,
+          roundType: currentRound.type,
+          hasNextRound: true,
+          choiceCounts,
+          finalePassed: null,
+          signalScore: 0,
+          sparkScore: 0,
+          signalPlayers: 0,
+          sparkPlayers: 0,
+        });
+        if (signal?.kind === 'split_room') revealDuration = 9000;
+      }
+    }
+    if (now - room.stateChangedAt < revealDuration) return room;
+
     const nextRound = await db
       .prepare(`SELECT next.id, next.config_json AS configJson
         FROM rounds current
@@ -192,6 +248,7 @@ export function getRoomConfig(value: string | null) {
     accessMode: 'public' as RoomAccessMode,
     inviteTokenHash: '',
     custody: 'host_wallet' as const,
+    adaptiveMoments: false,
   };
   if (!value) return fallback;
   try {
@@ -212,6 +269,7 @@ export function getRoomConfig(value: string | null) {
         config.custody === 'mimo_vault'
           ? ('mimo_vault' as const)
           : ('host_wallet' as const),
+      adaptiveMoments: config.adaptiveMoments === true,
     };
   } catch {
     return fallback;

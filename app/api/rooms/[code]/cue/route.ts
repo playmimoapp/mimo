@@ -1,5 +1,5 @@
 import { getD1 } from '@/db';
-import { canViewRoom, getRoom, json } from '@/lib/live-room';
+import { canViewRoom, getRoom, getRoomConfig, json } from '@/lib/live-room';
 import type { MimoHostCue } from '@/lib/live-room-types';
 import { detectLivingRoomSignal } from '@/lib/living-room-engine';
 import { getRuntimeVariable } from '@/lib/runtime-env';
@@ -219,17 +219,19 @@ export async function POST(
       ? correctAnswers >=
         Math.ceil((totals?.players ?? 0) * (collectiveTargetPercent / 100))
       : null;
-  const roomSignal = detectLivingRoomSignal({
-    status: room.status,
-    roundType: round?.type ?? 'unknown',
-    hasNextRound: Boolean(nextRound),
-    choiceCounts,
-    finalePassed,
-    signalScore: totals?.signalScore ?? 0,
-    sparkScore: totals?.sparkScore ?? 0,
-    signalPlayers: totals?.signalPlayers ?? 0,
-    sparkPlayers: totals?.sparkPlayers ?? 0,
-  });
+  const roomSignal = getRoomConfig(room.launchedConfigJson).adaptiveMoments
+    ? detectLivingRoomSignal({
+        status: room.status,
+        roundType: round?.type ?? 'unknown',
+        hasNextRound: Boolean(nextRound),
+        choiceCounts,
+        finalePassed,
+        signalScore: totals?.signalScore ?? 0,
+        sparkScore: totals?.sparkScore ?? 0,
+        signalPlayers: totals?.signalPlayers ?? 0,
+        sparkPlayers: totals?.sparkPlayers ?? 0,
+      })
+    : null;
   const cueContext: CueContext = {
     status: room.status,
     title: room.title,

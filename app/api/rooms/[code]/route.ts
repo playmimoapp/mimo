@@ -160,21 +160,23 @@ export async function GET(
     .filter((player) => player.teamId === 'spark')
     .reduce((total, player) => total + player.score, 0);
   const hasNextRound = roundIndex + 1 < roundCount;
-  const roomSignal = detectLivingRoomSignal({
-    status: room.status,
-    roundType: round?.type ?? 'multiple_choice',
-    hasNextRound,
-    choiceCounts,
-    finalePassed,
-    signalScore,
-    sparkScore,
-    signalPlayers: playerRows.results.filter(
-      (player) => player.teamId === 'signal',
-    ).length,
-    sparkPlayers: playerRows.results.filter(
-      (player) => player.teamId === 'spark',
-    ).length,
-  });
+  const roomSignal = reward.adaptiveMoments
+    ? detectLivingRoomSignal({
+        status: room.status,
+        roundType: round?.type ?? 'multiple_choice',
+        hasNextRound,
+        choiceCounts,
+        finalePassed,
+        signalScore,
+        sparkScore,
+        signalPlayers: playerRows.results.filter(
+          (player) => player.teamId === 'signal',
+        ).length,
+        sparkPlayers: playerRows.results.filter(
+          (player) => player.teamId === 'spark',
+        ).length,
+      })
+    : null;
 
   return json({
     code: room.roomCode,

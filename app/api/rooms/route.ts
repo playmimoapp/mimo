@@ -155,6 +155,7 @@ export async function POST(request: Request) {
     inviteTokenHash,
     collectiveTargetPercent: 60,
     custody: rewardCustody,
+    adaptiveMoments: body.adaptiveMoments !== false,
   });
 
   try {

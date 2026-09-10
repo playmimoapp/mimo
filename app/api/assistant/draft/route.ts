@@ -187,6 +187,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
         rewardMode: 'free',
         custodyMode: 'host_wallet',
         rewardAmount: '',
+        adaptiveMoments: true,
         rounds: draft.rounds.map((round) => ({
           id: crypto.randomUUID(),
           type: round.type,

@@ -91,6 +91,7 @@ const room = await request('/api/rooms', {
     community: 'Mimo QA',
     rewardMode: 'free',
     rewardAmount: '0',
+    adaptiveMoments: true,
     rounds: [
       {
         type: 'pulse',
@@ -454,6 +455,13 @@ assert(
 );
 
 await wait(5200);
+const heldFaceOff = await request(`/api/rooms/${room.code}`);
+assert(
+  heldFaceOff.status === 'verifying' &&
+    heldFaceOff.roomSignal?.kind === 'split_room',
+  'An approved split-room face-off must hold the reveal for live reactions.',
+);
+await wait(4200);
 const secondRound = await request(`/api/rooms/${room.code}`);
 assert(
   secondRound.status === 'live' && secondRound.roundIndex === 1,
@@ -696,6 +704,7 @@ console.log(
     privateAccess: true,
     walletProof: true,
     reactions: true,
+    livingRoomBranch: true,
     rewardPrepared: true,
     vaultFundingProof: true,
   }),

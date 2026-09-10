@@ -4,10 +4,12 @@ import nimiqCoreModule from '@/lib/nimiq-core.wasm';
 import {
   getParticipantBySession,
   getRoom,
+  getRoomConfig,
   hashToken,
   json,
   readJson,
 } from '@/lib/live-room';
+import { encryptVaultAddress, getVaultConfig } from '@/lib/reward-vault';
 
 function cleanHex(value: unknown, length: number) {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -40,8 +42,12 @@ export async function POST(
     body?.participantToken,
   );
   if (!participant) return json({ error: 'Your room session expired.' }, 401);
-  if (participant.walletHash) {
-    return json({ verified: true, alreadyVerified: true });
+  const changingWallet = Boolean(participant.walletHash);
+  if (changingWallet && room.status !== 'lobby') {
+    return json(
+      { error: 'This event wallet was locked when play began.' },
+      409,
+    );
   }
 
   const challengeId =
@@ -96,6 +102,22 @@ export async function POST(
       return json({ error: 'Nimiq Pay could not verify this wallet.' }, 403);
     }
 
+    const automaticPayout =
+      getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault';
+    const vault = automaticPayout ? await getVaultConfig() : null;
+    if (automaticPayout && !vault?.ready) {
+      return json(
+        {
+          error:
+            'Secure reward registration is temporarily unavailable. Nothing was linked.',
+        },
+        503,
+      );
+    }
+    const encryptedPayout = automaticPayout
+      ? await encryptVaultAddress(room.id, 'payout', derivedAccount)
+      : null;
+
     const consumed = await getD1()
       .prepare(
         `UPDATE event_audit SET action = 'wallet_challenge_used'
@@ -108,10 +130,21 @@ export async function POST(
     }
 
     const walletHash = await hashToken(derivedAccount);
+    const now = Date.now();
     await getD1().batch([
       getD1()
-        .prepare(`UPDATE participants SET wallet_hash = ? WHERE id = ?`)
-        .bind(walletHash, participant.id),
+        .prepare(`UPDATE participants SET wallet_hash = ?,
+          payout_address_ciphertext = ?, payout_address_iv = ?,
+          payout_address_hash = ?, payout_address_registered_at = ?
+          WHERE id = ?`)
+        .bind(
+          walletHash,
+          encryptedPayout?.ciphertext ?? null,
+          encryptedPayout?.iv ?? null,
+          encryptedPayout ? walletHash : null,
+          encryptedPayout ? now : null,
+          participant.id,
+        ),
       getD1()
         .prepare(
           `INSERT INTO event_audit
@@ -122,11 +155,19 @@ export async function POST(
           crypto.randomUUID(),
           room.id,
           walletHash,
-          JSON.stringify({ participantId: participant.id }),
-          Date.now(),
+          JSON.stringify({
+            participantId: participant.id,
+            payoutAddressRegistered: Boolean(encryptedPayout),
+            changedBeforeStart: changingWallet,
+          }),
+          now,
         ),
     ]);
-    return json({ verified: true });
+    return json({
+      verified: true,
+      payoutAddressRegistered: Boolean(encryptedPayout),
+      changedBeforeStart: changingWallet,
+    });
   } catch (error) {
     console.error('wallet_proof_failed', error);
     return json({ error: 'Nimiq Pay could not verify this wallet.' }, 403);

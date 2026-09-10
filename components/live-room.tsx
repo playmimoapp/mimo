@@ -454,9 +454,19 @@ export function LiveRoom({
         }),
       });
       if (!verifyResponse.ok) throw new Error(await getError(verifyResponse));
+      const verified = (await verifyResponse.json()) as {
+        payoutAddressRegistered?: boolean;
+        changedBeforeStart?: boolean;
+      };
       setWalletProof({
         status: 'verified',
-        detail: connection.maskedAccount,
+        detail: `${connection.maskedAccount}${
+          verified.changedBeforeStart
+            ? ' · changed safely before play'
+            : verified.payoutAddressRegistered
+              ? ' · ready for automatic rewards'
+              : ''
+        }`,
       });
       await refresh();
     } catch (cause) {
@@ -794,6 +804,9 @@ export function LiveRoom({
           {room.rewardMode === 'nim' && mode === 'player' && (
             <WalletProofCard
               verified={Boolean(me?.walletVerified)}
+              automaticPayout={room.rewardCustody === 'mimo_vault'}
+              payoutReady={Boolean(me?.payoutAddressRegistered)}
+              canChange={room.status === 'lobby'}
               state={walletProof}
               onVerify={() => void verifyWallet()}
             />
@@ -1136,10 +1149,16 @@ function CancelledState({ room }: { room: LiveRoomState }) {
 
 function WalletProofCard({
   verified,
+  automaticPayout,
+  payoutReady,
+  canChange,
   state,
   onVerify,
 }: {
   verified: boolean;
+  automaticPayout: boolean;
+  payoutReady: boolean;
+  canChange: boolean;
   state: WalletProofUi;
   onVerify: () => void;
 }) {
@@ -1158,14 +1177,18 @@ function WalletProofCard({
         <div>
           <strong className="block">
             {done
-              ? 'Wallet ownership confirmed'
+              ? payoutReady
+                ? 'Wallet confirmed for play and rewards'
+                : 'Wallet ownership confirmed'
               : 'Confirm your wallet for NIM rewards'}
           </strong>
           <p className="mt-1 text-sm leading-5 text-[#5b7082]">
             {done
-              ? `${state.detail ? `${state.detail} · ` : ''}Mimo stores a private code instead of your wallet address.`
+              ? `${state.detail ? `${state.detail} · ` : ''}${payoutReady ? 'Your payout address is encrypted and never shown in room data.' : 'Mimo stores a private fingerprint instead of showing your wallet address.'}`
               : state.detail ||
-                'Nimiq Pay will ask you to connect and sign. This sends no money.'}
+                (automaticPayout
+                  ? 'Sign once to join with this wallet and receive any NIM you earn. This sends no money.'
+                  : 'Nimiq Pay will ask you to connect and sign. This sends no money.')}
           </p>
         </div>
       </div>
@@ -1182,6 +1205,16 @@ function WalletProofCard({
               : state.status === 'cancelled'
                 ? 'Try again'
                 : 'Confirm wallet'}
+        </Button>
+      )}
+      {done && canChange && (
+        <Button
+          variant="outline"
+          onClick={onVerify}
+          disabled={working}
+          className="h-11 shrink-0 rounded-full border-[#9ab5a5] bg-white px-5 font-extrabold text-[#29445f]"
+        >
+          {working ? 'Switching…' : 'Change wallet'}
         </Button>
       )}
     </div>
@@ -2376,8 +2409,8 @@ function RewardSettlement({
             </h3>
             <p className="mt-2 text-sm leading-6 text-[#675e3e]">
               {room.rewardRule === 'community_unlock'
-                ? 'The room cleared its locked finale target. Mimo splits the pool equally and pays each eligible wallet as it is registered.'
-                : 'The result rules were locked before play. Mimo pays the verified winner automatically after their payout wallet is registered.'}
+                ? 'The room cleared its locked finale target. Mimo splits the pool equally and pays the wallets verified before play.'
+                : 'The result rules were locked before play. Mimo pays the verified winner automatically to the wallet confirmed when they joined.'}
             </p>
           </div>
         </div>
@@ -2396,7 +2429,7 @@ function RewardSettlement({
               ? 'Opening Nimiq Pay…'
               : state === 'approving'
                 ? 'Waiting for signature…'
-                : 'Register payout wallet'}
+                : 'Finish wallet setup'}
           </Button>
         ) : (
           <div className="mt-5 flex items-center gap-2 border-t border-[#dfcb83] pt-4 text-sm font-extrabold text-[#675e3e]">
@@ -2408,7 +2441,7 @@ function RewardSettlement({
                     (player) => player.payoutAddressRegistered,
                   ).length
                 }{' '}
-                of {eligiblePlayers.length} payout wallets registered
+                of {eligiblePlayers.length} verified payout wallets ready
               </>
             ) : winner.payoutAddressRegistered ? (
               <>

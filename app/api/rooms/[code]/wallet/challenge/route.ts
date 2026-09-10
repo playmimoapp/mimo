@@ -2,6 +2,7 @@ import { getD1 } from '@/db';
 import {
   getParticipantBySession,
   getRoom,
+  getRoomConfig,
   hashToken,
   json,
   makeToken,
@@ -21,8 +22,12 @@ export async function POST(
     body?.participantToken,
   );
   if (!participant) return json({ error: 'Your room session expired.' }, 401);
-  if (participant.walletHash) {
-    return json({ error: 'This player already has a verified wallet.' }, 409);
+  const changingWallet = Boolean(participant.walletHash);
+  if (changingWallet && room.status !== 'lobby') {
+    return json(
+      { error: 'This event wallet was locked when play began.' },
+      409,
+    );
   }
 
   const actorHash = await hashToken(participant.id);
@@ -42,12 +47,20 @@ export async function POST(
   const challengeId = crypto.randomUUID();
   const expiresAt = now + 5 * 60_000;
   const nonce = makeToken().slice(0, 32);
+  const automaticPayout =
+    getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault';
   const message = [
-    'Verify this Nimiq wallet for Mimo',
+    changingWallet
+      ? 'Change the verified Nimiq wallet for Mimo'
+      : 'Verify this Nimiq wallet for Mimo',
     `Room: ${room.roomCode}`,
     `Player: ${participant.nickname}`,
     `Nonce: ${nonce}`,
     `Expires: ${new Date(expiresAt).toISOString()}`,
+    automaticPayout
+      ? 'Purpose: Join this room and receive any NIM reward you earn at this address.'
+      : 'Purpose: Prove wallet control for this room.',
+    'This signature does not approve a payment or move NIM.',
   ].join('\n');
 
   await getD1()
@@ -60,7 +73,12 @@ export async function POST(
       challengeId,
       room.id,
       actorHash,
-      JSON.stringify({ message, expiresAt }),
+      JSON.stringify({
+        message,
+        expiresAt,
+        automaticPayout,
+        changingWallet,
+      }),
       now,
     )
     .run();

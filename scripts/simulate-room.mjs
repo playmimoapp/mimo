@@ -258,16 +258,23 @@ const vaultWalletChallenge = await request(
 const vaultWalletSignature = vaultWinnerKey.sign(
   new TextEncoder().encode(vaultWalletChallenge.message),
 );
-await request(`/api/rooms/${vaultRoom.code}/wallet/verify`, {
-  method: 'POST',
-  body: JSON.stringify({
-    participantToken: vaultWinner.participantToken,
-    challengeId: vaultWalletChallenge.challengeId,
-    account: vaultWinnerAddress,
-    publicKey: vaultWinnerKey.publicKey.toHex(),
-    signature: vaultWalletSignature.toHex(),
-  }),
-});
+const vaultWalletProof = await request(
+  `/api/rooms/${vaultRoom.code}/wallet/verify`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: vaultWinner.participantToken,
+      challengeId: vaultWalletChallenge.challengeId,
+      account: vaultWinnerAddress,
+      publicKey: vaultWinnerKey.publicKey.toHex(),
+      signature: vaultWalletSignature.toHex(),
+    }),
+  },
+);
+assert(
+  vaultWalletProof.payoutAddressRegistered === true,
+  'One wallet signature must privately register the automatic payout address.',
+);
 await request(`/api/rooms/${vaultRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'start', hostKey: vaultRoom.hostKey }),
@@ -287,33 +294,13 @@ await request(`/api/rooms/${vaultRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'finish', hostKey: vaultRoom.hostKey }),
 });
-const payoutChallenge = await request(
-  `/api/rooms/${vaultRoom.code}/payout/challenge`,
-  {
-    method: 'POST',
-    body: JSON.stringify({ participantToken: vaultWinner.participantToken }),
-  },
-);
-const payoutSignature = vaultWinnerKey.sign(
-  new TextEncoder().encode(payoutChallenge.message),
-);
 const enrolledPayout = await request(
-  `/api/rooms/${vaultRoom.code}/payout/enroll`,
-  {
-    method: 'POST',
-    body: JSON.stringify({
-      participantToken: vaultWinner.participantToken,
-      challengeId: payoutChallenge.challengeId,
-      account: vaultWinnerAddress,
-      publicKey: vaultWinnerKey.publicKey.toHex(),
-      signature: payoutSignature.toHex(),
-    }),
-  },
+  `/api/rooms/${vaultRoom.code}/reward/settlement`,
+  { method: 'POST', body: '{}' },
 );
 assert(
-  enrolledPayout.registered === true &&
-    enrolledPayout.settlement.state === 'submitted',
-  'A signed payout address must trigger an automatic testnet payout.',
+  enrolledPayout.state === 'submitted',
+  'The verified result must trigger an automatic testnet payout without a second signature.',
 );
 const confirmedPayout = await request(
   `/api/rooms/${vaultRoom.code}/reward/settlement`,
@@ -395,16 +382,23 @@ for (const nickname of ['Sol', 'Nova']) {
   const walletSignature = keyPair.sign(
     new TextEncoder().encode(walletChallenge.message),
   );
-  await request(`/api/rooms/${unlockRoom.code}/wallet/verify`, {
-    method: 'POST',
-    body: JSON.stringify({
-      participantToken: joined.participantToken,
-      challengeId: walletChallenge.challengeId,
-      account: keyPair.toAddress().toUserFriendlyAddress(),
-      publicKey: keyPair.publicKey.toHex(),
-      signature: walletSignature.toHex(),
-    }),
-  });
+  const walletProof = await request(
+    `/api/rooms/${unlockRoom.code}/wallet/verify`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        participantToken: joined.participantToken,
+        challengeId: walletChallenge.challengeId,
+        account: keyPair.toAddress().toUserFriendlyAddress(),
+        publicKey: keyPair.publicKey.toHex(),
+        signature: walletSignature.toHex(),
+      }),
+    },
+  );
+  assert(
+    walletProof.payoutAddressRegistered === true,
+    'Community Unlock players must be payout-ready after one signature.',
+  );
   unlockPlayers.push({ ...joined, keyPair });
 }
 const unverifiedUnlockPlayer = await request(
@@ -456,28 +450,14 @@ assert(
     unlocked.players.filter((player) => player.rewardEligible).length === 2,
   'Only verified finishers must become eligible after the shared target clears.',
 );
-for (const player of unlockPlayers) {
-  const challenge = await request(
-    `/api/rooms/${unlockRoom.code}/payout/challenge`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ participantToken: player.participantToken }),
-    },
-  );
-  const signature = player.keyPair.sign(
-    new TextEncoder().encode(challenge.message),
-  );
-  await request(`/api/rooms/${unlockRoom.code}/payout/enroll`, {
-    method: 'POST',
-    body: JSON.stringify({
-      participantToken: player.participantToken,
-      challengeId: challenge.challengeId,
-      account: player.keyPair.toAddress().toUserFriendlyAddress(),
-      publicKey: player.keyPair.publicKey.toHex(),
-      signature: signature.toHex(),
-    }),
-  });
-}
+const submittedUnlock = await request(
+  `/api/rooms/${unlockRoom.code}/reward/settlement`,
+  { method: 'POST', body: '{}' },
+);
+assert(
+  submittedUnlock.state === 'submitted' && submittedUnlock.submitted === 2,
+  'The cleared Community Unlock must submit both payouts without another signature.',
+);
 const unlockSettlement = await request(
   `/api/rooms/${unlockRoom.code}/reward/settlement`,
   { method: 'POST', body: '{}' },
@@ -828,6 +808,37 @@ const walletProof = await request(
   },
 );
 assert(walletProof.verified === true, 'The Nimiq wallet proof must verify.');
+const replacementKeyPair = KeyPair.generate();
+const replacementAccount = replacementKeyPair
+  .toAddress()
+  .toUserFriendlyAddress();
+const changeChallenge = await request(
+  `/api/rooms/${walletRoom.code}/wallet/challenge`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ participantToken: walletPlayer.participantToken }),
+  },
+);
+const changeSignature = replacementKeyPair.sign(
+  new TextEncoder().encode(changeChallenge.message),
+);
+const changedWallet = await request(
+  `/api/rooms/${walletRoom.code}/wallet/verify`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: walletPlayer.participantToken,
+      challengeId: changeChallenge.challengeId,
+      account: replacementAccount,
+      publicKey: replacementKeyPair.publicKey.toHex(),
+      signature: changeSignature.toHex(),
+    }),
+  },
+);
+assert(
+  changedWallet.changedBeforeStart === true,
+  'A participant must be able to replace a verified wallet before play.',
+);
 const walletLobby = await request(`/api/rooms/${walletRoom.code}`, {
   headers: { 'x-mimo-session': walletPlayer.participantToken },
 });
@@ -840,6 +851,18 @@ await request(`/api/rooms/${walletRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'start', hostKey: walletRoom.hostKey }),
 });
+const lockedWalletChange = await fetch(
+  `${base}/api/rooms/${walletRoom.code}/wallet/challenge`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ participantToken: walletPlayer.participantToken }),
+  },
+);
+assert(
+  lockedWalletChange.status === 409,
+  'The event wallet must not be changeable after play begins.',
+);
 await request(`/api/rooms/${walletRoom.code}/answer`, {
   method: 'POST',
   body: JSON.stringify({
@@ -862,7 +885,7 @@ const preparedPayout = await request(
     body: JSON.stringify({
       hostKey: walletRoom.hostKey,
       participantId: walletLobby.players[0].id,
-      payoutAddress: account,
+      payoutAddress: replacementAccount,
     }),
   },
 );
@@ -880,6 +903,8 @@ console.log(
     scoredPlayers: finale.players.filter((player) => player.score > 0).length,
     privateAccess: true,
     walletProof: true,
+    oneSignaturePayout: true,
+    safeWalletChange: true,
     reactions: true,
     livingRoomBranch: true,
     communityUnlock: true,

@@ -1807,6 +1807,7 @@ function ResultsState({
                 : 'Mimo takes this one.'
               : 'Round revealed.'}
       </h2>
+      {room.roomSignal && <LivingRoomMoment signal={room.roomSignal} />}
       {room.correctChoice !== null && (
         <p className="mt-4 text-lg text-[#526a7e]">
           Correct:{' '}
@@ -2027,6 +2028,63 @@ function ResultsState({
         </p>
       )}
     </div>
+  );
+}
+
+function LivingRoomMoment({
+  signal,
+}: {
+  signal: NonNullable<LiveRoomState['roomSignal']>;
+}) {
+  const content =
+    signal.kind === 'split_room'
+      ? {
+          label: 'Mimo spotted a split',
+          title: 'The room has two strong sides.',
+          detail: 'Back your take with a reaction before the next moment.',
+          tone: 'border-[#7aaee0] bg-[#eaf4ff] text-[#174f84]',
+          icon: <Users size={21} />,
+        }
+      : signal.kind === 'comeback_window'
+        ? {
+            label: 'Comeback pressure',
+            title: `Team ${signal.trailingTeam === 'signal' ? 'Signal' : 'Spark'} can still turn this.`,
+            detail: 'The next scored answer can change the room.',
+            tone: 'border-[#e0b752] bg-[#fff7d8] text-[#735800]',
+            icon: <Zap size={21} />,
+          }
+        : {
+            label: 'Shared target cleared',
+            title: 'The room did it together.',
+            detail:
+              'Mimo verified the collective result from every locked answer.',
+            tone: 'border-[#65ad80] bg-[#edf9f1] text-[#246c41]',
+            icon: <Trophy size={21} />,
+          };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      className={`mt-5 border-2 p-4 ${content.tone}`}
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 shrink-0">{content.icon}</span>
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[.14em]">
+            {content.label}
+          </p>
+          <p className="font-display mt-1 text-xl font-extrabold leading-6">
+            {content.title}
+          </p>
+          <p className="mt-1 text-sm font-bold leading-5 opacity-80">
+            {content.detail}
+          </p>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 

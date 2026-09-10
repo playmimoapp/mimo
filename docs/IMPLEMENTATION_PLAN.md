@@ -51,6 +51,16 @@ Mimo does not merely present a fixed question list. The server derives safe room
 - Every branch has a deterministic fallback so the show continues if AI is unavailable.
 - The first version should prove three signals exceptionally well: split room, comeback and collective unlock.
 
+## Signature Nimiq mechanic — Living Drops
+
+A funded NIM reward is not decoration and does not buy an advantage. The room earns it through one creator-selected rule that is published and locked before play:
+
+- **Skill Drop:** the top verified players receive the declared split.
+- **Team Drop:** verified members of the winning team share the pool.
+- **Community Unlock:** if the room clears a shared target, eligible verified finishers share the pool.
+
+Nimiq Pay handles wallet proof and explicit funding. Mimo verifies the live result, shows progress toward the rule and settles a genuinely pre-funded reward with public transaction evidence. Free rooms remain complete, fast and wallet-optional.
+
 ## Product rules
 
 - The first screen is an event or creator action, never a marketing hero or dashboard.
@@ -119,6 +129,7 @@ Mimo does not merely present a fixed question list. The server derives safe room
 ### P0 — prove the competition loop
 
 - [ ] Ship the first Living Room Engine signals: split-room face-off, comeback and collective unlock.
+- [ ] Add locked Skill Drop, Team Drop and Community Unlock rules with exact split arithmetic and payout eligibility previews.
 - [ ] Obtain a reliable TestAlbatross RPC/node, configure secrets safely and record genuine funding, payout and refund transaction hashes.
 - [ ] Test the complete flow inside Nimiq Pay on multiple physical phones, including cancellation, failure, backgrounding and reconnect.
 - [ ] Add transaction monitoring, idempotent retry visibility, partial-payout recovery and operator alerts.

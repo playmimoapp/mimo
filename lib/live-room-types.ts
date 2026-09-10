@@ -17,6 +17,9 @@ export type LiveReaction = {
   createdAt: number;
 };
 
+export type LiveRoomSignal =
+  import('@/lib/living-room-engine').LivingRoomSignal;
+
 export type LiveRoomState = {
   code: string;
   title: string;
@@ -64,6 +67,7 @@ export type LiveRoomState = {
   correctChoice: number | null;
   collectiveTargetPercent: number;
   finalePassed: boolean | null;
+  roomSignal: LiveRoomSignal | null;
   players: LivePlayer[];
   reactions: LiveReaction[];
 };

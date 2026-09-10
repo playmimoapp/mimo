@@ -7,6 +7,7 @@ import {
   reconcileRoom,
 } from '@/lib/live-room';
 import { getVaultConfig } from '@/lib/reward-vault';
+import { detectLivingRoomSignal } from '@/lib/living-room-engine';
 
 export async function GET(
   request: Request,
@@ -152,6 +153,28 @@ export async function GET(
       ? finaleCorrect >=
         Math.ceil(playerRows.results.length * (collectiveTargetPercent / 100))
       : null;
+  const signalScore = playerRows.results
+    .filter((player) => player.teamId === 'signal')
+    .reduce((total, player) => total + player.score, 0);
+  const sparkScore = playerRows.results
+    .filter((player) => player.teamId === 'spark')
+    .reduce((total, player) => total + player.score, 0);
+  const hasNextRound = roundIndex + 1 < roundCount;
+  const roomSignal = detectLivingRoomSignal({
+    status: room.status,
+    roundType: round?.type ?? 'multiple_choice',
+    hasNextRound,
+    choiceCounts,
+    finalePassed,
+    signalScore,
+    sparkScore,
+    signalPlayers: playerRows.results.filter(
+      (player) => player.teamId === 'signal',
+    ).length,
+    sparkPlayers: playerRows.results.filter(
+      (player) => player.teamId === 'spark',
+    ).length,
+  });
 
   return json({
     code: room.roomCode,
@@ -178,13 +201,14 @@ export async function GET(
     roundType: round?.type ?? 'multiple_choice',
     scored: config?.scored ?? round?.type !== 'pulse',
     scoringMode: config?.scoringMode ?? 'accuracy',
-    hasNextRound: roundIndex + 1 < roundCount,
+    hasNextRound,
     prompt: room.status === 'lobby' ? null : (round?.prompt ?? null),
     choices: room.status === 'lobby' ? [] : (config?.choices ?? []),
     choiceCounts: room.status === 'lobby' ? [] : choiceCounts,
     correctChoice: reveal ? (config?.correctChoice ?? null) : null,
     collectiveTargetPercent,
     finalePassed: reveal ? finalePassed : null,
+    roomSignal: reveal ? roomSignal : null,
     players: playerRows.results.map(
       ({ walletHash, payoutAddressRegisteredAt, ...player }) => ({
         ...player,

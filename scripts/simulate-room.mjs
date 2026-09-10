@@ -31,7 +31,8 @@ const fakeRpc = createServer(async (request, response) => {
   try {
     if (payload.method === 'getBlockNumber') data = fakeHead;
     else if (payload.method === 'getTransactionByHash') {
-      data = fakeChain.get(String(payload.params?.[0] ?? '').toLowerCase()) ?? null;
+      data =
+        fakeChain.get(String(payload.params?.[0] ?? '').toLowerCase()) ?? null;
     } else if (
       payload.method === 'pushTransaction' ||
       payload.method === 'sendRawTransaction'
@@ -43,14 +44,21 @@ const fakeRpc = createServer(async (request, response) => {
     }
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(
-      JSON.stringify({ jsonrpc: '2.0', result: { data, metadata: null }, id: payload.id ?? 1 }),
+      JSON.stringify({
+        jsonrpc: '2.0',
+        result: { data, metadata: null },
+        id: payload.id ?? 1,
+      }),
     );
   } catch (error) {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(
       JSON.stringify({
         jsonrpc: '2.0',
-        error: { code: -32000, message: error instanceof Error ? error.message : 'rpc_error' },
+        error: {
+          code: -32000,
+          message: error instanceof Error ? error.message : 'rpc_error',
+        },
         id: payload.id ?? 1,
       }),
     );
@@ -440,6 +448,10 @@ assert(
   pulse.reactions.some((reaction) => reaction.emoji === '🔥'),
   'A safe live reaction must reach the room.',
 );
+assert(
+  pulse.roomSignal?.kind === 'split_room',
+  'Mimo must recognise an evenly split live poll from server data.',
+);
 
 await wait(5200);
 const secondRound = await request(`/api/rooms/${room.code}`);
@@ -514,6 +526,10 @@ assert(
 assert(
   finale.collectiveTargetPercent === 60,
   'The final challenge must publish its collective target.',
+);
+assert(
+  finale.roomSignal?.kind === 'collective_clear',
+  'Mimo must recognise when the room clears its shared target.',
 );
 
 await wait(5200);

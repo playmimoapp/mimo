@@ -1,6 +1,7 @@
 import { getD1 } from '@/db';
 import { canViewRoom, getRoom, json } from '@/lib/live-room';
 import type { MimoHostCue } from '@/lib/live-room-types';
+import { detectLivingRoomSignal } from '@/lib/living-room-engine';
 import { getRuntimeVariable } from '@/lib/runtime-env';
 
 type RoomStatus = 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
@@ -19,6 +20,7 @@ type CueContext = {
   secondsLeft: number | null;
   hasNextRound: boolean;
   autoHost: boolean;
+  roomSignal: 'split_room' | 'comeback_window' | 'collective_clear' | null;
 };
 
 const cueSchema = {
@@ -77,9 +79,16 @@ function fallbackCue(context: CueContext): MimoHostCue {
   }
   if (context.status === 'verifying') {
     return {
-      line: context.hasNextRound
-        ? 'Result checked. The next moment is nearly here.'
-        : 'Final result checked. Let’s bring this home.',
+      line:
+        context.roomSignal === 'split_room'
+          ? 'That split is tight. The room has two strong sides.'
+          : context.roomSignal === 'comeback_window'
+            ? 'There’s a comeback opening. The next answer matters.'
+            : context.roomSignal === 'collective_clear'
+              ? 'You cleared the shared target together.'
+              : context.hasNextRound
+                ? 'Result checked. The next moment is nearly here.'
+                : 'Final result checked. Let’s bring this home.',
       mood: 'happy',
       source: 'fallback',
     };
@@ -122,16 +131,21 @@ export async function POST(
   }
 
   const db = getD1();
-  const [round, totals, nextRound] = await Promise.all([
+  const [round, totals, nextRound, answerRows] = await Promise.all([
     db
-      .prepare(`SELECT type, prompt FROM rounds WHERE id = ? LIMIT 1`)
+      .prepare(
+        `SELECT type, prompt, config_json AS configJson
+        FROM rounds WHERE id = ? LIMIT 1`,
+      )
       .bind(room.activeRoundId)
-      .first<{ type: string; prompt: string }>(),
+      .first<{ type: string; prompt: string; configJson: string }>(),
     db
       .prepare(`SELECT COUNT(*) AS players,
         SUM(CASE WHEN answer_locked = 1 THEN 1 ELSE 0 END) AS answered,
         SUM(CASE WHEN team_id = 'signal' THEN score ELSE 0 END) AS signalScore,
-        SUM(CASE WHEN team_id = 'spark' THEN score ELSE 0 END) AS sparkScore
+        SUM(CASE WHEN team_id = 'spark' THEN score ELSE 0 END) AS sparkScore,
+        SUM(CASE WHEN team_id = 'signal' THEN 1 ELSE 0 END) AS signalPlayers,
+        SUM(CASE WHEN team_id = 'spark' THEN 1 ELSE 0 END) AS sparkPlayers
         FROM participants WHERE event_id = ?`)
       .bind(room.id)
       .first<{
@@ -139,6 +153,8 @@ export async function POST(
         answered: number | null;
         signalScore: number | null;
         sparkScore: number | null;
+        signalPlayers: number | null;
+        sparkPlayers: number | null;
       }>(),
     db
       .prepare(`SELECT next.id FROM rounds current
@@ -147,6 +163,12 @@ export async function POST(
         WHERE current.id = ? LIMIT 1`)
       .bind(room.activeRoundId)
       .first<{ id: string }>(),
+    db
+      .prepare(
+        `SELECT answer_json AS answerJson FROM answers WHERE round_id = ?`,
+      )
+      .bind(room.activeRoundId)
+      .all<{ answerJson: string }>(),
   ]);
 
   const now = Date.now();
@@ -158,6 +180,56 @@ export async function POST(
         ),
       )
     : null;
+  let choices: string[] = [];
+  let correctChoice: number | null = null;
+  let collectiveTargetPercent = 60;
+  try {
+    const config = JSON.parse(round?.configJson ?? '{}') as {
+      choices?: unknown;
+      correctChoice?: unknown;
+      collectiveTargetPercent?: unknown;
+    };
+    choices = Array.isArray(config.choices) ? config.choices.map(String) : [];
+    correctChoice =
+      typeof config.correctChoice === 'number' ? config.correctChoice : null;
+    collectiveTargetPercent =
+      typeof config.collectiveTargetPercent === 'number'
+        ? config.collectiveTargetPercent
+        : 60;
+  } catch {
+    // A malformed old round produces no adaptive signal.
+  }
+  const choiceCounts = Array.from({ length: choices.length }, () => 0);
+  for (const answer of answerRows.results) {
+    try {
+      const choice = Number(
+        (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
+      );
+      if (Number.isInteger(choice) && choice >= 0 && choice < choices.length) {
+        choiceCounts[choice] += 1;
+      }
+    } catch {
+      // Ignore malformed historical answers.
+    }
+  }
+  const correctAnswers =
+    correctChoice === null ? 0 : (choiceCounts[correctChoice] ?? 0);
+  const finalePassed =
+    round?.type === 'finale'
+      ? correctAnswers >=
+        Math.ceil((totals?.players ?? 0) * (collectiveTargetPercent / 100))
+      : null;
+  const roomSignal = detectLivingRoomSignal({
+    status: room.status,
+    roundType: round?.type ?? 'unknown',
+    hasNextRound: Boolean(nextRound),
+    choiceCounts,
+    finalePassed,
+    signalScore: totals?.signalScore ?? 0,
+    sparkScore: totals?.sparkScore ?? 0,
+    signalPlayers: totals?.signalPlayers ?? 0,
+    sparkPlayers: totals?.sparkPlayers ?? 0,
+  });
   const cueContext: CueContext = {
     status: room.status,
     title: room.title,
@@ -172,6 +244,7 @@ export async function POST(
     secondsLeft,
     hasNextRound: Boolean(nextRound),
     autoHost: Boolean(room.autoHostEnabled),
+    roomSignal: roomSignal?.kind ?? null,
   };
   const key = cueKey(cueContext);
   const cached = await db

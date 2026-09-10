@@ -116,12 +116,14 @@ Nimiq Pay handles wallet proof and explicit funding. Mimo verifies the live resu
 - [x] Implement D1-backed community/event APIs and protected create/join/answer commands.
 - [x] Add authoritative room snapshots, server deadlines, reconnect tokens, and host session recovery.
 - [x] Add assisted and manual creation entrances that converge on one editable event.
+- [x] Add visual creator format selection for game nights, live votes, launches, onboarding and open-format rooms.
 - [x] Expand live rooms to a multi-round Pulse → Play → Finale sequence with cumulative scoring.
 - [x] Add public rooms and secure private invite rooms for communities.
 - [x] Add one-time Nimiq Pay wallet challenges and server-verified participant signatures.
 - [x] Connect the typed `@nimiq/mini-app-sdk` adapter to account access, signed identity and explicit NIM transaction requests.
 - [x] Add modular round editing, validation, preview, rehearsal and locked launch snapshots for the currently supported round types.
 - [x] Add creator-held payout preparation plus a fail-closed TestAlbatross vault foundation with encrypted payout enrollment, retry-safe automatic payout and automatic refund logic.
+- [x] Lock live-event cancellation after play begins and show the same room promise to hosts and participants.
 - [x] Add automated room checks for scoring, reconnect, private access, wallet proof, reactions and settlement state transitions. These checks are QA, not evidence of a real blockchain payment.
 
 ## Remaining work in build order

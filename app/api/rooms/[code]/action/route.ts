@@ -101,7 +101,7 @@ export async function POST(
     (action === 'extend' &&
       room.status === 'live' &&
       room.roundDurationSeconds < 90) ||
-    (action === 'cancel' && !['complete', 'cancelled'].includes(room.status)) ||
+    (action === 'cancel' && room.status === 'lobby') ||
     (action === 'pause_auto' &&
       Boolean(room.autoHostEnabled) &&
       !['complete', 'cancelled'].includes(room.status)) ||

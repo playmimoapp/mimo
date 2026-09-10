@@ -25,6 +25,18 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -945,16 +957,46 @@ export function LiveRoom({
               </button>
             </div>
           )}
-          {mode === 'host' &&
-            !['complete', 'cancelled'].includes(room.status) && (
-              <button
-                onClick={() => void hostAction('cancel')}
-                disabled={busy}
-                className="mx-auto mt-4 flex items-center gap-2 text-xs font-bold text-[#efaaa0] hover:text-white"
+          {mode === 'host' && room.status === 'lobby' && (
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <button
+                    disabled={busy}
+                    aria-label="Cancel this room before it starts"
+                    className="mx-auto mt-4 flex items-center gap-2 text-xs font-bold text-[#efaaa0] hover:text-white"
+                  />
+                }
               >
-                <XCircle size={14} /> Cancel room
-              </button>
-            )}
+                <XCircle size={14} /> Cancel before start
+              </AlertDialogTrigger>
+              <AlertDialogContent className="rounded-[24px] border-0 bg-white p-5 shadow-2xl">
+                <AlertDialogHeader>
+                  <AlertDialogMedia className="bg-[#fff0ec] text-[#b74d3d]">
+                    <XCircle />
+                  </AlertDialogMedia>
+                  <AlertDialogTitle className="font-display text-xl font-extrabold">
+                    Cancel this room?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="leading-6">
+                    The room has not started. Players will see that it was
+                    cancelled. Any confirmed vault funding will be returned to
+                    the wallet that funded it.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep room</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => void hostAction('cancel')}
+                    disabled={busy}
+                    className="bg-[#b84a3a] text-white hover:bg-[#9e3d30]"
+                  >
+                    Cancel and refund
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </aside>
       </div>
     </section>
@@ -1477,6 +1519,7 @@ function LobbyState({
           onRefresh={onRefresh}
         />
       )}
+      <EventPromise room={room} />
       {!isHost && currentPlayer && (
         <div
           className={`mt-4 flex items-center gap-3 border px-4 py-3 ${
@@ -1559,6 +1602,49 @@ function LobbyState({
         </p>
       )}
     </div>
+  );
+}
+
+function EventPromise({ room }: { room: LiveRoomState }) {
+  const vaultFunded =
+    room.rewardMode === 'nim' && room.rewardCustody === 'mimo_vault';
+  return (
+    <section className="mt-4 overflow-hidden rounded-[22px] border border-[#c9d5df] bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-[#dbe2e7] px-4 py-3">
+        <p className="flex items-center gap-2 font-display text-lg font-extrabold">
+          <ShieldCheck size={19} className="text-[#237044]" /> The room promise
+        </p>
+        <span className="rounded-full bg-[#edf8f1] px-3 py-1 text-xs font-extrabold uppercase tracking-[.1em] text-[#237044]">
+          Rules locked
+        </span>
+      </div>
+      <div className="grid gap-px bg-[#dbe2e7] sm:grid-cols-3">
+        <div className="bg-white px-4 py-3">
+          <strong className="text-sm">Before play</strong>
+          <p className="mt-1 text-sm leading-5 text-[#607486]">
+            The host may cancel. Confirmed vault funding returns to its funding
+            wallet.
+          </p>
+        </div>
+        <div className="bg-white px-4 py-3">
+          <strong className="text-sm">After start</strong>
+          <p className="mt-1 text-sm leading-5 text-[#607486]">
+            The host may pause, but cannot cancel, rewrite scoring or reduce the
+            reward.
+          </p>
+        </div>
+        <div className="bg-white px-4 py-3">
+          <strong className="text-sm">After results</strong>
+          <p className="mt-1 text-sm leading-5 text-[#607486]">
+            {vaultFunded
+              ? 'Locked eligibility triggers settlement. The host cannot replace the recipients.'
+              : room.rewardMode === 'nim'
+                ? 'This is a disclosed host promise, not vault-held NIM. The host still approves payment.'
+                : 'Scores and participation remain recorded as the final result.'}
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
 

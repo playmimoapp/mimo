@@ -1,6 +1,7 @@
 import { getRuntimeVariable } from '@/lib/runtime-env';
 
 type DraftRequest = {
+  eventKind?: unknown;
   community?: unknown;
   topic?: unknown;
   audience?: unknown;
@@ -125,22 +126,42 @@ export async function POST(request: Request) {
   )
     ? String(body?.difficulty)
     : 'balanced';
+  const eventKind = [
+    'game_night',
+    'community_vote',
+    'product_launch',
+    'onboarding',
+    'custom',
+  ].includes(String(body?.eventKind))
+    ? String(body?.eventKind)
+    : 'game_night';
 
   if (community.length < 2 || topic.length < 6) {
     return json({ error: 'Add a community and a clear topic.' }, 400);
   }
 
-  const instructions = `You are Mimo, a careful live community-game editor.
+  const formatInstruction =
+    eventKind === 'community_vote'
+      ? 'Create 3 to 5 neutral pulse polls. They have no correct answer and use null for correctChoice. Present choices fairly without steering voters.'
+      : eventKind === 'product_launch'
+        ? 'Create a launch show: begin with an audience pulse, use objective questions grounded in the supplied product information, and finish with one shared challenge.'
+        : eventKind === 'onboarding'
+          ? 'Create a newcomer-friendly learning show: begin with a welcoming pulse, use clear objective knowledge checks, and finish with one shared challenge.'
+          : eventKind === 'custom'
+            ? 'Follow the host brief closely. Use unscored pulse polls for opinions and objectively scored questions only when one answer is clearly correct.'
+            : 'Create a game night: start with one unscored pulse poll, follow with objectively scored skill questions, and end with one shared final challenge.';
+
+  const instructions = `You are Mimo, a careful live community-event editor.
 Create a short live show with 3 to 5 moments for an event host to review.
-Start with one unscored pulse poll, follow with objectively scored skill questions,
-and end with one final challenge. Every moment has two to four distinct choices. Pulse polls use
-null for correctChoice; scored moments must have exactly one correct answer.
+${formatInstruction}
+Every moment has two to four distinct choices. Pulse polls use null for correctChoice;
+scored moments must have exactly one correct answer.
 Never invent a claim from supplied source text. If no source is supplied, use only stable,
 widely established facts. Avoid trick wording, subjective judgment, politics, medical advice,
 financial advice, gambling, random reward rules and promotional claims. Keep the language
 warm, concise and suitable for a fast mobile game. Return only the requested JSON.`;
 
-  const input = `Community: ${community}\nAudience: ${audience}\nDifficulty: ${difficulty}\nBrief: ${topic}\n${
+  const input = `Format: ${eventKind}\nCommunity: ${community}\nAudience: ${audience}\nDifficulty: ${difficulty}\nBrief: ${topic}\n${
     source ? `Approved source text:\n${source}` : 'No source text was supplied.'
   }`;
 
@@ -181,6 +202,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
 
     return json({
       draft: {
+        eventKind,
         title: draft.title.trim().slice(0, 80),
         community,
         accessMode: 'public',

@@ -249,6 +249,7 @@ export function getRoomConfig(value: string | null) {
     inviteTokenHash: '',
     custody: 'host_wallet' as const,
     rewardRule: 'skill' as const,
+    eventKind: 'custom' as const,
     adaptiveMoments: false,
   };
   if (!value) return fallback;
@@ -274,6 +275,18 @@ export function getRoomConfig(value: string | null) {
         config.rewardRule === 'community_unlock'
           ? ('community_unlock' as const)
           : ('skill' as const),
+      eventKind: [
+        'game_night',
+        'community_vote',
+        'product_launch',
+        'onboarding',
+      ].includes(String(config.eventKind))
+        ? (config.eventKind as
+            | 'game_night'
+            | 'community_vote'
+            | 'product_launch'
+            | 'onboarding')
+        : ('custom' as const),
       adaptiveMoments: config.adaptiveMoments === true,
     };
   } catch {

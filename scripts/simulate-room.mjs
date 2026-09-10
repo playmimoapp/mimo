@@ -560,6 +560,18 @@ await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'start', hostKey: room.hostKey }),
 });
+const activeCancellation = await fetch(
+  `${base}/api/rooms/${room.code}/action`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'cancel', hostKey: room.hostKey }),
+  },
+);
+assert(
+  activeCancellation.status === 409,
+  'A host must not be able to cancel a room after play begins.',
+);
 await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'pause_auto', hostKey: room.hostKey }),
@@ -871,6 +883,7 @@ console.log(
     reactions: true,
     livingRoomBranch: true,
     communityUnlock: true,
+    fairCancellation: true,
     rewardPrepared: true,
     vaultFundingProof: true,
   }),

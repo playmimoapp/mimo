@@ -19,6 +19,15 @@ export async function POST(request: Request) {
     .trim()
     .slice(0, 60);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
+  const eventKind = [
+    'game_night',
+    'community_vote',
+    'product_launch',
+    'onboarding',
+    'custom',
+  ].includes(String(body.eventKind))
+    ? String(body.eventKind)
+    : 'custom';
   const rewardRule =
     body.rewardRule === 'community_unlock' ? 'community_unlock' : 'skill';
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
@@ -177,6 +186,7 @@ export async function POST(request: Request) {
     collectiveTargetPercent: 60,
     custody: rewardCustody,
     rewardRule,
+    eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,
   });
 

@@ -17,6 +17,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 ## What works today
 
 - Manual and Gemini-assisted event creation
+- Visual starting formats for game nights, live votes, launches, onboarding and custom rooms
 - Editable live polls, scored rounds and finales
 - Creator preview and private rehearsal
 - Public rooms and secure invite-only rooms
@@ -29,6 +30,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Creator-held NIM rewards with verified-winner payout preparation
 - Fail-closed TestAlbatross vault foundation with encrypted payout registration, automatic payout and refund logic
 - Funded Community Unlocks that split NIM exactly between verified finishers after a shared finale target is cleared
+- A visible locked room promise: creators can cancel before play, but cannot cancel or rewrite a room after it starts
 - Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
 - Mobile-first participant and host experiences
 

@@ -46,6 +46,12 @@ type RewardMode = 'free' | 'nim';
 type RewardCustody = 'host_wallet' | 'mimo_vault';
 type RewardRule = 'skill' | 'community_unlock';
 type RoundType = 'pulse' | 'multiple_choice' | 'finale';
+type EventKind =
+  | 'game_night'
+  | 'community_vote'
+  | 'product_launch'
+  | 'onboarding'
+  | 'custom';
 
 const CHOICE_TONES = [
   {
@@ -73,6 +79,44 @@ const HOME_LINES = [
   'One last question. Can the room beat me?',
 ] as const;
 
+const EVENT_FORMATS: ReadonlyArray<{
+  id: EventKind;
+  label: string;
+  description: string;
+  moments: string;
+}> = [
+  {
+    id: 'game_night',
+    label: 'Game night',
+    description: 'Teams, quick answers and a shared final challenge.',
+    moments: 'Pulse · Play · Finale',
+  },
+  {
+    id: 'community_vote',
+    label: 'Live vote',
+    description: 'Let the room choose and reveal the result together.',
+    moments: 'Questions · Reactions · Result',
+  },
+  {
+    id: 'product_launch',
+    label: 'Launch room',
+    description: 'Turn an announcement into an audience experience.',
+    moments: 'Reveal · Poll · Challenge',
+  },
+  {
+    id: 'onboarding',
+    label: 'Onboarding',
+    description: 'Help newcomers learn by doing it together.',
+    moments: 'Welcome · Learn · Prove',
+  },
+  {
+    id: 'custom',
+    label: 'Open format',
+    description: 'Combine only the live moments your community needs.',
+    moments: 'Your room · Your flow',
+  },
+];
+
 type RoundDraft = {
   id: string;
   type: RoundType;
@@ -85,6 +129,7 @@ type RoundDraft = {
 };
 
 type AssistantBrief = {
+  eventKind: EventKind;
   community: string;
   topic: string;
   audience: 'newcomers' | 'community' | 'experts';
@@ -93,6 +138,7 @@ type AssistantBrief = {
 };
 
 type EventDraft = {
+  eventKind: EventKind;
   title: string;
   community: string;
   accessMode: 'public' | 'private';
@@ -194,6 +240,7 @@ export function MimoApp() {
     network: 'MainAlbatross' | 'TestAlbatross' | null;
   }>({ mimoFundingAvailable: false, network: null });
   const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
+    eventKind: 'game_night',
     community: '',
     topic: '',
     audience: 'community',
@@ -201,6 +248,7 @@ export function MimoApp() {
     source: '',
   });
   const [event, setEvent] = useState<EventDraft>({
+    eventKind: 'game_night',
     title: '',
     community: '',
     accessMode: 'public',
@@ -502,6 +550,11 @@ export function MimoApp() {
           )}
           {screen === 'create_choice' && (
             <CreateChoice
+              selectedKind={event.eventKind}
+              selectKind={(eventKind) => {
+                setEvent({ ...event, eventKind });
+                setAssistantBrief({ ...assistantBrief, eventKind });
+              }}
               assisted={() => setScreen('create_assisted')}
               manual={() => setScreen('create')}
             />
@@ -696,10 +749,112 @@ function ProductHome({
   );
 }
 
+function EventFormatVisual({ kind }: { kind: EventKind }) {
+  if (kind === 'game_night') {
+    return (
+      <span className="relative block h-28 overflow-hidden bg-[#e9f4ff] p-4">
+        <span className="absolute inset-x-4 top-4 flex items-center justify-between text-[11px] font-extrabold uppercase tracking-[.08em] text-[#557087]">
+          <span>Signal</span>
+          <span>Spark</span>
+        </span>
+        <span className="absolute left-4 top-10 h-3 w-[58%] rounded-full bg-[#2d83dc]" />
+        <span className="absolute right-4 top-[60px] h-3 w-[42%] rounded-full bg-[#df725e]" />
+        <span className="absolute bottom-3 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full bg-[#203752] text-white shadow-lg">
+          <Gamepad2 size={17} />
+        </span>
+      </span>
+    );
+  }
+  if (kind === 'community_vote') {
+    return (
+      <span className="relative block h-28 overflow-hidden bg-[#fff7db] p-4">
+        <span className="flex h-full items-end justify-center gap-2">
+          {[48, 76, 34].map((height, index) => (
+            <motion.span
+              key={height}
+              initial={{ height: 10 }}
+              animate={{ height }}
+              className={`w-8 rounded-t-lg ${
+                index === 1 ? 'bg-[#e0ad12]' : 'bg-[#f0d979]'
+              }`}
+            />
+          ))}
+        </span>
+        <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-white text-[#9a7000] shadow-sm">
+          <CircleDot size={17} />
+        </span>
+      </span>
+    );
+  }
+  if (kind === 'product_launch') {
+    return (
+      <span className="relative block h-28 overflow-hidden bg-[#fff0ec] p-4">
+        <span className="absolute left-4 top-4 grid h-12 w-12 place-items-center rounded-2xl bg-[#d45f4b] text-white shadow-lg">
+          <Radio size={22} />
+        </span>
+        <span className="absolute left-20 right-4 top-5 h-3 rounded-full bg-white" />
+        <span className="absolute left-20 right-10 top-11 h-2 rounded-full bg-[#efb2a7]" />
+        <span className="absolute bottom-4 right-4 flex gap-1.5">
+          {['👏', '🔥', '💙'].map((reaction) => (
+            <span
+              key={reaction}
+              className="grid h-8 w-8 place-items-center rounded-full bg-white text-sm shadow-sm"
+            >
+              {reaction}
+            </span>
+          ))}
+        </span>
+      </span>
+    );
+  }
+  if (kind === 'onboarding') {
+    return (
+      <span className="relative block h-28 overflow-hidden bg-[#edf8f1] p-4">
+        <span className="absolute left-5 top-5 h-[74px] w-1 rounded-full bg-[#aed9be]" />
+        {[0, 1, 2].map((step) => (
+          <span
+            key={step}
+            className="absolute left-3.5 flex items-center gap-3"
+            style={{ top: 14 + step * 30 }}
+          >
+            <span
+              className={`grid h-7 w-7 place-items-center rounded-full text-xs font-black ${
+                step < 2
+                  ? 'bg-[#2d8a55] text-white'
+                  : 'border-2 border-[#2d8a55] bg-white text-[#2d8a55]'
+              }`}
+            >
+              {step + 1}
+            </span>
+            <span
+              className={`h-2 rounded-full ${step === 1 ? 'w-20 bg-[#72b88f]' : 'w-14 bg-[#bddfca]'}`}
+            />
+          </span>
+        ))}
+      </span>
+    );
+  }
+  return (
+    <span className="grid h-28 grid-cols-3 gap-2 bg-[#eef2f5] p-4">
+      <span className="rounded-xl bg-[#dcecff]" />
+      <span className="rounded-xl bg-[#ffe3dc]" />
+      <span className="rounded-xl bg-[#fff0ad]" />
+      <span className="col-span-2 rounded-xl bg-white" />
+      <span className="grid place-items-center rounded-xl bg-[#203752] text-white">
+        <Plus size={18} />
+      </span>
+    </span>
+  );
+}
+
 function CreateChoice({
+  selectedKind,
+  selectKind,
   assisted,
   manual,
 }: {
+  selectedKind: EventKind;
+  selectKind: (kind: EventKind) => void;
   assisted: () => void;
   manual: () => void;
 }) {
@@ -721,7 +876,52 @@ function CreateChoice({
         />
       </div>
 
-      <div className="create-choice-grid mt-7 grid gap-4 md:grid-cols-[1.08fr_.92fr]">
+      <div className="mt-7 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-extrabold tracking-[-.03em]">
+            Pick a starting format
+          </h2>
+          <p className="mt-1 text-sm font-medium text-[#607486]">
+            This shapes the room. You can still edit every moment.
+          </p>
+        </div>
+        <span className="hidden text-sm font-extrabold text-[#1f72d2] sm:block">
+          {EVENT_FORMATS.find((format) => format.id === selectedKind)?.label}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {EVENT_FORMATS.map((format) => (
+          <button
+            key={format.id}
+            type="button"
+            aria-pressed={selectedKind === format.id}
+            onClick={() => selectKind(format.id)}
+            className={`group overflow-hidden rounded-[22px] border-2 bg-white text-left transition hover:-translate-y-0.5 ${
+              selectedKind === format.id
+                ? 'border-[#1f72d2] ring-4 ring-[#1f72d2]/10'
+                : 'border-[#ccd5db] hover:border-[#8ba9c3]'
+            }`}
+          >
+            <EventFormatVisual kind={format.id} />
+            <span className="block px-4 pb-4 pt-3">
+              <strong className="font-display block text-lg font-extrabold">
+                {format.label}
+              </strong>
+              <span className="mt-1 block text-sm leading-5 text-[#607486]">
+                {format.description}
+              </span>
+              <span className="mt-2 block text-xs font-extrabold uppercase tracking-[.08em] text-[#1f72d2]">
+                {format.moments}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <h2 className="font-display mt-8 text-2xl font-extrabold tracking-[-.03em]">
+        How should we build it?
+      </h2>
+      <div className="create-choice-grid mt-4 grid gap-4 md:grid-cols-[1.08fr_.92fr]">
         <motion.button
           whileTap={{ scale: 0.99 }}
           onClick={assisted}

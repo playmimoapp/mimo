@@ -1,10 +1,6 @@
 import { getD1 } from '@/db';
 import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
-import {
-  fundingMemo,
-  getVaultConfig,
-  verifyFundingTransaction,
-} from '@/lib/reward-vault';
+import { getVaultConfig } from '@/lib/reward-vault';
 
 export async function POST(
   request: Request,
@@ -15,14 +11,14 @@ export async function POST(
   if (!room) return json({ error: 'That room does not exist.' }, 404);
   const body = await readJson(request);
   const hostKey = typeof body?.hostKey === 'string' ? body.hostKey : '';
-  const serialized =
-    typeof body?.serializedTransaction === 'string'
-      ? body.serializedTransaction
+  const transactionHash =
+    typeof body?.transactionHash === 'string'
+      ? body.transactionHash.trim().toLowerCase()
       : '';
   if (!hostKey || (await hashToken(hostKey)) !== room.hostKeyHash) {
     return json({ error: 'Host access was rejected.' }, 403);
   }
-  if (!serialized) {
+  if (!/^[0-9a-f]{64}$/.test(transactionHash)) {
     return json({ error: 'The funding proof is incomplete.' }, 400);
   }
   if (room.status !== 'lobby') {
@@ -30,7 +26,8 @@ export async function POST(
   }
 
   const vault = await getVaultConfig();
-  if (!vault) return json({ error: 'The Mimo vault is unavailable.' }, 503);
+  if (!vault?.ready)
+    return json({ error: 'The Mimo vault is unavailable.' }, 503);
   const db = getD1();
   const reward = await db
     .prepare(`SELECT id, state, amount_luna AS amountLuna, funding_tx_hash AS fundingTxHash
@@ -45,13 +42,7 @@ export async function POST(
   if (!reward) return json({ error: 'This room has no NIM reward.' }, 404);
 
   try {
-    const proof = await verifyFundingTransaction(serialized, {
-      address: vault.address,
-      amountLuna: reward.amountLuna,
-      memo: fundingMemo(room.roomCode),
-      networkId: vault.networkId,
-    });
-    if (reward.fundingTxHash && reward.fundingTxHash !== proof.txHash) {
+    if (reward.fundingTxHash && reward.fundingTxHash !== transactionHash) {
       return json(
         { error: 'A different funding transaction is already being checked.' },
         409,
@@ -62,7 +53,7 @@ export async function POST(
       db
         .prepare(`UPDATE rewards SET state = 'funding_submitted',
           funding_tx_hash = ?, updated_at = ? WHERE id = ?`)
-        .bind(proof.txHash, now, reward.id),
+        .bind(transactionHash, now, reward.id),
       db
         .prepare(`INSERT INTO event_audit
           (id, event_id, actor_hash, action, payload_json, created_at)
@@ -72,8 +63,7 @@ export async function POST(
           room.id,
           `host:${room.hostKeyHash.slice(0, 24)}`,
           JSON.stringify({
-            txHash: proof.txHash,
-            sender: proof.sender,
+            txHash: transactionHash,
             network: vault.network,
           }),
           now,
@@ -81,7 +71,7 @@ export async function POST(
     ]);
     return json({
       state: 'funding_submitted',
-      txHash: proof.txHash,
+      txHash: transactionHash,
       network: vault.network,
     });
   } catch (error) {
@@ -89,7 +79,7 @@ export async function POST(
     return json(
       {
         error:
-          'That transaction does not match this room’s vault, amount and reference.',
+          'That transaction hash could not be saved for network verification.',
       },
       403,
     );

@@ -1,3 +1,5 @@
+import { getRuntimeVariable } from '@/lib/runtime-env';
+
 type DraftRequest = {
   community?: unknown;
   topic?: unknown;
@@ -98,7 +100,7 @@ function validDraft(value: unknown): value is GeneratedDraft {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getRuntimeVariable('GEMINI_API_KEY');
   if (!apiKey) {
     return json(
       {
@@ -152,7 +154,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+          model: getRuntimeVariable('GEMINI_MODEL') || 'gemini-3.7-flash',
           input: `${instructions}\n\n${input}`,
           response_format: {
             type: 'text',

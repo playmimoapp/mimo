@@ -22,7 +22,7 @@ export async function POST(
   }
 
   const vault = await getVaultConfig();
-  if (!vault) {
+  if (!vault?.ready) {
     return json({ error: 'The Mimo reward vault is not configured.' }, 503);
   }
   const db = getD1();

@@ -1,6 +1,63 @@
-import { Address, KeyPair, TransactionBuilder } from '@nimiq/core';
+import { Address, KeyPair, Transaction, TransactionBuilder } from '@nimiq/core';
+import { createServer } from 'node:http';
 
 const base = (process.argv[2] || 'http://127.0.0.1:8787').replace(/\/$/, '');
+const fakeChain = new Map();
+const fakeHead = 900_000;
+
+function transactionRecord(transaction) {
+  return {
+    hash: transaction.hash(),
+    blockNumber: fakeHead - 1,
+    executionResult: true,
+    from: transaction.sender.toUserFriendlyAddress(),
+    to: transaction.recipient.toUserFriendlyAddress(),
+    value: transaction.value.toString(),
+    recipientData: Buffer.from(transaction.data).toString('hex'),
+    networkId: transaction.networkId,
+  };
+}
+
+const fakeRpc = createServer(async (request, response) => {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  let payload = {};
+  try {
+    payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    // Invalid requests receive a JSON-RPC error below.
+  }
+  let data = null;
+  try {
+    if (payload.method === 'getBlockNumber') data = fakeHead;
+    else if (payload.method === 'getTransactionByHash') {
+      data = fakeChain.get(String(payload.params?.[0] ?? '').toLowerCase()) ?? null;
+    } else if (
+      payload.method === 'pushTransaction' ||
+      payload.method === 'sendRawTransaction'
+    ) {
+      const transaction = Transaction.fromAny(payload.params?.[0]);
+      const record = transactionRecord(transaction);
+      fakeChain.set(record.hash.toLowerCase(), record);
+      data = record.hash;
+    }
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({ jsonrpc: '2.0', result: { data, metadata: null }, id: payload.id ?? 1 }),
+    );
+  } catch (error) {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: error instanceof Error ? error.message : 'rpc_error' },
+        id: payload.id ?? 1,
+      }),
+    );
+  }
+});
+await new Promise((resolve) => fakeRpc.listen(9393, '127.0.0.1', resolve));
+fakeRpc.unref();
 
 async function request(path, options = {}) {
   const response = await fetch(`${base}${path}`, {
@@ -145,32 +202,184 @@ const fundingProof = await request(
     method: 'POST',
     body: JSON.stringify({
       hostKey: vaultRoom.hostKey,
-      serializedTransaction: fundingTransaction.toHex(),
+      transactionHash: fundingTransaction.hash(),
     }),
   },
+);
+fakeChain.set(
+  fundingTransaction.hash().toLowerCase(),
+  transactionRecord(fundingTransaction),
 );
 assert(
   fundingProof.state === 'funding_submitted',
   'A valid signed vault payment must wait for chain confirmation.',
 );
-const vaultLobby = await request(`/api/rooms/${vaultRoom.code}`);
-assert(
-  vaultLobby.rewardState === 'funding_submitted' &&
-    vaultLobby.rewardCustody === 'mimo_vault' &&
-    Boolean(vaultLobby.fundingTxHash),
-  'The room must expose an honest pending funding state and proof hash.',
-);
-const unfundedStart = await fetch(
-  `${base}/api/rooms/${vaultRoom.code}/action`,
+const fundingConfirmation = await request(
+  `/api/rooms/${vaultRoom.code}/reward/funding/status`,
   {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'start', hostKey: vaultRoom.hostKey }),
+    body: JSON.stringify({ hostKey: vaultRoom.hostKey }),
   },
 );
 assert(
-  unfundedStart.status === 409,
-  'A vault-backed event must not start before on-chain confirmation.',
+  fundingConfirmation.state === 'funded',
+  'A matching on-chain vault payment must unlock the room.',
+);
+const vaultLobby = await request(`/api/rooms/${vaultRoom.code}`);
+assert(
+  vaultLobby.rewardState === 'funded' &&
+    vaultLobby.rewardCustody === 'mimo_vault' &&
+    Boolean(vaultLobby.fundingTxHash),
+  'The room must expose confirmed funding and its proof hash.',
+);
+
+const vaultWinner = await request(`/api/rooms/${vaultRoom.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({ nickname: `Vault-${vaultRoom.code.slice(0, 2)}` }),
+});
+const vaultWinnerKey = KeyPair.generate();
+const vaultWinnerAddress = vaultWinnerKey.toAddress().toUserFriendlyAddress();
+const vaultWalletChallenge = await request(
+  `/api/rooms/${vaultRoom.code}/wallet/challenge`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ participantToken: vaultWinner.participantToken }),
+  },
+);
+const vaultWalletSignature = vaultWinnerKey.sign(
+  new TextEncoder().encode(vaultWalletChallenge.message),
+);
+await request(`/api/rooms/${vaultRoom.code}/wallet/verify`, {
+  method: 'POST',
+  body: JSON.stringify({
+    participantToken: vaultWinner.participantToken,
+    challengeId: vaultWalletChallenge.challengeId,
+    account: vaultWinnerAddress,
+    publicKey: vaultWinnerKey.publicKey.toHex(),
+    signature: vaultWalletSignature.toHex(),
+  }),
+});
+await request(`/api/rooms/${vaultRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'start', hostKey: vaultRoom.hostKey }),
+});
+await request(`/api/rooms/${vaultRoom.code}/answer`, {
+  method: 'POST',
+  body: JSON.stringify({
+    participantToken: vaultWinner.participantToken,
+    choice: 0,
+  }),
+});
+await request(`/api/rooms/${vaultRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: vaultRoom.hostKey }),
+});
+await request(`/api/rooms/${vaultRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'finish', hostKey: vaultRoom.hostKey }),
+});
+const payoutChallenge = await request(
+  `/api/rooms/${vaultRoom.code}/payout/challenge`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ participantToken: vaultWinner.participantToken }),
+  },
+);
+const payoutSignature = vaultWinnerKey.sign(
+  new TextEncoder().encode(payoutChallenge.message),
+);
+const enrolledPayout = await request(
+  `/api/rooms/${vaultRoom.code}/payout/enroll`,
+  {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: vaultWinner.participantToken,
+      challengeId: payoutChallenge.challengeId,
+      account: vaultWinnerAddress,
+      publicKey: vaultWinnerKey.publicKey.toHex(),
+      signature: payoutSignature.toHex(),
+    }),
+  },
+);
+assert(
+  enrolledPayout.registered === true &&
+    enrolledPayout.settlement.state === 'submitted',
+  'A signed payout address must trigger an automatic testnet payout.',
+);
+const confirmedPayout = await request(
+  `/api/rooms/${vaultRoom.code}/reward/settlement`,
+  { method: 'POST', body: '{}' },
+);
+assert(
+  confirmedPayout.state === 'confirmed',
+  'The automatic payout must reach a confirmed state without host approval.',
+);
+
+const refundRoom = await request('/api/rooms', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: 'Mimo refund simulation',
+    community: 'Mimo QA',
+    rewardMode: 'nim',
+    rewardAmount: '12',
+    rounds: [
+      {
+        type: 'multiple_choice',
+        question: 'Where should cancelled funded NIM return?',
+        choices: ['The funding wallet', 'An unknown wallet'],
+        correctChoice: 0,
+      },
+    ],
+  }),
+});
+const refundFunding = await request(
+  `/api/rooms/${refundRoom.code}/reward/funding/prepare`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ hostKey: refundRoom.hostKey }),
+  },
+);
+const refundSender = KeyPair.generate();
+const refundFundingTransaction = TransactionBuilder.newBasicWithData(
+  refundSender.toAddress(),
+  Address.fromUserFriendlyAddress(refundFunding.recipient),
+  new TextEncoder().encode(refundFunding.memo),
+  BigInt(refundFunding.amountLuna),
+  0n,
+  1,
+  5,
+);
+refundFundingTransaction.sign(refundSender, undefined);
+fakeChain.set(
+  refundFundingTransaction.hash().toLowerCase(),
+  transactionRecord(refundFundingTransaction),
+);
+await request(`/api/rooms/${refundRoom.code}/reward/funding/submit`, {
+  method: 'POST',
+  body: JSON.stringify({
+    hostKey: refundRoom.hostKey,
+    transactionHash: refundFundingTransaction.hash(),
+  }),
+});
+await request(`/api/rooms/${refundRoom.code}/reward/funding/status`, {
+  method: 'POST',
+  body: JSON.stringify({ hostKey: refundRoom.hostKey }),
+});
+const cancelledReward = await request(`/api/rooms/${refundRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'cancel', hostKey: refundRoom.hostKey }),
+});
+assert(
+  cancelledReward.settlement.state === 'submitted',
+  'Cancelling a funded room must submit a refund automatically.',
+);
+const confirmedRefund = await request(
+  `/api/rooms/${refundRoom.code}/reward/settlement`,
+  { method: 'POST', body: '{}' },
+);
+assert(
+  confirmedRefund.state === 'confirmed',
+  'The automatic refund must reach a confirmed state.',
 );
 
 await request(`/api/rooms/${room.code}/action`, {

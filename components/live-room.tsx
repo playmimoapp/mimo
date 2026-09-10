@@ -846,6 +846,7 @@ export function LiveRoom({
                   hostKey={hostKey}
                   nimiq={nimiq}
                   currentPlayerId={me?.id}
+                  participantToken={participantToken}
                 />
               )}
               {room.status === 'cancelled' && <CancelledState room={room} />}
@@ -1073,9 +1074,20 @@ function CancelledState({ room }: { room: LiveRoomState }) {
       </h2>
       <p className="mx-auto mt-3 max-w-md text-[#607486]">
         {vaultHadFunding
-          ? 'No payout was created. The funded NIM remains in Mimo’s vault.'
+          ? room.refundState === 'confirmed'
+            ? 'The Nimiq network confirmed the automatic refund to the funding wallet.'
+            : room.refundState === 'submitted'
+              ? 'Mimo sent the refund back to the funding wallet. Network confirmation is pending.'
+              : room.refundState === 'prepared'
+                ? 'Mimo prepared the refund and will retry the same transaction safely.'
+                : 'Mimo will return the funded NIM automatically after the network confirms the original funding payment.'
           : 'Mimo did not request or move any NIM. Any open wallet prompt can be safely closed.'}
       </p>
+      {room.refundTxHash && (
+        <p className="mt-3 font-mono text-xs font-bold text-[#607486]">
+          Refund proof {room.refundTxHash.slice(0, 14)}…
+        </p>
+      )}
     </div>
   );
 }
@@ -1219,7 +1231,7 @@ function RewardFundingPanel({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             hostKey,
-            serializedTransaction: payment.serializedTransaction,
+            transactionHash: payment.transactionHash,
           }),
         },
       );
@@ -1733,6 +1745,7 @@ function ResultsState({
   hostKey,
   nimiq,
   currentPlayerId,
+  participantToken,
 }: {
   room: LiveRoomState;
   leaderboard: LiveRoomState['players'];
@@ -1745,6 +1758,7 @@ function ResultsState({
   hostKey?: string;
   nimiq: MimoNimiq;
   currentPlayerId?: string;
+  participantToken?: string;
 }) {
   const finaleCorrect =
     room.roundType === 'finale' && room.correctChoice !== null
@@ -1970,6 +1984,7 @@ function ResultsState({
             hostKey={hostKey}
             nimiq={nimiq}
             currentPlayerId={currentPlayerId}
+            participantToken={participantToken}
           />
         )}
       {role === 'host' &&
@@ -2022,6 +2037,7 @@ function RewardSettlement({
   hostKey,
   nimiq,
   currentPlayerId,
+  participantToken,
 }: {
   room: LiveRoomState;
   winner: LiveRoomState['players'][number];
@@ -2029,6 +2045,7 @@ function RewardSettlement({
   hostKey?: string;
   nimiq: MimoNimiq;
   currentPlayerId?: string;
+  participantToken?: string;
 }) {
   const [address, setAddress] = useState('');
   const [state, setState] = useState<
@@ -2049,6 +2066,133 @@ function RewardSettlement({
   const isWinner =
     role === 'player' && currentPlayerId === winner.id && winner.walletVerified;
 
+  useEffect(() => {
+    if (
+      room.rewardCustody !== 'mimo_vault' ||
+      !['payout_submitted', 'results_under_verification'].includes(
+        room.rewardState,
+      )
+    ) {
+      return;
+    }
+    const check = async () => {
+      try {
+        const response = await fetch(
+          `/api/rooms/${room.code}/reward/settlement`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          },
+        );
+        if (!response.ok) return;
+        const result = (await response.json()) as {
+          state?: string;
+          txHash?: string;
+        };
+        if (result.state === 'confirmed') {
+          setState('submitted');
+          setDetail(
+            `Paid on Nimiq · proof ${result.txHash?.slice(0, 10) ?? ''}…`,
+          );
+        } else if (result.state === 'submitted') {
+          setState('submitted');
+          setDetail(
+            `Payout sent · proof ${result.txHash?.slice(0, 10) ?? ''}… Waiting for the network.`,
+          );
+        } else if (result.state === 'retrying') {
+          setState('checking');
+          setDetail('The network is busy. Mimo is retrying the same payout.');
+        }
+      } catch {
+        // The room poll keeps the visible state honest and retries later.
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 5000);
+    return () => window.clearInterval(timer);
+  }, [room.code, room.rewardCustody, room.rewardState]);
+
+  const registerPayoutWallet = async () => {
+    if (!participantToken || !isWinner) return;
+    setState('connecting');
+    setDetail('Opening the same wallet you confirmed for this room…');
+    try {
+      const connection = await nimiq.connect();
+      if (connection.status !== 'ready') {
+        setState(connection.status === 'cancelled' ? 'cancelled' : 'failed');
+        setDetail(
+          connection.status === 'cancelled'
+            ? 'Registration cancelled. No money moved.'
+            : 'Open this room inside Nimiq Pay to register your payout wallet.',
+        );
+        return;
+      }
+      const challengeResponse = await fetch(
+        `/api/rooms/${room.code}/payout/challenge`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantToken }),
+        },
+      );
+      if (!challengeResponse.ok) {
+        throw new Error(await getError(challengeResponse));
+      }
+      const challenge = (await challengeResponse.json()) as {
+        challengeId: string;
+        message: string;
+      };
+      setState('approving');
+      setDetail(
+        'Approve the signature. It registers an address and moves no NIM.',
+      );
+      const signed = await nimiq.signChallenge(challenge.message);
+      if ('status' in signed) {
+        setState(signed.status === 'cancelled' ? 'cancelled' : 'failed');
+        setDetail(
+          signed.status === 'cancelled'
+            ? 'Registration cancelled. No money moved.'
+            : 'The payout wallet was not registered.',
+        );
+        return;
+      }
+      const enrollResponse = await fetch(
+        `/api/rooms/${room.code}/payout/enroll`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            participantToken,
+            challengeId: challenge.challengeId,
+            account: connection.account,
+            publicKey: signed.publicKey,
+            signature: signed.signature,
+          }),
+        },
+      );
+      if (!enrollResponse.ok) throw new Error(await getError(enrollResponse));
+      const enrolled = (await enrollResponse.json()) as {
+        settlement?: { state?: string; txHash?: string };
+      };
+      setState(
+        enrolled.settlement?.state === 'submitted' ? 'submitted' : 'checking',
+      );
+      setDetail(
+        enrolled.settlement?.state === 'submitted'
+          ? `Payout sent · proof ${enrolled.settlement.txHash?.slice(0, 10) ?? ''}…`
+          : 'Payout wallet secured. Mimo is preparing the testnet payment.',
+      );
+    } catch (cause) {
+      setState('failed');
+      setDetail(
+        cause instanceof Error
+          ? cause.message
+          : 'The payout wallet could not be registered.',
+      );
+    }
+  };
+
   if (room.rewardCustody === 'mimo_vault') {
     return (
       <section className="mt-7 overflow-hidden rounded-[26px] border border-[#e1c25d] bg-[#fff8d9] p-5 sm:p-6">
@@ -2064,8 +2208,8 @@ function RewardSettlement({
               {room.rewardAmount} NIM for {winner.nickname}
             </h3>
             <p className="mt-2 text-sm leading-6 text-[#675e3e]">
-              The event funding is confirmed. Mimo is checking the locked result
-              rules before creating the payout transaction.
+              The result rules were locked before play. Mimo pays the verified
+              winner automatically after their payout wallet is registered.
             </p>
           </div>
         </div>
@@ -2073,6 +2217,39 @@ function RewardSettlement({
           <p className="mt-4 border-t border-[#dfcb83] pt-4 font-mono text-xs font-bold text-[#675e3e]">
             Funding proof {room.fundingTxHash.slice(0, 14)}…
           </p>
+        )}
+        {isWinner && !winner.payoutAddressRegistered ? (
+          <Button
+            onClick={() => void registerPayoutWallet()}
+            disabled={['connecting', 'approving', 'checking'].includes(state)}
+            className="mobile-primary mt-5 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
+          >
+            {state === 'connecting'
+              ? 'Opening Nimiq Pay…'
+              : state === 'approving'
+                ? 'Waiting for signature…'
+                : 'Register payout wallet'}
+          </Button>
+        ) : (
+          <div className="mt-5 flex items-center gap-2 border-t border-[#dfcb83] pt-4 text-sm font-extrabold text-[#675e3e]">
+            {winner.payoutAddressRegistered ? (
+              <>
+                <ShieldCheck size={17} /> Payout wallet registered privately
+              </>
+            ) : (
+              <>
+                <Clock3 size={17} /> Waiting for {winner.nickname} to register a
+                payout wallet
+              </>
+            )}
+          </div>
+        )}
+        {detail && (
+          <output
+            className={`mt-3 block text-sm font-bold ${state === 'failed' ? 'text-[#a13f31]' : 'text-[#675e3e]'}`}
+          >
+            {detail}
+          </output>
         )}
       </section>
     );
@@ -2158,7 +2335,7 @@ function RewardSettlement({
           body: JSON.stringify({
             hostKey,
             participantId: winner.id,
-            serializedTransaction: payment.serializedTransaction,
+            transactionHash: payment.transactionHash,
           }),
         },
       );

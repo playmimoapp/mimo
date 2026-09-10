@@ -27,10 +27,11 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Server-side Nimiq signature and address verification
 - Replay protection and one verified wallet per event
 - Creator-held NIM rewards with verified-winner payout preparation
+- Fail-closed TestAlbatross vault foundation with encrypted payout registration, automatic payout and refund logic
 - Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
 - Mobile-first participant and host experiences
 
-Mimo does not claim that proposed rewards are escrowed or funded. The creator keeps custody and explicitly approves a payout in Nimiq Pay.
+Mimo does not claim that proposed rewards are escrowed or funded. Creator-held rewards remain a clearly labelled promise and require wallet approval. Automatic settlement stays unavailable unless a real TestAlbatross vault, RPC and encryption key are configured.
 
 ## Nimiq Pay flow
 
@@ -39,7 +40,8 @@ Mimo does not claim that proposed rewards are escrowed or funded. The creator ke
 3. Nimiq Pay signs the challenge without moving money.
 4. The server verifies the signature and matching Nimiq address.
 5. Mimo stores a one-way wallet fingerprint rather than exposing the address in room data.
-6. For a declared NIM reward, the host must provide the winner's address. The server checks it against the verified fingerprint before Nimiq Pay can prepare the exact payout.
+6. For a creator-held NIM reward, the host provides the winner's address. The server checks it against the verified fingerprint before Nimiq Pay can prepare the exact payout.
+7. For a genuinely pre-funded Mimo vault event, an eligible winner signs a separate one-time payout-address challenge. The address is encrypted and the locked event rules trigger settlement without a second host decision.
 
 This is lightweight Sybil resistance, not a promise of perfect personhood. It prevents duplicate use of one verified wallet in an event and blocks copied or replayed proofs while keeping ordinary participation fast.
 
@@ -82,7 +84,7 @@ npm run build
 npm run test:room -- http://localhost:3000
 ```
 
-The room simulation creates multiple participants and verifies the full round sequence, scoring, private access, reactions, wallet proof and reward preparation. Native Nimiq Pay dialogs must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
+The automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. It is QA—not proof of a blockchain payment. Native Nimiq Pay dialogs and real TestAlbatross transactions must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
 
 ## Product direction
 

@@ -6,6 +6,7 @@ export type LivePlayer = {
   score: number;
   answerLocked: boolean;
   walletVerified: boolean;
+  payoutAddressRegistered: boolean;
 };
 
 export type LiveReaction = {
@@ -44,6 +45,8 @@ export type LiveRoomState = {
   vaultAddress: string | null;
   vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
   payoutTxHash: string | null;
+  refundState: 'prepared' | 'submitted' | 'confirmed' | null;
+  refundTxHash: string | null;
   accessMode: 'public' | 'private';
   autoHostEnabled: boolean;
   serverNow: number;

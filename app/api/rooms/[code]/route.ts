@@ -55,7 +55,8 @@ export async function GET(
       .first<{ total: number }>(),
     db
       .prepare(`SELECT id, nickname, profile_style AS profileStyle, team_id AS teamId, score,
-        answer_locked AS answerLocked, wallet_hash AS walletHash
+        answer_locked AS answerLocked, wallet_hash AS walletHash,
+        payout_address_registered_at AS payoutAddressRegisteredAt
       FROM participants
       WHERE event_id = ?
       ORDER BY joined_at ASC`)
@@ -68,6 +69,7 @@ export async function GET(
         score: number;
         answerLocked: number;
         walletHash: string | null;
+        payoutAddressRegisteredAt: number | null;
       }>(),
     db
       .prepare(
@@ -87,6 +89,7 @@ export async function GET(
     db
       .prepare(
         `SELECT r.state, r.funding_tx_hash AS fundingTxHash,
+          r.refund_state AS refundState, r.refund_tx_hash AS refundTxHash,
           p.tx_hash AS payoutTxHash
            FROM rewards r LEFT JOIN payouts p ON p.reward_id = r.id
            WHERE r.event_id = ? LIMIT 1`,
@@ -96,6 +99,8 @@ export async function GET(
         state: string;
         fundingTxHash: string | null;
         payoutTxHash: string | null;
+        refundState: string | null;
+        refundTxHash: string | null;
       }>(),
   ]);
 
@@ -161,6 +166,8 @@ export async function GET(
     vaultAddress: vault?.address ?? null,
     vaultNetwork: vault?.network ?? null,
     payoutTxHash: rewardRow?.payoutTxHash ?? null,
+    refundState: rewardRow?.refundState ?? null,
+    refundTxHash: rewardRow?.refundTxHash ?? null,
     accessMode: reward.accessMode,
     autoHostEnabled: Boolean(room.autoHostEnabled),
     serverNow,
@@ -178,11 +185,14 @@ export async function GET(
     correctChoice: reveal ? (config?.correctChoice ?? null) : null,
     collectiveTargetPercent,
     finalePassed: reveal ? finalePassed : null,
-    players: playerRows.results.map(({ walletHash, ...player }) => ({
-      ...player,
-      answerLocked: Boolean(player.answerLocked),
-      walletVerified: Boolean(walletHash),
-    })),
+    players: playerRows.results.map(
+      ({ walletHash, payoutAddressRegisteredAt, ...player }) => ({
+        ...player,
+        answerLocked: Boolean(player.answerLocked),
+        walletVerified: Boolean(walletHash),
+        payoutAddressRegistered: Boolean(payoutAddressRegisteredAt),
+      }),
+    ),
     reactions: reactionRows.results
       .map((reaction) => {
         try {

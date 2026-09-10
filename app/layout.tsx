@@ -11,7 +11,7 @@ const displayFont = Manrope({ variable: '--font-display', subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Mimo — Live community play, powered by Nimiq',
   description:
-    'Live games, polls and NIM-powered rewards for communities inside Nimiq Pay.',
+    'Turn passive audiences into players with live games, community votes, skill challenges and trusted NIM rewards inside Nimiq Pay.',
 };
 
 export default function RootLayout({

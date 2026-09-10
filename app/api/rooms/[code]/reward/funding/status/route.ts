@@ -1,6 +1,12 @@
 import { getD1 } from '@/db';
 import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
-import { checkFundingConfirmation, getVaultConfig } from '@/lib/reward-vault';
+import {
+  checkFundingConfirmation,
+  encryptVaultAddress,
+  fundingMemo,
+  getVaultConfig,
+  verifyFundingTransaction,
+} from '@/lib/reward-vault';
 
 export async function POST(
   request: Request,
@@ -15,7 +21,7 @@ export async function POST(
     return json({ error: 'Host access was rejected.' }, 403);
   }
   const vault = await getVaultConfig();
-  if (!vault?.rpcUrl) {
+  if (!vault?.ready) {
     return json({ error: 'Chain confirmation is not connected yet.' }, 503);
   }
   const db = getD1();
@@ -43,13 +49,35 @@ export async function POST(
         confirmations: 0,
       });
     }
+    const proof = await verifyFundingTransaction(confirmation.transaction, {
+      txHash: reward.fundingTxHash,
+      address: vault.address,
+      amountLuna:
+        (
+          await db
+            .prepare(
+              `SELECT amount_luna AS amountLuna FROM rewards WHERE id = ?`,
+            )
+            .bind(reward.id)
+            .first<{ amountLuna: string }>()
+        )?.amountLuna ?? '0',
+      memo: fundingMemo(room.roomCode),
+      networkId: vault.networkId,
+    });
+    const encryptedSender = await encryptVaultAddress(
+      room.id,
+      'refund',
+      proof.sender,
+    );
     const now = Date.now();
     await db.batch([
       db
         .prepare(
-          `UPDATE rewards SET state = 'funded', updated_at = ? WHERE id = ?`,
+          `UPDATE rewards SET state = 'funded',
+            funding_sender_ciphertext = ?, funding_sender_iv = ?,
+            updated_at = ? WHERE id = ?`,
         )
-        .bind(now, reward.id),
+        .bind(encryptedSender.ciphertext, encryptedSender.iv, now, reward.id),
       db
         .prepare(`INSERT INTO event_audit
           (id, event_id, actor_hash, action, payload_json, created_at)

@@ -1,6 +1,4 @@
-import initNimiqCore, { Transaction } from '@nimiq/core/web';
 import { getD1 } from '@/db';
-import nimiqCoreModule from '@/lib/nimiq-core.wasm';
 import {
   getRoom,
   getRoomConfig,
@@ -8,17 +6,6 @@ import {
   json,
   readJson,
 } from '@/lib/live-room';
-
-let nimiqCoreReady: Promise<unknown> | null = null;
-function ensureNimiqCore() {
-  nimiqCoreReady ??= initNimiqCore({ module_or_path: nimiqCoreModule });
-  return nimiqCoreReady;
-}
-function normalizeAddress(value: unknown) {
-  return (typeof value === 'string' ? value : '')
-    .toUpperCase()
-    .replace(/\s/g, '');
-}
 
 export async function POST(
   request: Request,
@@ -41,11 +28,11 @@ export async function POST(
   }
   const participantId =
     typeof body?.participantId === 'string' ? body.participantId : '';
-  const serialized =
-    typeof body?.serializedTransaction === 'string'
-      ? body.serializedTransaction
+  const transactionHash =
+    typeof body?.transactionHash === 'string'
+      ? body.transactionHash.trim().toLowerCase()
       : '';
-  if (!participantId || !serialized)
+  if (!participantId || !/^[0-9a-f]{64}$/.test(transactionHash))
     return json({ error: 'The submitted payment proof is incomplete.' }, 400);
 
   const db = getD1();
@@ -67,21 +54,6 @@ export async function POST(
     return json({ error: 'The reward result could not be verified.' }, 409);
 
   try {
-    await ensureNimiqCore();
-    const transaction = Transaction.fromAny(serialized);
-    const recipient = normalizeAddress(
-      transaction.recipient.toUserFriendlyAddress(),
-    );
-    if (
-      (await hashToken(recipient)) !== winner.walletHash ||
-      transaction.value.toString() !== reward.amountLuna
-    ) {
-      return json(
-        { error: 'The payment does not match the verified winner and reward.' },
-        403,
-      );
-    }
-    const txHash = transaction.hash();
     const now = Date.now();
     await db.batch([
       db
@@ -93,7 +65,7 @@ export async function POST(
           reward.id,
           participantId,
           reward.amountLuna,
-          txHash,
+          transactionHash,
           now,
         ),
       db
@@ -102,7 +74,7 @@ export async function POST(
         )
         .bind(now, reward.id),
     ]);
-    return json({ state: 'payout_submitted', txHash });
+    return json({ state: 'payout_submitted', txHash: transactionHash });
   } catch (error) {
     console.error('payout_proof_failed', error);
     return json({ error: 'Nimiq Pay returned an invalid payment proof.' }, 403);

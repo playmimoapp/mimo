@@ -6,6 +6,7 @@ import {
   json,
   readJson,
 } from '@/lib/live-room';
+import { attemptAutomaticRefund } from '@/lib/reward-vault';
 
 const nextStatus = {
   start: 'live',
@@ -128,12 +129,21 @@ export async function POST(
       .bind(room.id)
       .run();
   } else if (action === 'cancel') {
-    await db
-      .prepare(
-        `UPDATE events SET status = 'cancelled', state_changed_at = ? WHERE id = ?`,
-      )
-      .bind(now, room.id)
-      .run();
+    await db.batch([
+      db
+        .prepare(
+          `UPDATE events SET status = 'cancelled', state_changed_at = ? WHERE id = ?`,
+        )
+        .bind(now, room.id),
+      ...(roomConfig.custody === 'mimo_vault'
+        ? [
+            db
+              .prepare(`UPDATE rewards SET state = 'cancelled', updated_at = ?
+                WHERE event_id = ? AND state NOT IN ('payout_submitted', 'payout_confirmed')`)
+              .bind(now, room.id),
+          ]
+        : []),
+    ]);
   } else if (action === 'start') {
     await db.batch([
       db
@@ -222,6 +232,11 @@ export async function POST(
       .run();
   }
 
+  const settlement =
+    action === 'cancel' && roomConfig.custody === 'mimo_vault'
+      ? await attemptAutomaticRefund(room.id)
+      : undefined;
+
   return json({
     status,
     autoHostEnabled:
@@ -231,5 +246,6 @@ export async function POST(
           ? true
           : Boolean(room.autoHostEnabled),
     extendedBy: action === 'extend' ? 10 : undefined,
+    settlement,
   });
 }

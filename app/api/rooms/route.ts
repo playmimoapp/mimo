@@ -20,7 +20,11 @@ export async function POST(request: Request) {
     .slice(0, 60);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
-  if (rewardMode === 'nim' && body.custodyMode === 'mimo_vault' && !vault) {
+  if (
+    rewardMode === 'nim' &&
+    body.custodyMode === 'mimo_vault' &&
+    !vault?.ready
+  ) {
     return json(
       {
         error:
@@ -30,7 +34,7 @@ export async function POST(request: Request) {
     );
   }
   const rewardCustody =
-    rewardMode === 'nim' && vault && body.custodyMode !== 'host_wallet'
+    rewardMode === 'nim' && vault?.ready && body.custodyMode !== 'host_wallet'
       ? 'mimo_vault'
       : 'host_wallet';
   const accessMode = body.accessMode === 'private' ? 'private' : 'public';

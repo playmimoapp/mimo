@@ -1,6 +1,7 @@
 import { getD1 } from '@/db';
 import { canViewRoom, getRoom, json } from '@/lib/live-room';
 import type { MimoHostCue } from '@/lib/live-room-types';
+import { getRuntimeVariable } from '@/lib/runtime-env';
 
 type RoomStatus = 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
 
@@ -187,7 +188,7 @@ export async function POST(
   }
 
   const fallback = fallbackCue(cueContext);
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getRuntimeVariable('GEMINI_API_KEY');
   if (!apiKey) return json(fallback);
 
   const claimed = await db
@@ -218,7 +219,7 @@ quotes, emojis or crypto hype. Return only the requested JSON.`;
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+          model: getRuntimeVariable('GEMINI_MODEL') || 'gemini-3.7-flash',
           input: `${instructions}\n\nVerified room facts:\n${facts}`,
           response_format: {
             type: 'text',

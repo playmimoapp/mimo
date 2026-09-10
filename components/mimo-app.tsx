@@ -597,8 +597,8 @@ function ProductHome({
           Bring your community. Mimo makes it live.
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#53697c] sm:text-lg">
-          Run games, live polls and scored challenges. Fund rewards in NIM and
-          let Mimo host the room.
+          Turn passive audiences into players with live games, community votes
+          and skill challenges—then reward meaningful participation in NIM.
         </p>
         <div className="mt-6 grid gap-3 sm:flex sm:items-center">
           <Button

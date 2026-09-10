@@ -5,7 +5,8 @@ export async function GET() {
 
   return Response.json(
     {
-      mimoFundingAvailable: Boolean(vault),
+      mimoFundingAvailable: Boolean(vault?.ready),
+      automaticSettlementAvailable: Boolean(vault?.ready),
       network: vault?.network ?? null,
     },
     {

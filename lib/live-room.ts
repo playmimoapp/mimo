@@ -248,6 +248,7 @@ export function getRoomConfig(value: string | null) {
     accessMode: 'public' as RoomAccessMode,
     inviteTokenHash: '',
     custody: 'host_wallet' as const,
+    rewardRule: 'skill' as const,
     adaptiveMoments: false,
   };
   if (!value) return fallback;
@@ -269,6 +270,10 @@ export function getRoomConfig(value: string | null) {
         config.custody === 'mimo_vault'
           ? ('mimo_vault' as const)
           : ('host_wallet' as const),
+      rewardRule:
+        config.rewardRule === 'community_unlock'
+          ? ('community_unlock' as const)
+          : ('skill' as const),
       adaptiveMoments: config.adaptiveMoments === true,
     };
   } catch {

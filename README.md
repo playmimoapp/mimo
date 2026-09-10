@@ -28,6 +28,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Replay protection and one verified wallet per event
 - Creator-held NIM rewards with verified-winner payout preparation
 - Fail-closed TestAlbatross vault foundation with encrypted payout registration, automatic payout and refund logic
+- Funded Community Unlocks that split NIM exactly between verified finishers after a shared finale target is cleared
 - Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
 - Mobile-first participant and host experiences
 
@@ -41,7 +42,8 @@ Mimo does not claim that proposed rewards are escrowed or funded. Creator-held r
 4. The server verifies the signature and matching Nimiq address.
 5. Mimo stores a one-way wallet fingerprint rather than exposing the address in room data.
 6. For a creator-held NIM reward, the host provides the winner's address. The server checks it against the verified fingerprint before Nimiq Pay can prepare the exact payout.
-7. For a genuinely pre-funded Mimo vault event, an eligible winner signs a separate one-time payout-address challenge. The address is encrypted and the locked event rules trigger settlement without a second host decision.
+7. For a genuinely pre-funded Mimo vault event, each eligible recipient signs a separate one-time payout-address challenge. The address is encrypted and the locked event rules trigger settlement without a second host decision.
+8. A Community Unlock requires wallet proof before play, freezes eligibility through the launched rules and divides the funded pool using exact integer arithmetic.
 
 This is lightweight Sybil resistance, not a promise of perfect personhood. It prevents duplicate use of one verified wallet in an event and blocks copied or replayed proofs while keeping ordinary participation fast.
 

@@ -131,7 +131,8 @@ Nimiq Pay handles wallet proof and explicit funding. Mimo verifies the live resu
 - [x] Ship deterministic Living Room sensing for split-room, comeback and collective-clear moments.
 - [x] Add the creator-approved Split Room Face-off, which holds a close poll reveal for reactions without changing scores.
 - [ ] Add creator-approved comeback and collective-unlock branches.
-- [ ] Add locked Skill Drop, Team Drop and Community Unlock rules with exact split arithmetic and payout eligibility previews.
+- [x] Add locked Skill Drop and Community Unlock rules with exact split arithmetic, verified eligibility and automatic multi-recipient settlement.
+- [ ] Add the creator-approved collective-unlock live branch and Team Drop rule.
 - [ ] Obtain a reliable TestAlbatross RPC/node, configure secrets safely and record genuine funding, payout and refund transaction hashes.
 - [ ] Test the complete flow inside Nimiq Pay on multiple physical phones, including cancellation, failure, backgrounding and reconnect.
 - [ ] Add transaction monitoring, idempotent retry visibility, partial-payout recovery and operator alerts.

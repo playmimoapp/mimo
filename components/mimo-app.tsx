@@ -21,6 +21,7 @@ import {
   Sparkles,
   Trash2,
   Trophy,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -43,6 +44,7 @@ type Screen =
   | 'live_player';
 type RewardMode = 'free' | 'nim';
 type RewardCustody = 'host_wallet' | 'mimo_vault';
+type RewardRule = 'skill' | 'community_unlock';
 type RoundType = 'pulse' | 'multiple_choice' | 'finale';
 
 const CHOICE_TONES = [
@@ -97,6 +99,7 @@ type EventDraft = {
   rewardMode: RewardMode;
   custodyMode: RewardCustody;
   rewardAmount: string;
+  rewardRule: RewardRule;
   adaptiveMoments: boolean;
   rounds: RoundDraft[];
 };
@@ -204,6 +207,7 @@ export function MimoApp() {
     rewardMode: 'free',
     custodyMode: 'host_wallet',
     rewardAmount: '',
+    rewardRule: 'skill',
     adaptiveMoments: true,
     rounds: [blankRound()],
   });
@@ -354,6 +358,7 @@ export function MimoApp() {
       }
       setEvent({
         ...body.draft,
+        rewardRule: 'skill',
         adaptiveMoments: true,
         custodyMode: rewardCapabilities.mimoFundingAvailable
           ? 'mimo_vault'
@@ -1384,6 +1389,7 @@ function CreateEvent({
                     ...event,
                     rewardMode: 'free',
                     custodyMode: 'host_wallet',
+                    rewardRule: 'skill',
                   })
                 }
                 className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'free' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
@@ -1400,6 +1406,7 @@ function CreateEvent({
                   setEvent({
                     ...event,
                     rewardMode: 'nim',
+                    rewardRule: 'skill',
                     custodyMode: mimoFundingAvailable
                       ? 'mimo_vault'
                       : 'host_wallet',
@@ -1417,6 +1424,54 @@ function CreateEvent({
           </fieldset>
           {event.rewardMode === 'nim' && (
             <div className="grid gap-6">
+              <fieldset>
+                <legend className="text-sm font-extrabold">
+                  How is the NIM earned?
+                </legend>
+                <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.985 }}
+                    onClick={() => update('rewardRule', 'skill')}
+                    className={`min-h-28 border-2 p-5 text-left transition ${event.rewardRule === 'skill' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                  >
+                    <Trophy className="text-[#a87600]" />
+                    <strong className="mt-3 block text-lg">Skill Drop</strong>
+                    <span className="mt-1 block text-sm text-[#617486]">
+                      The verified first-place player earns the pool.
+                    </span>
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.985 }}
+                    disabled={!mimoFundingAvailable}
+                    onClick={() => {
+                      if (!mimoFundingAvailable) return;
+                      setEvent({
+                        ...event,
+                        rewardRule: 'community_unlock',
+                        custodyMode: 'mimo_vault',
+                      });
+                    }}
+                    className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${event.rewardRule === 'community_unlock' ? 'border-[#3b9a62] bg-[#edf9f1]' : 'border-[#d5dade] bg-white'}`}
+                  >
+                    <Users className="text-[#2d8a55]" />
+                    <strong className="mt-3 block text-lg">
+                      Community Unlock
+                    </strong>
+                    <span className="mt-1 block text-sm text-[#617486]">
+                      Clear the finale target and verified finishers share the
+                      pool.
+                    </span>
+                  </motion.button>
+                </div>
+                {!mimoFundingAvailable && (
+                  <p className="mt-2 text-xs font-bold text-[#71808c]">
+                    Community Unlock activates with verified Mimo Funded
+                    settlement. It is never offered as a payment promise.
+                  </p>
+                )}
+              </fieldset>
               <fieldset>
                 <legend className="text-sm font-extrabold">
                   Where is the reward held?
@@ -1443,7 +1498,13 @@ function CreateEvent({
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.985 }}
-                      onClick={() => update('custodyMode', 'host_wallet')}
+                      onClick={() =>
+                        setEvent({
+                          ...event,
+                          custodyMode: 'host_wallet',
+                          rewardRule: 'skill',
+                        })
+                      }
                       className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
                     >
                       <strong className="block text-lg">Host promise</strong>

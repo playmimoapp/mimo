@@ -1,5 +1,11 @@
 import { getD1 } from '@/db';
-import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
+import {
+  getRoom,
+  getRoomConfig,
+  hashToken,
+  json,
+  readJson,
+} from '@/lib/live-room';
 
 export async function POST(
   request: Request,
@@ -27,12 +33,24 @@ export async function POST(
   const db = getD1();
   const tokenHash = await hashToken(participantToken);
   const participant = await db
-    .prepare(`SELECT id, answer_locked AS answerLocked
+    .prepare(`SELECT id, answer_locked AS answerLocked, wallet_hash AS walletHash
     FROM participants WHERE event_id = ? AND session_token_hash = ? LIMIT 1`)
     .bind(room.id, tokenHash)
-    .first<{ id: string; answerLocked: number }>();
+    .first<{ id: string; answerLocked: number; walletHash: string | null }>();
   if (!participant)
     return json({ error: 'Your room session could not be verified.' }, 403);
+  if (
+    getRoomConfig(room.launchedConfigJson).rewardRule === 'community_unlock' &&
+    !participant.walletHash
+  ) {
+    return json(
+      {
+        error:
+          'Confirm your wallet before playing this Community Unlock. No money moves during verification.',
+      },
+      409,
+    );
+  }
   if (participant.answerLocked)
     return json({ error: 'Your answer is already locked.' }, 409);
 

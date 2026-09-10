@@ -57,7 +57,9 @@ export async function GET(
     db
       .prepare(`SELECT id, nickname, profile_style AS profileStyle, team_id AS teamId, score,
         answer_locked AS answerLocked, wallet_hash AS walletHash,
-        payout_address_registered_at AS payoutAddressRegisteredAt
+        payout_address_registered_at AS payoutAddressRegisteredAt,
+        (SELECT COUNT(*) FROM answers a
+          WHERE a.participant_id = participants.id AND a.accepted = 1) AS acceptedRounds
       FROM participants
       WHERE event_id = ?
       ORDER BY joined_at ASC`)
@@ -71,6 +73,7 @@ export async function GET(
         answerLocked: number;
         walletHash: string | null;
         payoutAddressRegisteredAt: number | null;
+        acceptedRounds: number;
       }>(),
     db
       .prepare(
@@ -89,7 +92,7 @@ export async function GET(
       .all<{ id: string; payloadJson: string; createdAt: number }>(),
     db
       .prepare(
-        `SELECT r.state, r.funding_tx_hash AS fundingTxHash,
+        `SELECT r.state, r.funding_tx_hash AS fundingTxHash, r.rules_json AS rulesJson,
           r.refund_state AS refundState, r.refund_tx_hash AS refundTxHash,
           p.tx_hash AS payoutTxHash
            FROM rewards r LEFT JOIN payouts p ON p.reward_id = r.id
@@ -102,6 +105,7 @@ export async function GET(
         payoutTxHash: string | null;
         refundState: string | null;
         refundTxHash: string | null;
+        rulesJson: string;
       }>(),
   ]);
 
@@ -177,6 +181,18 @@ export async function GET(
         ).length,
       })
     : null;
+  let rewardRule: 'skill' | 'community_unlock' = reward.rewardRule;
+  try {
+    const rules = JSON.parse(rewardRow?.rulesJson ?? '{}') as {
+      type?: unknown;
+    };
+    if (rules.type === 'community_unlock') rewardRule = 'community_unlock';
+  } catch {
+    // The immutable launch snapshot remains the fallback.
+  }
+  const leadingPlayerId = [...playerRows.results].sort(
+    (a, b) => b.score - a.score,
+  )[0]?.id;
 
   return json({
     code: room.roomCode,
@@ -185,6 +201,7 @@ export async function GET(
     status: room.status,
     rewardMode: reward.mode,
     rewardAmount: reward.amount,
+    rewardRule,
     rewardState: rewardRow?.state ?? 'none',
     rewardCustody: reward.custody,
     fundingTxHash: rewardRow?.fundingTxHash ?? null,
@@ -212,11 +229,21 @@ export async function GET(
     finalePassed: reveal ? finalePassed : null,
     roomSignal: reveal ? roomSignal : null,
     players: playerRows.results.map(
-      ({ walletHash, payoutAddressRegisteredAt, ...player }) => ({
+      ({
+        walletHash,
+        payoutAddressRegisteredAt,
+        acceptedRounds,
+        ...player
+      }) => ({
         ...player,
         answerLocked: Boolean(player.answerLocked),
         walletVerified: Boolean(walletHash),
         payoutAddressRegistered: Boolean(payoutAddressRegisteredAt),
+        rewardEligible:
+          Boolean(walletHash) &&
+          (rewardRule === 'community_unlock'
+            ? Boolean(finalePassed) && acceptedRounds >= roundCount
+            : player.id === leadingPlayerId),
       }),
     ),
     reactions: reactionRows.results

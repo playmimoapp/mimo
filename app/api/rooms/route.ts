@@ -19,6 +19,8 @@ export async function POST(request: Request) {
     .trim()
     .slice(0, 60);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
+  const rewardRule =
+    body.rewardRule === 'community_unlock' ? 'community_unlock' : 'skill';
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
   if (
     rewardMode === 'nim' &&
@@ -37,6 +39,15 @@ export async function POST(request: Request) {
     rewardMode === 'nim' && vault?.ready && body.custodyMode !== 'host_wallet'
       ? 'mimo_vault'
       : 'host_wallet';
+  if (rewardRule === 'community_unlock' && rewardCustody !== 'mimo_vault') {
+    return json(
+      {
+        error:
+          'Community Unlock needs a genuinely funded Mimo reward. It cannot run as a host promise.',
+      },
+      503,
+    );
+  }
   const accessMode = body.accessMode === 'private' ? 'private' : 'public';
   const rewardAmount =
     rewardMode === 'nim'
@@ -113,6 +124,16 @@ export async function POST(request: Request) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
   }
   if (
+    rewardMode === 'nim' &&
+    rewardRule === 'community_unlock' &&
+    !parsedRounds.some((round) => round.type === 'finale')
+  ) {
+    return json(
+      { error: 'Community Unlock needs one shared finale target.' },
+      400,
+    );
+  }
+  if (
     parsedRounds.length < 1 ||
     parsedRounds.some(
       (round) =>
@@ -155,6 +176,7 @@ export async function POST(request: Request) {
     inviteTokenHash,
     collectiveTargetPercent: 60,
     custody: rewardCustody,
+    rewardRule,
     adaptiveMoments: body.adaptiveMoments !== false,
   });
 
@@ -227,9 +249,10 @@ export async function POST(request: Request) {
                   : 'proposed',
                 (BigInt(rewardAmount) * BigInt(100000)).toString(),
                 JSON.stringify({
-                  type: 'skill',
-                  winners: 1,
-                  distribution: 'winner_takes_all',
+                  type: rewardRule,
+                  winners: rewardRule === 'skill' ? 1 : 'eligible_finishers',
+                  distribution:
+                    rewardRule === 'skill' ? 'winner_takes_all' : 'equal_split',
                   custody: rewardCustody,
                 }),
                 now,

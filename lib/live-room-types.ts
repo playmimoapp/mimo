@@ -7,6 +7,7 @@ export type LivePlayer = {
   answerLocked: boolean;
   walletVerified: boolean;
   payoutAddressRegistered: boolean;
+  rewardEligible: boolean;
 };
 
 export type LiveReaction = {
@@ -27,6 +28,7 @@ export type LiveRoomState = {
   status: 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
   rewardMode: 'free' | 'nim';
   rewardAmount: string;
+  rewardRule: 'skill' | 'community_unlock';
   rewardState:
     | 'none'
     | 'proposed'

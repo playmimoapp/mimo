@@ -11,6 +11,7 @@ import {
 import {
   attemptAutomaticPayout,
   encryptVaultAddress,
+  getRewardEligibility,
   normalizeNimiqAddress,
 } from '@/lib/reward-vault';
 
@@ -40,6 +41,10 @@ export async function POST(
   if (!participant) return json({ error: 'Your room session expired.' }, 401);
   if (!participant.walletHash) {
     return json({ error: 'Confirm your wallet before registering it.' }, 409);
+  }
+  const eligibility = await getRewardEligibility(room.id);
+  if (!eligibility.unlocked || !eligibility.eligibleIds.has(participant.id)) {
+    return json({ error: 'This result is not eligible for payout.' }, 403);
   }
 
   const challengeId =

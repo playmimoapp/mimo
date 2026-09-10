@@ -236,147 +236,360 @@ async function broadcastPrepared(config: VaultConfig, serialized: string) {
   }
 }
 
+type EligiblePayoutParticipant = {
+  id: string;
+  walletHash: string;
+  payoutCiphertext: string | null;
+  payoutIv: string | null;
+  payoutHash: string | null;
+};
+
+export async function getRewardEligibility(eventId: string) {
+  const db = getD1();
+  const [event, reward, roundCountRow, finale, participantRows] =
+    await Promise.all([
+      db
+        .prepare(`SELECT status FROM events WHERE id = ? LIMIT 1`)
+        .bind(eventId)
+        .first<{ status: string }>(),
+      db
+        .prepare(`SELECT id, amount_luna AS amountLuna, rules_json AS rulesJson
+          FROM rewards WHERE event_id = ? LIMIT 1`)
+        .bind(eventId)
+        .first<{ id: string; amountLuna: string; rulesJson: string }>(),
+      db
+        .prepare(`SELECT COUNT(*) AS total FROM rounds WHERE event_id = ?`)
+        .bind(eventId)
+        .first<{ total: number }>(),
+      db
+        .prepare(`SELECT id, config_json AS configJson FROM rounds
+          WHERE event_id = ? AND type = 'finale'
+          ORDER BY position DESC LIMIT 1`)
+        .bind(eventId)
+        .first<{ id: string; configJson: string }>(),
+      db
+        .prepare(`SELECT p.id, p.wallet_hash AS walletHash,
+          p.payout_address_ciphertext AS payoutCiphertext,
+          p.payout_address_iv AS payoutIv,
+          p.payout_address_hash AS payoutHash,
+          p.score, p.joined_at AS joinedAt,
+          (SELECT COUNT(*) FROM answers a
+            WHERE a.participant_id = p.id AND a.accepted = 1) AS acceptedRounds
+          FROM participants p WHERE p.event_id = ?
+          ORDER BY p.score DESC, p.joined_at ASC`)
+        .bind(eventId)
+        .all<{
+          id: string;
+          walletHash: string | null;
+          payoutCiphertext: string | null;
+          payoutIv: string | null;
+          payoutHash: string | null;
+          score: number;
+          joinedAt: number;
+          acceptedRounds: number;
+        }>(),
+    ]);
+
+  let rule: 'skill' | 'community_unlock' = 'skill';
+  try {
+    const rules = JSON.parse(reward?.rulesJson ?? '{}') as { type?: unknown };
+    if (rules.type === 'community_unlock') rule = 'community_unlock';
+  } catch {
+    // Old rewards retain the skill fallback.
+  }
+
+  let collectiveCleared = false;
+  if (rule === 'community_unlock' && finale) {
+    try {
+      const config = JSON.parse(finale.configJson) as {
+        correctChoice?: unknown;
+        collectiveTargetPercent?: unknown;
+      };
+      const correctChoice = Number(config.correctChoice);
+      const target = Math.max(
+        50,
+        Math.min(80, Number(config.collectiveTargetPercent) || 60),
+      );
+      const answerRows = await db
+        .prepare(`SELECT answer_json AS answerJson FROM answers
+          WHERE round_id = ? AND accepted = 1`)
+        .bind(finale.id)
+        .all<{ answerJson: string }>();
+      let correct = 0;
+      for (const answer of answerRows.results) {
+        try {
+          if (
+            Number(
+              (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
+            ) === correctChoice
+          ) {
+            correct += 1;
+          }
+        } catch {
+          // Ignore malformed historical answers.
+        }
+      }
+      collectiveCleared =
+        participantRows.results.length > 0 &&
+        correct >= Math.ceil(participantRows.results.length * (target / 100));
+    } catch {
+      collectiveCleared = false;
+    }
+  }
+
+  const unlocked =
+    event?.status === 'complete' && (rule === 'skill' || collectiveCleared);
+  const roundCount = roundCountRow?.total ?? 0;
+  const candidates =
+    rule === 'community_unlock'
+      ? participantRows.results.filter(
+          (participant) => participant.acceptedRounds >= roundCount,
+        )
+      : participantRows.results.slice(0, 1);
+  const eligible = candidates
+    .filter(
+      (
+        participant,
+      ): participant is typeof participant & { walletHash: string } =>
+        Boolean(participant.walletHash),
+    )
+    .map<EligiblePayoutParticipant>((participant) => ({
+      id: participant.id,
+      walletHash: participant.walletHash,
+      payoutCiphertext: participant.payoutCiphertext,
+      payoutIv: participant.payoutIv,
+      payoutHash: participant.payoutHash,
+    }));
+
+  return {
+    reward,
+    rule,
+    unlocked,
+    collectiveCleared,
+    eligible,
+    eligibleIds: new Set(eligible.map((participant) => participant.id)),
+  };
+}
+
 export async function attemptAutomaticPayout(eventId: string) {
   const config = await getVaultConfig();
   if (!config?.ready) return { state: 'unavailable' as const };
   const db = getD1();
-  const event = await db
-    .prepare(`SELECT status FROM events WHERE id = ? LIMIT 1`)
-    .bind(eventId)
-    .first<{ status: string }>();
-  if (event?.status !== 'complete') return { state: 'not_ready' as const };
-
-  const reward = await db
-    .prepare(`SELECT id, state, amount_luna AS amountLuna
-      FROM rewards WHERE event_id = ? LIMIT 1`)
-    .bind(eventId)
-    .first<{ id: string; state: string; amountLuna: string }>();
-  if (!reward || reward.state === 'cancelled') {
+  const eligibility = await getRewardEligibility(eventId);
+  const reward = eligibility.reward;
+  if (!reward) return { state: 'not_ready' as const };
+  const rewardState = await db
+    .prepare(`SELECT state FROM rewards WHERE id = ? LIMIT 1`)
+    .bind(reward.id)
+    .first<{ state: string }>();
+  if (rewardState?.state === 'cancelled') {
     return { state: 'not_ready' as const };
   }
-  const winner = await db
-    .prepare(`SELECT id, wallet_hash AS walletHash,
-      payout_address_ciphertext AS payoutCiphertext,
-      payout_address_iv AS payoutIv,
-      payout_address_hash AS payoutHash
-      FROM participants WHERE event_id = ?
-      ORDER BY score DESC, joined_at ASC LIMIT 1`)
-    .bind(eventId)
-    .first<{
-      id: string;
-      walletHash: string | null;
-      payoutCiphertext: string | null;
-      payoutIv: string | null;
-      payoutHash: string | null;
-    }>();
-  if (
-    !winner?.walletHash ||
-    !winner.payoutCiphertext ||
-    !winner.payoutIv ||
-    winner.payoutHash !== winner.walletHash
-  ) {
-    return { state: 'awaiting_payout_address' as const };
-  }
-
-  let payout = await db
-    .prepare(`SELECT id, state, tx_hash AS txHash, serialized_tx AS serializedTx
-      FROM payouts WHERE reward_id = ? AND participant_id = ? LIMIT 1`)
-    .bind(reward.id, winner.id)
-    .first<{
-      id: string;
-      state: string;
-      txHash: string | null;
-      serializedTx: string | null;
-    }>();
-  if (payout?.state === 'confirmed') {
-    return { state: 'confirmed' as const, txHash: payout.txHash };
-  }
-  if (payout?.state === 'submitted' && payout.txHash) {
-    const confirmation = await checkFundingConfirmation(config, payout.txHash);
-    if (!confirmation.included) {
-      return { state: 'submitted' as const, txHash: payout.txHash };
-    }
-    const now = Date.now();
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE payouts SET state = 'confirmed', updated_at = ? WHERE id = ?`,
-        )
-        .bind(now, payout.id),
-      db
-        .prepare(
-          `UPDATE rewards SET state = 'payout_confirmed', updated_at = ? WHERE id = ?`,
-        )
-        .bind(now, reward.id),
-    ]);
-    return { state: 'confirmed' as const, txHash: payout.txHash };
-  }
-
-  const recipient = await decryptSecret(
-    winner.payoutCiphertext,
-    winner.payoutIv,
-    vaultAddressContext(eventId, 'payout'),
-  );
-  if (!payout?.serializedTx || !payout.txHash) {
-    const prepared = await prepareVaultTransaction(
-      config,
-      recipient,
-      reward.amountLuna,
-    );
-    const now = Date.now();
-    const payoutId = payout?.id ?? crypto.randomUUID();
-    await db
-      .prepare(`INSERT INTO payouts
-        (id, reward_id, participant_id, amount_luna, state, tx_hash,
-          serialized_tx, failure_code, updated_at)
-        VALUES (?, ?, ?, ?, 'prepared', ?, ?, NULL, ?)
-        ON CONFLICT(reward_id, participant_id) DO UPDATE SET
-          state = 'prepared', tx_hash = excluded.tx_hash,
-          serialized_tx = excluded.serialized_tx, failure_code = NULL,
-          updated_at = excluded.updated_at`)
-      .bind(
-        payoutId,
-        reward.id,
-        winner.id,
-        reward.amountLuna,
-        prepared.txHash,
-        prepared.serialized,
-        now,
-      )
-      .run();
-    payout = {
-      id: payoutId,
-      state: 'prepared',
-      txHash: prepared.txHash,
-      serializedTx: prepared.serialized,
+  if (!eligibility.unlocked) {
+    return {
+      state:
+        eligibility.rule === 'community_unlock'
+          ? ('target_not_met' as const)
+          : ('not_ready' as const),
     };
   }
+  if (eligibility.eligible.length < 1) {
+    return { state: 'awaiting_verified_eligibility' as const };
+  }
 
-  try {
-    if (!payout.serializedTx) throw new Error('prepared_transaction_missing');
-    await broadcastPrepared(config, payout.serializedTx);
-    const now = Date.now();
-    await db.batch([
-      db
+  const totalLuna = BigInt(reward.amountLuna);
+  const recipientCount = BigInt(eligibility.eligible.length);
+  const equalShare = totalLuna / recipientCount;
+  const remainder = totalLuna % recipientCount;
+  if (equalShare < BigInt(1)) return { state: 'reward_too_small' as const };
+
+  const results: Array<{
+    participantId: string;
+    state: 'awaiting_address' | 'submitted' | 'confirmed' | 'retrying';
+    txHash?: string | null;
+    amountLuna: string;
+  }> = [];
+
+  for (const [index, participant] of eligibility.eligible.entries()) {
+    const amountLuna = (
+      equalShare + (BigInt(index) < remainder ? BigInt(1) : BigInt(0))
+    ).toString();
+    let payout = await db
+      .prepare(`SELECT id, state, tx_hash AS txHash,
+        serialized_tx AS serializedTx FROM payouts
+        WHERE reward_id = ? AND participant_id = ? LIMIT 1`)
+      .bind(reward.id, participant.id)
+      .first<{
+        id: string;
+        state: string;
+        txHash: string | null;
+        serializedTx: string | null;
+      }>();
+
+    if (payout?.state === 'confirmed') {
+      results.push({
+        participantId: participant.id,
+        state: 'confirmed',
+        txHash: payout.txHash,
+        amountLuna,
+      });
+      continue;
+    }
+    if (payout?.state === 'submitted' && payout.txHash) {
+      const confirmation = await checkFundingConfirmation(
+        config,
+        payout.txHash,
+      );
+      if (confirmation.included) {
+        await db
+          .prepare(`UPDATE payouts SET state = 'confirmed', updated_at = ?
+            WHERE id = ?`)
+          .bind(Date.now(), payout.id)
+          .run();
+        results.push({
+          participantId: participant.id,
+          state: 'confirmed',
+          txHash: payout.txHash,
+          amountLuna,
+        });
+      } else {
+        results.push({
+          participantId: participant.id,
+          state: 'submitted',
+          txHash: payout.txHash,
+          amountLuna,
+        });
+      }
+      continue;
+    }
+    if (
+      !participant.payoutCiphertext ||
+      !participant.payoutIv ||
+      participant.payoutHash !== participant.walletHash
+    ) {
+      results.push({
+        participantId: participant.id,
+        state: 'awaiting_address',
+        amountLuna,
+      });
+      continue;
+    }
+
+    if (!payout?.serializedTx || !payout.txHash) {
+      const recipient = await decryptSecret(
+        participant.payoutCiphertext,
+        participant.payoutIv,
+        vaultAddressContext(eventId, 'payout'),
+      );
+      const prepared = await prepareVaultTransaction(
+        config,
+        recipient,
+        amountLuna,
+      );
+      const payoutId = payout?.id ?? crypto.randomUUID();
+      await db
+        .prepare(`INSERT INTO payouts
+          (id, reward_id, participant_id, amount_luna, state, tx_hash,
+            serialized_tx, failure_code, updated_at)
+          VALUES (?, ?, ?, ?, 'prepared', ?, ?, NULL, ?)
+          ON CONFLICT(reward_id, participant_id) DO UPDATE SET
+            state = 'prepared', amount_luna = excluded.amount_luna,
+            tx_hash = excluded.tx_hash, serialized_tx = excluded.serialized_tx,
+            failure_code = NULL, updated_at = excluded.updated_at`)
+        .bind(
+          payoutId,
+          reward.id,
+          participant.id,
+          amountLuna,
+          prepared.txHash,
+          prepared.serialized,
+          Date.now(),
+        )
+        .run();
+      payout = {
+        id: payoutId,
+        state: 'prepared',
+        txHash: prepared.txHash,
+        serializedTx: prepared.serialized,
+      };
+    }
+
+    try {
+      if (!payout.serializedTx) throw new Error('prepared_transaction_missing');
+      await broadcastPrepared(config, payout.serializedTx);
+      await db
         .prepare(`UPDATE payouts SET state = 'submitted', failure_code = NULL,
           updated_at = ? WHERE id = ?`)
-        .bind(now, payout.id),
-      db
-        .prepare(
-          `UPDATE rewards SET state = 'payout_submitted', updated_at = ? WHERE id = ?`,
-        )
-        .bind(now, reward.id),
-    ]);
-    return { state: 'submitted' as const, txHash: payout.txHash };
-  } catch (error) {
-    console.error('automatic_payout_broadcast_failed', error);
-    await db
-      .prepare(`UPDATE payouts SET state = 'prepared',
-        failure_code = 'broadcast_retry', updated_at = ? WHERE id = ?`)
-      .bind(Date.now(), payout.id)
-      .run();
-    return { state: 'retrying' as const, txHash: payout.txHash };
+        .bind(Date.now(), payout.id)
+        .run();
+      results.push({
+        participantId: participant.id,
+        state: 'submitted',
+        txHash: payout.txHash,
+        amountLuna,
+      });
+    } catch (error) {
+      console.error('automatic_payout_broadcast_failed', error);
+      await db
+        .prepare(`UPDATE payouts SET state = 'prepared',
+          failure_code = 'broadcast_retry', updated_at = ? WHERE id = ?`)
+        .bind(Date.now(), payout.id)
+        .run();
+      results.push({
+        participantId: participant.id,
+        state: 'retrying',
+        txHash: payout.txHash,
+        amountLuna,
+      });
+    }
   }
+
+  const confirmed = results.filter(
+    (result) => result.state === 'confirmed',
+  ).length;
+  const submitted = results.filter(
+    (result) => result.state === 'submitted',
+  ).length;
+  const awaiting = results.filter(
+    (result) => result.state === 'awaiting_address',
+  ).length;
+  const retrying = results.filter(
+    (result) => result.state === 'retrying',
+  ).length;
+  const state =
+    confirmed === results.length
+      ? ('confirmed' as const)
+      : confirmed > 0
+        ? ('partially_paid' as const)
+        : submitted > 0
+          ? ('submitted' as const)
+          : retrying > 0
+            ? ('retrying' as const)
+            : ('awaiting_payout_addresses' as const);
+  const storedState =
+    state === 'confirmed'
+      ? 'payout_confirmed'
+      : state === 'partially_paid'
+        ? 'partially_paid'
+        : state === 'submitted'
+          ? 'payout_submitted'
+          : 'results_under_verification';
+  await db
+    .prepare(`UPDATE rewards SET state = ?, updated_at = ? WHERE id = ?`)
+    .bind(storedState, Date.now(), reward.id)
+    .run();
+
+  return {
+    state,
+    rule: eligibility.rule,
+    eligible: results.length,
+    confirmed,
+    submitted,
+    awaiting,
+    retrying,
+    txHash: results.length === 1 ? (results[0].txHash ?? null) : null,
+    payouts: results,
+  };
 }
 
 export async function attemptAutomaticRefund(eventId: string) {

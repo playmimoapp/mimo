@@ -2121,6 +2121,14 @@ function RewardSettlement({
       ? `Submitted to Nimiq · proof ${room.payoutTxHash.slice(0, 10)}… Network confirmation pending.`
       : '',
   );
+  const eligiblePlayers = room.players.filter(
+    (player) => player.rewardEligible,
+  );
+  const currentPlayer = room.players.find(
+    (player) => player.id === currentPlayerId,
+  );
+  const isEligible =
+    role === 'player' && Boolean(currentPlayer?.rewardEligible);
   const isWinner =
     role === 'player' && currentPlayerId === winner.id && winner.walletVerified;
 
@@ -2147,16 +2155,29 @@ function RewardSettlement({
         const result = (await response.json()) as {
           state?: string;
           txHash?: string;
+          eligible?: number;
+          confirmed?: number;
+          submitted?: number;
+          awaiting?: number;
         };
         if (result.state === 'confirmed') {
           setState('submitted');
           setDetail(
-            `Paid on Nimiq · proof ${result.txHash?.slice(0, 10) ?? ''}…`,
+            room.rewardRule === 'community_unlock'
+              ? `All ${result.confirmed ?? result.eligible ?? 0} Community Unlock payouts are confirmed on Nimiq.`
+              : `Paid on Nimiq · proof ${result.txHash?.slice(0, 10) ?? ''}…`,
           );
         } else if (result.state === 'submitted') {
           setState('submitted');
           setDetail(
-            `Payout sent · proof ${result.txHash?.slice(0, 10) ?? ''}… Waiting for the network.`,
+            room.rewardRule === 'community_unlock'
+              ? `${result.submitted ?? 0} payout${result.submitted === 1 ? '' : 's'} sent. ${result.awaiting ?? 0} still need a payout wallet.`
+              : `Payout sent · proof ${result.txHash?.slice(0, 10) ?? ''}… Waiting for the network.`,
+          );
+        } else if (result.state === 'partially_paid') {
+          setState('checking');
+          setDetail(
+            `${result.confirmed ?? 0} of ${result.eligible ?? 0} payouts confirmed. Mimo is safely continuing the remaining payments.`,
           );
         } else if (result.state === 'retrying') {
           setState('checking');
@@ -2169,10 +2190,10 @@ function RewardSettlement({
     void check();
     const timer = window.setInterval(() => void check(), 5000);
     return () => window.clearInterval(timer);
-  }, [room.code, room.rewardCustody, room.rewardState]);
+  }, [room.code, room.rewardCustody, room.rewardRule, room.rewardState]);
 
   const registerPayoutWallet = async () => {
-    if (!participantToken || !isWinner) return;
+    if (!participantToken || !isEligible) return;
     setState('connecting');
     setDetail('Opening the same wallet you confirmed for this room…');
     try {
@@ -2263,11 +2284,14 @@ function RewardSettlement({
               Funded NIM reward · held by Mimo
             </p>
             <h3 className="font-display mt-1 text-2xl font-extrabold">
-              {room.rewardAmount} NIM for {winner.nickname}
+              {room.rewardRule === 'community_unlock'
+                ? `${room.rewardAmount} NIM shared by ${eligiblePlayers.length} verified ${eligiblePlayers.length === 1 ? 'finisher' : 'finishers'}`
+                : `${room.rewardAmount} NIM for ${winner.nickname}`}
             </h3>
             <p className="mt-2 text-sm leading-6 text-[#675e3e]">
-              The result rules were locked before play. Mimo pays the verified
-              winner automatically after their payout wallet is registered.
+              {room.rewardRule === 'community_unlock'
+                ? 'The room cleared its locked finale target. Mimo splits the pool equally and pays each eligible wallet as it is registered.'
+                : 'The result rules were locked before play. Mimo pays the verified winner automatically after their payout wallet is registered.'}
             </p>
           </div>
         </div>
@@ -2276,7 +2300,7 @@ function RewardSettlement({
             Funding proof {room.fundingTxHash.slice(0, 14)}…
           </p>
         )}
-        {isWinner && !winner.payoutAddressRegistered ? (
+        {isEligible && !currentPlayer?.payoutAddressRegistered ? (
           <Button
             onClick={() => void registerPayoutWallet()}
             disabled={['connecting', 'approving', 'checking'].includes(state)}
@@ -2290,7 +2314,17 @@ function RewardSettlement({
           </Button>
         ) : (
           <div className="mt-5 flex items-center gap-2 border-t border-[#dfcb83] pt-4 text-sm font-extrabold text-[#675e3e]">
-            {winner.payoutAddressRegistered ? (
+            {room.rewardRule === 'community_unlock' ? (
+              <>
+                <Clock3 size={17} />{' '}
+                {
+                  eligiblePlayers.filter(
+                    (player) => player.payoutAddressRegistered,
+                  ).length
+                }{' '}
+                of {eligiblePlayers.length} payout wallets registered
+              </>
+            ) : winner.payoutAddressRegistered ? (
               <>
                 <ShieldCheck size={17} /> Payout wallet registered privately
               </>

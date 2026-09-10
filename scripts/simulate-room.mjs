@@ -324,6 +324,171 @@ assert(
   'The automatic payout must reach a confirmed state without host approval.',
 );
 
+const unlockRoom = await request('/api/rooms', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: 'Community Unlock proof',
+    community: 'Mimo QA',
+    rewardMode: 'nim',
+    rewardAmount: '20',
+    rewardRule: 'community_unlock',
+    custodyMode: 'mimo_vault',
+    rounds: [
+      {
+        type: 'finale',
+        question: 'Which network verifies a Mimo NIM reward?',
+        choices: ['Nimiq', 'A spreadsheet'],
+        correctChoice: 0,
+        collectiveTargetPercent: 60,
+      },
+    ],
+  }),
+});
+const unlockFunding = await request(
+  `/api/rooms/${unlockRoom.code}/reward/funding/prepare`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ hostKey: unlockRoom.hostKey }),
+  },
+);
+const unlockFunder = KeyPair.generate();
+const unlockFundingTransaction = TransactionBuilder.newBasicWithData(
+  unlockFunder.toAddress(),
+  Address.fromUserFriendlyAddress(unlockFunding.recipient),
+  new TextEncoder().encode(unlockFunding.memo),
+  BigInt(unlockFunding.amountLuna),
+  0n,
+  1,
+  5,
+);
+unlockFundingTransaction.sign(unlockFunder, undefined);
+fakeChain.set(
+  unlockFundingTransaction.hash().toLowerCase(),
+  transactionRecord(unlockFundingTransaction),
+);
+await request(`/api/rooms/${unlockRoom.code}/reward/funding/submit`, {
+  method: 'POST',
+  body: JSON.stringify({
+    hostKey: unlockRoom.hostKey,
+    transactionHash: unlockFundingTransaction.hash(),
+  }),
+});
+await request(`/api/rooms/${unlockRoom.code}/reward/funding/status`, {
+  method: 'POST',
+  body: JSON.stringify({ hostKey: unlockRoom.hostKey }),
+});
+
+const unlockPlayers = [];
+for (const nickname of ['Sol', 'Nova']) {
+  const joined = await request(`/api/rooms/${unlockRoom.code}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ nickname }),
+  });
+  const keyPair = KeyPair.generate();
+  const walletChallenge = await request(
+    `/api/rooms/${unlockRoom.code}/wallet/challenge`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ participantToken: joined.participantToken }),
+    },
+  );
+  const walletSignature = keyPair.sign(
+    new TextEncoder().encode(walletChallenge.message),
+  );
+  await request(`/api/rooms/${unlockRoom.code}/wallet/verify`, {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: joined.participantToken,
+      challengeId: walletChallenge.challengeId,
+      account: keyPair.toAddress().toUserFriendlyAddress(),
+      publicKey: keyPair.publicKey.toHex(),
+      signature: walletSignature.toHex(),
+    }),
+  });
+  unlockPlayers.push({ ...joined, keyPair });
+}
+const unverifiedUnlockPlayer = await request(
+  `/api/rooms/${unlockRoom.code}/join`,
+  {
+    method: 'POST',
+    body: JSON.stringify({ nickname: 'Echo' }),
+  },
+);
+await request(`/api/rooms/${unlockRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'start', hostKey: unlockRoom.hostKey }),
+});
+const unverifiedUnlockAnswer = await fetch(
+  `${base}/api/rooms/${unlockRoom.code}/answer`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      participantToken: unverifiedUnlockPlayer.participantToken,
+      choice: 0,
+    }),
+  },
+);
+assert(
+  unverifiedUnlockAnswer.status === 409,
+  'Community Unlock answers must require wallet proof before play.',
+);
+for (const player of unlockPlayers) {
+  await request(`/api/rooms/${unlockRoom.code}/answer`, {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: player.participantToken,
+      choice: 0,
+    }),
+  });
+}
+await request(`/api/rooms/${unlockRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: unlockRoom.hostKey }),
+});
+await request(`/api/rooms/${unlockRoom.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'finish', hostKey: unlockRoom.hostKey }),
+});
+const unlocked = await request(`/api/rooms/${unlockRoom.code}`);
+assert(
+  unlocked.rewardRule === 'community_unlock' &&
+    unlocked.players.filter((player) => player.rewardEligible).length === 2,
+  'Only verified finishers must become eligible after the shared target clears.',
+);
+for (const player of unlockPlayers) {
+  const challenge = await request(
+    `/api/rooms/${unlockRoom.code}/payout/challenge`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ participantToken: player.participantToken }),
+    },
+  );
+  const signature = player.keyPair.sign(
+    new TextEncoder().encode(challenge.message),
+  );
+  await request(`/api/rooms/${unlockRoom.code}/payout/enroll`, {
+    method: 'POST',
+    body: JSON.stringify({
+      participantToken: player.participantToken,
+      challengeId: challenge.challengeId,
+      account: player.keyPair.toAddress().toUserFriendlyAddress(),
+      publicKey: player.keyPair.publicKey.toHex(),
+      signature: signature.toHex(),
+    }),
+  });
+}
+const unlockSettlement = await request(
+  `/api/rooms/${unlockRoom.code}/reward/settlement`,
+  { method: 'POST', body: '{}' },
+);
+assert(
+  unlockSettlement.state === 'confirmed' &&
+    unlockSettlement.eligible === 2 &&
+    unlockSettlement.payouts.every((payout) => payout.amountLuna === '1000000'),
+  'A cleared 20 NIM Community Unlock must settle as two exact 10 NIM payouts.',
+);
+
 const refundRoom = await request('/api/rooms', {
   method: 'POST',
   body: JSON.stringify({
@@ -705,6 +870,7 @@ console.log(
     walletProof: true,
     reactions: true,
     livingRoomBranch: true,
+    communityUnlock: true,
     rewardPrepared: true,
     vaultFundingProof: true,
   }),

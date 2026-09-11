@@ -59,6 +59,20 @@ type MimoNotification = {
   createdAt: number;
 };
 
+type CommunityEventSummary = {
+  id: string;
+  title: string;
+  status: string;
+  startsAt: number | null;
+  roomCode: string | null;
+  createdAt: number;
+  playerCount: number;
+  publicVisible: boolean;
+  rewardState: string | null;
+  rewardAmount: number | null;
+  scores: Array<{ nickname: string; score: number }>;
+};
+
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
 
 export function CommunityStudio({
@@ -856,6 +870,10 @@ function CommunityCard({
     'host',
   );
   const [managerLink, setManagerLink] = useState('');
+  const [managedEvents, setManagedEvents] = useState<CommunityEventSummary[]>(
+    [],
+  );
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [recurrence, setRecurrence] = useState<Community['recurrence']>(
     community.recurrence,
   );
@@ -986,6 +1004,70 @@ function CommunityCard({
         cause instanceof Error
           ? cause.message
           : 'The invitation could not be created.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+  async function openSettings() {
+    const nextManaging = !managing;
+    setManaging(nextManaging);
+    if (!nextManaging || historyLoaded || community.role === 'host') return;
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(
+        `/api/communities/${community.slug}?manage=1`,
+        { headers: { 'x-mimo-account': session }, cache: 'no-store' },
+      );
+      const body = (await response.json()) as {
+        events?: CommunityEventSummary[];
+        error?: string;
+      };
+      if (!response.ok || !body.events)
+        throw new Error(body.error || 'Event history could not load.');
+      setManagedEvents(
+        body.events.filter((event) => event.status === 'complete'),
+      );
+      setHistoryLoaded(true);
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'Event history could not load.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+  async function changeEventVisibility(eventId: string, visible: boolean) {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(
+        `/api/communities/${community.slug}/events/${eventId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-mimo-account': session,
+          },
+          body: JSON.stringify({ visible }),
+        },
+      );
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'Event visibility could not be changed.');
+      setManagedEvents((events) =>
+        events.map((event) =>
+          event.id === eventId ? { ...event, publicVisible: visible } : event,
+        ),
+      );
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'Event visibility could not be changed.',
       );
     } finally {
       setSavingSchedule(false);
@@ -1140,7 +1222,7 @@ function CommunityCard({
             View page <ArrowRight size={16} />
           </a>
           <button
-            onClick={() => setManaging((value) => !value)}
+            onClick={() => void openSettings()}
             className="inline-flex h-11 items-center px-3 text-sm font-extrabold text-[#53687c]"
           >
             {managing ? 'Close settings' : 'Community settings'}
@@ -1179,6 +1261,52 @@ function CommunityCard({
             >
               Save links
             </Button>
+            {community.role !== 'host' && historyLoaded && (
+              <div className="mt-5 border-t border-[#e3e7ea] pt-5">
+                <p className="text-sm font-extrabold">Public event history</p>
+                <p className="mt-1 text-xs leading-5 text-[#718295]">
+                  Hide an event from the community page without deleting its
+                  results or payment record.
+                </p>
+                {managedEvents.length > 0 ? (
+                  <div className="mt-3 border-y border-[#dfe5e9]">
+                    {managedEvents.map((event) => (
+                      <div
+                        key={event.id}
+                        className="flex items-center justify-between gap-4 border-b border-[#edf0f2] py-3 last:border-0"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-extrabold">
+                            {event.title}
+                          </p>
+                          <p className="mt-0.5 text-xs font-bold text-[#718295]">
+                            {event.publicVisible
+                              ? 'Visible on community page'
+                              : 'Hidden from community page'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            void changeEventVisibility(
+                              event.id,
+                              !event.publicVisible,
+                            )
+                          }
+                          disabled={savingSchedule}
+                          className="shrink-0 text-xs font-extrabold text-[#2577de] disabled:opacity-50"
+                        >
+                          {event.publicVisible ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs font-bold text-[#718295]">
+                    Completed events will appear here.
+                  </p>
+                )}
+              </div>
+            )}
             {community.role === 'owner' && (
               <div className="mt-5 border-t border-[#e3e7ea] pt-5">
                 <p className="text-sm font-extrabold">
@@ -1294,17 +1422,7 @@ export function PublicCommunity({
 }) {
   const [data, setData] = useState<{
     community: Community;
-    events: Array<{
-      title: string;
-      status: string;
-      startsAt: number | null;
-      roomCode: string | null;
-      createdAt: number;
-      playerCount: number;
-      rewardState: string | null;
-      rewardAmount: number | null;
-      scores: Array<{ nickname: string; score: number }>;
-    }>;
+    events: CommunityEventSummary[];
     standings: Array<{
       nickname: string;
       points: number;
@@ -1330,17 +1448,7 @@ export function PublicCommunity({
       .then(async (response) => {
         const body = (await response.json()) as {
           community?: Community;
-          events?: Array<{
-            title: string;
-            status: string;
-            startsAt: number | null;
-            roomCode: string | null;
-            createdAt: number;
-            playerCount: number;
-            rewardState: string | null;
-            rewardAmount: number | null;
-            scores: Array<{ nickname: string; score: number }>;
-          }>;
+          events?: CommunityEventSummary[];
           standings?: Array<{
             nickname: string;
             points: number;
@@ -1452,12 +1560,12 @@ export function PublicCommunity({
   };
   return (
     <StudioShell>
-      <section className="overflow-hidden rounded-[32px] border border-[#d9dee3] bg-white shadow-[0_24px_70px_rgba(26,47,80,.09)]">
+      <section className="border-b border-[#d7dfe4] pb-8">
         <div
-          className="h-3"
+          className="h-1 w-24 rounded-full"
           style={{ background: data.community.accentColor }}
         />
-        <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,.75fr)]">
+        <div className="grid gap-8 pt-6 sm:pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,.75fr)]">
           <div>
             <CommunityAvatar community={data.community} size="hero" />
             <p
@@ -1570,7 +1678,7 @@ export function PublicCommunity({
         </div>
       </section>
       {data.team.length > 0 && (
-        <section className="mt-6 border-y border-[#d7dfe4] py-6">
+        <section className="border-b border-[#d7dfe4] py-7">
           <p className="text-xs font-black uppercase tracking-[.13em] text-[#2577de]">
             Community team
           </p>
@@ -1599,8 +1707,8 @@ export function PublicCommunity({
         </section>
       )}
       {data.standings.length > 0 && (
-        <section className="mt-6 overflow-hidden rounded-[26px] border border-[#d7dfe4] bg-white">
-          <div className="flex items-end justify-between gap-4 border-b border-[#e0e5e8] px-5 py-4 sm:px-6">
+        <section className="border-b border-[#d7dfe4] py-7">
+          <div className="flex items-end justify-between gap-4 pb-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[.13em] text-[#a97800]">
                 {data.community.seasonName}
@@ -1617,7 +1725,7 @@ export function PublicCommunity({
             {data.standings.slice(0, 10).map((standing, index) => (
               <li
                 key={`${standing.nickname}-${index}`}
-                className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#edf0f2] px-5 py-3 last:border-0 sm:px-6"
+                className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-t border-[#e3e8eb] py-3"
               >
                 <span
                   className={`font-display text-lg font-extrabold ${index < 3 ? 'text-[#a97800]' : 'text-[#8b98a3]'}`}
@@ -1643,7 +1751,7 @@ export function PublicCommunity({
         </section>
       )}
       {completed.length > 0 && (
-        <section className="mt-6 border-t border-[#d7dde1] pt-6">
+        <section className="border-b border-[#d7dde1] py-7">
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-xs font-black uppercase tracking-[.13em] text-[#c94f3b]">
@@ -1657,12 +1765,12 @@ export function PublicCommunity({
               {completed.length} completed
             </span>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid gap-x-7 sm:grid-cols-2 lg:grid-cols-3">
             {(showAllHistory ? completed : completed.slice(0, 3)).map(
               (event) => (
                 <article
                   key={`${event.title}-${event.startsAt ?? event.roomCode}`}
-                  className="rounded-[20px] border border-[#d8dfe4] bg-white p-4"
+                  className="border-t border-[#d8dfe4] py-4"
                 >
                   <span className="text-xs font-extrabold uppercase tracking-[.1em] text-[#19805b]">
                     Complete
@@ -1710,7 +1818,7 @@ export function PublicCommunity({
           )}
         </section>
       )}
-      <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-[#dae2e8] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-bold text-[#53687c]">
           Own this community? Your Studio keeps every event together.
         </p>

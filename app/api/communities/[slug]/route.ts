@@ -38,18 +38,25 @@ export async function GET(
       followerCount: number;
     }>();
   if (!community) return json({ error: 'That community does not exist.' }, 404);
+  const account = await getAccountBySession(request);
+  const membership = account ? await getCommunityRole(slug, account) : null;
+  const canManage = Boolean(membership && membership.role !== 'host');
+  const includeHidden =
+    canManage && new URL(request.url).searchParams.get('manage') === '1';
   const events = await getD1()
     .prepare(`SELECT e.id, e.title, e.status, e.starts_at AS startsAt,
       e.room_code AS roomCode, e.created_at AS createdAt,
+      e.public_visible AS publicVisible,
       r.state AS rewardState, r.amount_luna AS rewardAmountLuna,
       (SELECT COUNT(*) FROM participants p WHERE p.event_id = e.id) AS playerCount
       FROM events e LEFT JOIN rewards r ON r.event_id = e.id
       WHERE e.community_id = ? AND e.status != 'cancelled'
+      AND (e.public_visible = 1 OR ? = 1)
       ORDER BY CASE WHEN e.status IN ('live', 'lobby', 'scheduled') THEN 0 ELSE 1 END,
       CASE WHEN e.status IN ('live', 'lobby', 'scheduled')
         THEN COALESCE(e.starts_at, e.created_at) END ASC,
       e.created_at DESC LIMIT 30`)
-    .bind(community.id)
+    .bind(community.id, includeHidden ? 1 : 0)
     .all<{
       id: string;
       title: string;
@@ -57,6 +64,7 @@ export async function GET(
       startsAt: number | null;
       roomCode: string | null;
       createdAt: number;
+      publicVisible: number;
       rewardState: string | null;
       rewardAmountLuna: string | null;
       playerCount: number;
@@ -103,7 +111,6 @@ export async function GET(
       cm.created_at ASC`)
     .bind(community.id)
     .all();
-  const account = await getAccountBySession(request);
   const follow = account
     ? await getD1()
         .prepare(
@@ -124,6 +131,8 @@ export async function GET(
       startsAt: event.startsAt,
       roomCode: event.roomCode,
       createdAt: event.createdAt,
+      id: event.id,
+      publicVisible: Boolean(event.publicVisible),
       playerCount: event.playerCount,
       rewardState: event.rewardState,
       rewardAmount: event.rewardAmountLuna
@@ -133,6 +142,7 @@ export async function GET(
     })),
     standings: standings.results,
     team: team.results,
+    canManage,
   });
 }
 

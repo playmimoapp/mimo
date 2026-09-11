@@ -117,6 +117,9 @@ export const events = sqliteTable(
     mimoCueKey: text('mimo_cue_key'),
     mimoCue: text('mimo_cue'),
     mimoCueUpdatedAt: integer('mimo_cue_updated_at'),
+    publicVisible: integer('public_visible', { mode: 'boolean' })
+      .notNull()
+      .default(true),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [

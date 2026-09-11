@@ -102,11 +102,11 @@ const profileTone: Record<MimoProfileStyle, string> = {
   bold: 'border-[#df8979] bg-[#ffe3dc] text-[#b64c39]',
 };
 
-const profilePose: Record<MimoProfileStyle, string> = {
-  hype: 'scale-[1.45] translate-y-[8%] rotate-[-3deg]',
-  cool: 'scale-[1.52] translate-y-[10%] rotate-[3deg]',
-  clever: 'scale-[1.4] translate-y-[7%]',
-  bold: 'scale-[1.55] translate-y-[11%] rotate-[-5deg]',
+const profileSpritePosition: Record<MimoProfileStyle, string> = {
+  hype: 'left-0 top-0',
+  cool: '-left-full top-0',
+  clever: 'left-0 -top-full',
+  bold: '-left-full -top-full',
 };
 
 export function MimoProfileAvatar({
@@ -131,11 +131,15 @@ export function MimoProfileAvatar({
       aria-label={`${nickname}, ${definition.label} Mimo profile`}
     >
       <Image
-        src="/mimo-host.png"
+        src="/mimo-profile-poses.png"
         alt=""
-        fill
-        sizes="44px"
-        className={cn('object-contain', profilePose[profile])}
+        width={1254}
+        height={1254}
+        sizes="88px"
+        className={cn(
+          'absolute h-[200%] w-[200%] max-w-none object-contain',
+          profileSpritePosition[profile],
+        )}
       />
       <span className="absolute bottom-0 right-0 grid h-4 min-w-4 place-items-center rounded-full bg-white px-0.5 text-[9px] font-black text-[#203752] shadow-sm">
         {definition.symbol}

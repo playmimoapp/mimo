@@ -423,9 +423,17 @@ export function CommunityStudio({
     return (
       <StudioShell>
         <div className="mx-auto max-w-2xl py-2 sm:py-8">
-          <span className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
-            Your Mimo identity
-          </span>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
+              Your Mimo identity
+            </span>
+            <button
+              onClick={() => void signOut()}
+              className="inline-flex min-h-10 items-center gap-1.5 text-sm font-extrabold text-[#607486] transition hover:text-[#b24434]"
+            >
+              <LogOut size={15} /> Use another wallet
+            </button>
+          </div>
           <h1 className="font-display mt-2 text-4xl font-extrabold leading-[.96] tracking-[-.05em] sm:text-5xl">
             Pick how the room knows you.
           </h1>

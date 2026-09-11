@@ -89,6 +89,38 @@ function durationFromConfig(configJson: string) {
   }
 }
 
+export async function advanceCommunitySchedule(communityId: string) {
+  const db = getD1();
+  const schedule = await db
+    .prepare(`SELECT recurrence, next_event_at AS nextEventAt
+      FROM communities WHERE id = ? LIMIT 1`)
+    .bind(communityId)
+    .first<{ recurrence: string; nextEventAt: number | null }>();
+  if (!schedule?.nextEventAt || schedule.recurrence === 'none') return null;
+
+  const nextDate = new Date(schedule.nextEventAt);
+  const advance = () => {
+    if (schedule.recurrence === 'weekly')
+      nextDate.setDate(nextDate.getDate() + 7);
+    else if (schedule.recurrence === 'fortnightly')
+      nextDate.setDate(nextDate.getDate() + 14);
+    else if (schedule.recurrence === 'monthly')
+      nextDate.setMonth(nextDate.getMonth() + 1);
+  };
+  if (!['weekly', 'fortnightly', 'monthly'].includes(schedule.recurrence))
+    return null;
+  do advance();
+  while (nextDate.getTime() <= Date.now());
+
+  const followingEventAt = nextDate.getTime();
+  const changed = await db
+    .prepare(`UPDATE communities SET next_event_at = ?, updated_at = ?
+      WHERE id = ? AND next_event_at = ?`)
+    .bind(followingEventAt, Date.now(), communityId, schedule.nextEventAt)
+    .run();
+  return changed.meta.changes > 0 ? followingEventAt : null;
+}
+
 export async function reconcileRoom(room: RoomRecord) {
   if (!room.autoHostEnabled) {
     return room;
@@ -328,22 +360,21 @@ export async function reconcileRoom(room: RoomRecord) {
           .run();
       }
     } else {
-      await db.batch([
-        db
-          .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
-            WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
-          .bind(now, room.id),
-        ...(roomConfig.custody === 'mimo_vault'
-          ? [
-              db
-                .prepare(`UPDATE rewards SET state = 'results_under_verification',
-                  updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
-                .bind(now, room.id),
-            ]
-          : []),
-      ]);
-      if (roomConfig.custody === 'mimo_vault') {
-        await attemptAutomaticPayout(room.id);
+      const changed = await db
+        .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
+          WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
+        .bind(now, room.id)
+        .run();
+      if ((changed.meta.changes ?? 0) > 0) {
+        await advanceCommunitySchedule(room.communityId);
+        if (roomConfig.custody === 'mimo_vault') {
+          await db
+            .prepare(`UPDATE rewards SET state = 'results_under_verification',
+              updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
+            .bind(now, room.id)
+            .run();
+          await attemptAutomaticPayout(room.id);
+        }
       }
     }
     return (await getRoom(room.roomCode)) ?? room;

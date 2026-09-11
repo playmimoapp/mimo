@@ -50,6 +50,13 @@ assert(
   'Community must keep its public handle.',
 );
 
+const scheduledAt = Date.now() + 24 * 60 * 60_000;
+await request(`/api/communities/${slug}`, {
+  method: 'PATCH',
+  headers: { 'x-mimo-account': account.sessionToken },
+  body: JSON.stringify({ recurrence: 'weekly', nextEventAt: scheduledAt }),
+});
+
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -76,6 +83,8 @@ const room = await request('/api/rooms', {
     title: 'Friday Live Check',
     community: 'Mimo QA Community',
     communitySlug: slug,
+    startsAt: scheduledAt,
+    recurrence: 'weekly',
     rewardMode: 'free',
     accessMode: 'public',
     rounds: [
@@ -90,6 +99,29 @@ const room = await request('/api/rooms', {
     ],
   }),
 });
+const player = await request(`/api/rooms/${room.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({
+    nickname: 'Season Player',
+    profileStyle: 'hype',
+  }),
+});
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'start', hostKey: room.hostKey }),
+});
+await request(`/api/rooms/${room.code}/answer`, {
+  method: 'POST',
+  body: JSON.stringify({ participantToken: player.participantToken, choice: 0 }),
+});
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
+});
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'finish', hostKey: room.hostKey }),
+});
 const publicPage = await request(`/api/communities/${slug}`);
 assert(
   publicPage.community.hasAvatar === true,
@@ -99,6 +131,20 @@ assert(
   publicPage.events.some((event) => event.roomCode === room.code),
   'A Studio event must appear on its permanent community page.',
 );
+assert(
+  publicPage.community.nextEventAt === scheduledAt + 7 * 24 * 60 * 60_000,
+  'Completing a weekly event must advance the community schedule once.',
+);
+assert(
+  publicPage.standings.some(
+    (entry) =>
+      entry.nickname === 'Season Player' &&
+      entry.points === 1000 &&
+      entry.eventsPlayed === 1 &&
+      entry.wins === 1,
+  ),
+  'Completed event scores must update the active season standings.',
+);
 
 console.log(
   JSON.stringify({
@@ -107,5 +153,7 @@ console.log(
     room: room.code,
     walletOwned: true,
     realImageStorage: true,
+    recurringSchedule: true,
+    seasonStandings: true,
   }),
 );

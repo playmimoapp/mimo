@@ -1,5 +1,6 @@
 import { getD1 } from '@/db';
 import {
+  advanceCommunitySchedule,
   getRoom,
   getRoomConfig,
   hashToken,
@@ -248,40 +249,14 @@ export async function POST(
       .run();
     applied = changed.meta.changes > 0;
     if (applied) {
-      const schedule = await db
-        .prepare(`SELECT recurrence, next_event_at AS nextEventAt
-          FROM communities WHERE id = ? LIMIT 1`)
-        .bind(room.communityId)
-        .first<{ recurrence: string; nextEventAt: number | null }>();
-      let followingEventAt: number | null = null;
-      if (schedule?.nextEventAt && schedule.recurrence !== 'none') {
-        const nextDate = new Date(schedule.nextEventAt);
-        if (schedule.recurrence === 'weekly')
-          nextDate.setDate(nextDate.getDate() + 7);
-        if (schedule.recurrence === 'fortnightly')
-          nextDate.setDate(nextDate.getDate() + 14);
-        if (schedule.recurrence === 'monthly')
-          nextDate.setMonth(nextDate.getMonth() + 1);
-        followingEventAt = nextDate.getTime();
+      await advanceCommunitySchedule(room.communityId);
+      if (roomConfig.custody === 'mimo_vault') {
+        await db
+          .prepare(`UPDATE rewards SET state = 'results_under_verification',
+            updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
+          .bind(now, room.id)
+          .run();
       }
-      await db.batch([
-        ...(followingEventAt
-          ? [
-              db
-                .prepare(`UPDATE communities SET next_event_at = ?, updated_at = ?
-                  WHERE id = ?`)
-                .bind(followingEventAt, now, room.communityId),
-            ]
-          : []),
-        ...(roomConfig.custody === 'mimo_vault'
-          ? [
-              db
-                .prepare(`UPDATE rewards SET state = 'results_under_verification',
-                  updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
-                .bind(now, room.id),
-            ]
-          : []),
-      ]);
     }
   } else {
     const changed = await db

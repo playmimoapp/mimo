@@ -69,30 +69,73 @@ export async function POST(
   const participantToken = makeToken();
   const participantId = crypto.randomUUID();
   const tokenHash = await hashToken(participantToken);
-  const teamId = (count?.total ?? 0) % 2 === 0 ? 'signal' : 'spark';
   const now = Date.now();
 
   try {
-    await db
+    const inserted = await db
       .prepare(`INSERT INTO participants
       (id, event_id, nickname, profile_style, team_id, session_token_hash, score,
         answer_locked, session_version, joined_at, last_seen_at)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`)
+      SELECT ?, ?, ?, ?,
+        CASE
+          WHEN (SELECT COUNT(*) FROM participants
+            WHERE event_id = ? AND team_id = 'signal') <=
+            (SELECT COUNT(*) FROM participants
+              WHERE event_id = ? AND team_id = 'spark')
+          THEN 'signal'
+          ELSE 'spark'
+        END,
+        ?, 0, 0, 1, ?, ?
+      WHERE (SELECT COUNT(*) FROM participants WHERE event_id = ?) < 80
+        AND NOT EXISTS (
+          SELECT 1 FROM participants
+          WHERE event_id = ? AND lower(nickname) = lower(?)
+        )`)
       .bind(
         participantId,
         room.id,
         nickname,
         profileStyle,
-        teamId,
+        room.id,
+        room.id,
         tokenHash,
         now,
         now,
+        room.id,
+        room.id,
+        nickname,
       )
       .run();
+    if (!inserted.meta.changes) {
+      const latestCount = await db
+        .prepare(`SELECT COUNT(*) AS total FROM participants WHERE event_id = ?`)
+        .bind(room.id)
+        .first<{ total: number }>();
+      if ((latestCount?.total ?? 0) >= 80) {
+        return json({ error: 'This room is full.' }, 409);
+      }
+      return json({ error: 'That name is already in this room.' }, 409);
+    }
   } catch (error) {
     console.error('room_join_failed', error);
     return json({ error: 'You could not join. Try once more.' }, 500);
   }
 
-  return json({ participantId, participantToken, teamId, profileStyle }, 201);
+  const joined = await db
+    .prepare(`SELECT team_id AS teamId FROM participants WHERE id = ? LIMIT 1`)
+    .bind(participantId)
+    .first<{ teamId: 'signal' | 'spark' }>();
+  if (!joined) {
+    return json({ error: 'Your room place could not be confirmed.' }, 500);
+  }
+
+  return json(
+    {
+      participantId,
+      participantToken,
+      teamId: joined.teamId,
+      profileStyle,
+    },
+    201,
+  );
 }

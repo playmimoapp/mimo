@@ -165,6 +165,17 @@ assert(
   new Set(lobby.players.map((player) => player.profileStyle)).size === 4,
   'Each saved Mimo profile must return to the live room.',
 );
+const lobbyTeams = lobby.players.reduce(
+  (totals, player) => {
+    totals[player.teamId] += 1;
+    return totals;
+  },
+  { signal: 0, spark: 0 },
+);
+assert(
+  lobbyTeams.signal === 2 && lobbyTeams.spark === 2,
+  'Simultaneous joins must keep both teams balanced.',
+);
 const lobbyCue = await request(`/api/rooms/${room.code}/cue`, {
   method: 'POST',
 });

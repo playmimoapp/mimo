@@ -142,8 +142,8 @@ export async function POST(request: Request) {
     };
   });
 
-  if (title.length < 3 || community.length < 2) {
-    return json({ error: 'Add an event and community name.' }, 400);
+  if (title.length < 3) {
+    return json({ error: 'Add an event name.' }, 400);
   }
   if (rewardMode === 'nim' && (!rewardAmount || Number(rewardAmount) < 1)) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
@@ -241,7 +241,7 @@ export async function POST(request: Request) {
               .bind(
                 communityId,
                 `room-${code.toLowerCase()}`,
-                community,
+                community || title,
                 `host:${hostKeyHash.slice(0, 24)}`,
                 now,
               ),

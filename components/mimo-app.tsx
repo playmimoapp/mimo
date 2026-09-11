@@ -57,7 +57,6 @@ type Screen =
   | 'home'
   | 'host_entry'
   | 'create_choice'
-  | 'creation_method'
   | 'create_assisted'
   | 'create'
   | 'preview'
@@ -309,9 +308,7 @@ function CreationRail({ screen }: { screen: Screen }) {
   const active =
     screen === 'create_choice'
       ? 0
-      : screen === 'creation_method' ||
-          screen === 'create_assisted' ||
-          screen === 'create'
+      : screen === 'create_assisted' || screen === 'create'
         ? 1
         : screen === 'preview'
           ? 2
@@ -687,14 +684,10 @@ export function MimoApp() {
       return;
     }
     if (screen === 'create') {
-      setScreen('creation_method');
+      setScreen('create_choice');
       return;
     }
     if (screen === 'create_assisted') {
-      setScreen('creation_method');
-      return;
-    }
-    if (screen === 'creation_method') {
       setScreen('create_choice');
       return;
     }
@@ -856,7 +849,6 @@ export function MimoApp() {
       <Header
         back={
           screen === 'create_choice' ||
-          screen === 'creation_method' ||
           screen === 'host_entry' ||
           screen === 'create_assisted' ||
           screen === 'create' ||
@@ -881,7 +873,6 @@ export function MimoApp() {
         context={
           [
             'create_choice',
-            'creation_method',
             'create_assisted',
             'create',
             'preview',
@@ -902,7 +893,6 @@ export function MimoApp() {
       />
       {[
         'create_choice',
-        'creation_method',
         'create_assisted',
         'create',
         'preview',
@@ -943,16 +933,6 @@ export function MimoApp() {
                 setEvent({ ...event, eventKind });
                 setAssistantBrief({ ...assistantBrief, eventKind });
               }}
-              context={
-                event.communitySlug
-                  ? `${event.community} · ${event.recurrence} series`
-                  : 'One-time room'
-              }
-              next={() => setScreen('creation_method')}
-            />
-          )}
-          {screen === 'creation_method' && (
-            <CreationMethod
               context={
                 event.communitySlug
                   ? `${event.community} · ${event.recurrence} series`
@@ -1408,12 +1388,14 @@ function CreateChoice({
   selectedKind,
   selectKind,
   context,
-  next,
+  assisted,
+  manual,
 }: {
   selectedKind: EventKind;
   selectKind: (kind: EventKind) => void;
   context: string;
-  next: () => void;
+  assisted: () => void;
+  manual: () => void;
 }) {
   const selected = EVENT_FORMATS.find((format) => format.id === selectedKind)!;
   return (
@@ -1430,7 +1412,7 @@ function CreateChoice({
         <MimoCue
           className="md:justify-self-end"
           mood="thinking"
-          message="Pick the experience first. We’ll decide how to build it next."
+          message="Choose the experience. I can draft it, or you can start clean."
         />
       </div>
 
@@ -1471,91 +1453,26 @@ function CreateChoice({
           </button>
         ))}
       </div>
-      <div className="mobile-action-bar mt-7 flex items-center justify-between gap-4">
-        <p className="hidden text-sm font-semibold text-[#607486] sm:block">
-          Selected: <strong className="text-[#203752]">{selected.label}</strong>
+      <div className="mobile-action-bar mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-semibold text-[#607486]">
+          Start your <strong className="text-[#203752]">{selected.label}</strong>
         </p>
-        <Button
-          onClick={next}
-          className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 font-extrabold"
-        >
-          Continue <ArrowRight />
-        </Button>
-      </div>
-    </section>
-  );
-}
-
-function CreationMethod({
-  context,
-  assisted,
-  manual,
-}: {
-  context: string;
-  assisted: () => void;
-  manual: () => void;
-}) {
-  return (
-    <section className="mobile-page app-frame pb-16 pt-3 sm:pt-8">
-      <div className="grid items-end gap-5 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
-        <div>
-          <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
-            {context}
-          </p>
-          <h1 className="mobile-flow-title font-display mt-3 max-w-[760px] text-[clamp(3rem,7vw,5.6rem)] font-extrabold leading-[.9] tracking-[-.065em]">
-            Start with a draft—or your own words.
-          </h1>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex">
+          <Button
+            onClick={assisted}
+            className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-6 font-extrabold"
+          >
+            Draft with Mimo <Sparkles />
+          </Button>
+          <Button
+            onClick={manual}
+            variant="outline"
+            className="h-14 rounded-full border-[#aebbc5] bg-white px-5 font-extrabold"
+          >
+            <PenLine /> <span className="hidden sm:inline">Start </span>manual
+          </Button>
         </div>
-        <MimoCue
-          mood="happy"
-          message="I can do the first pass. You stay in control."
-        />
       </div>
-
-      <div className="mt-7 border-y border-[#ccd5db]">
-        <button
-          onClick={assisted}
-          className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-[#d8dfe3] py-6 text-left"
-        >
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#dceeff] text-[#1f72d2]">
-            <Sparkles size={20} />
-          </span>
-          <span>
-            <span className="text-xs font-black uppercase tracking-[.1em] text-[#1f72d2]">
-              Fastest
-            </span>
-            <strong className="font-display mt-1 block text-2xl font-extrabold">
-              Draft with Mimo
-            </strong>
-            <span className="mt-1 block text-sm leading-6 text-[#607486]">
-              Describe the idea. Mimo prepares editable moments, answers and
-              timing.
-            </span>
-          </span>
-          <ArrowRight className="transition group-hover:translate-x-1" />
-        </button>
-        <button
-          onClick={manual}
-          className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 py-6 text-left"
-        >
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#edf2f5] text-[#203752]">
-            <PenLine size={20} />
-          </span>
-          <span>
-            <strong className="font-display block text-2xl font-extrabold">
-              Build it yourself
-            </strong>
-            <span className="mt-1 block text-sm leading-6 text-[#607486]">
-              Begin with a clean editor and add only the moments you want.
-            </span>
-          </span>
-          <ArrowRight className="transition group-hover:translate-x-1" />
-        </button>
-      </div>
-      <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-[#607486]">
-        <ShieldCheck size={17} /> Nothing is published or funded without your
-        review.
-      </p>
     </section>
   );
 }
@@ -1798,7 +1715,6 @@ function CreateEvent({
   };
   const ready = Boolean(
     event.title.trim() &&
-    event.community.trim() &&
     event.rounds.length > 0 &&
     event.rounds.every(
       (round) =>
@@ -1850,28 +1766,26 @@ function CreateEvent({
         </nav>
         <div className="creator-form-shell mt-8 grid gap-7">
           <div className={`grid gap-7 ${sectionClass('basics')}`}>
-            <label className="grid gap-2 text-sm font-extrabold">
-              Community
-              <input
-                value={event.community}
-                onChange={(e) =>
-                  setEvent({
-                    ...event,
-                    community: e.target.value,
-                    communitySlug: '',
-                  })
-                }
-                disabled={Boolean(event.communitySlug)}
-                maxLength={60}
-                placeholder="e.g. Nimiq Lagos"
-                className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2] disabled:cursor-not-allowed disabled:text-[#53687c]"
-              />
-              {event.communitySlug && (
-                <span className="text-xs font-bold text-[#19805b]">
-                  Connected to @{event.communitySlug}
+            {event.communitySlug ? (
+              <div className="flex items-center gap-3 border-b border-[#cfd5d8] pb-4">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-[#e5f6eb] text-[#19805b]">
+                  <Users size={18} />
                 </span>
-              )}
-            </label>
+                <span>
+                  <span className="block text-xs font-extrabold uppercase tracking-[.1em] text-[#19805b]">
+                    Community event
+                  </span>
+                  <strong className="mt-0.5 block text-lg">
+                    {event.community}
+                  </strong>
+                </span>
+              </div>
+            ) : (
+              <p className="flex items-center gap-2 border-b border-[#cfd5d8] pb-4 text-sm font-bold text-[#607486]">
+                <Radio size={17} className="text-[#1f72d2]" /> One-time room ·
+                no community setup
+              </p>
+            )}
             <label className="grid gap-2 text-sm font-extrabold">
               Event name
               <input

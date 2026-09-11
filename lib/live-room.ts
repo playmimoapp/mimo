@@ -1,5 +1,6 @@
 import { getD1 } from '@/db';
 import { detectLivingRoomSignal } from '@/lib/living-room-engine';
+import { attemptAutomaticPayout } from '@/lib/reward-vault';
 
 export function cleanCode(value: string) {
   return value
@@ -341,6 +342,9 @@ export async function reconcileRoom(room: RoomRecord) {
             ]
           : []),
       ]);
+      if (roomConfig.custody === 'mimo_vault') {
+        await attemptAutomaticPayout(room.id);
+      }
     }
     return (await getRoom(room.roomCode)) ?? room;
   }

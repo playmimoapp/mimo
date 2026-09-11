@@ -1206,9 +1206,14 @@ function CancelledState({ room }: { room: LiveRoomState }) {
           : 'Mimo did not request or move any NIM. Any open wallet prompt can be safely closed.'}
       </p>
       {room.refundTxHash && (
-        <p className="mt-3 font-mono text-xs font-bold text-[#607486]">
-          Refund proof {room.refundTxHash.slice(0, 14)}…
-        </p>
+        <a
+          href={`https://test.nimiq.watch/#${room.refundTxHash}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#2577de] underline decoration-[#9dc3ec] underline-offset-4"
+        >
+          Refund proof {room.refundTxHash.slice(0, 14)}… <Link2 size={13} />
+        </a>
       )}
     </div>
   );
@@ -1473,9 +1478,14 @@ function RewardFundingPanel({
       </div>
 
       {room.fundingTxHash && (
-        <p className="mt-3 font-mono text-xs font-bold text-[#746334]">
-          Proof {room.fundingTxHash.slice(0, 12)}…
-        </p>
+        <a
+          href={`https://test.nimiq.watch/#${room.fundingTxHash}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#746334] underline decoration-[#c7a838] underline-offset-4"
+        >
+          Funding proof {room.fundingTxHash.slice(0, 12)}… <Link2 size={13} />
+        </a>
       )}
       {isHost && !funded && (
         <div className="mt-4 flex flex-wrap gap-2">
@@ -2526,9 +2536,14 @@ function RewardSettlement({
           </div>
         </div>
         {room.fundingTxHash && (
-          <p className="mt-4 border-t border-[#dfcb83] pt-4 font-mono text-xs font-bold text-[#675e3e]">
-            Funding proof {room.fundingTxHash.slice(0, 14)}…
-          </p>
+          <a
+            href={`https://test.nimiq.watch/#${room.fundingTxHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 flex items-center gap-1.5 border-t border-[#dfcb83] pt-4 font-mono text-xs font-bold text-[#675e3e] underline decoration-[#c7a838] underline-offset-4"
+          >
+            Funding proof {room.fundingTxHash.slice(0, 14)}… <Link2 size={13} />
+          </a>
         )}
         {isEligible && !currentPlayer?.payoutAddressRegistered ? (
           <Button
@@ -2572,6 +2587,16 @@ function RewardSettlement({
           >
             {detail}
           </output>
+        )}
+        {room.payoutTxHash && (
+          <a
+            href={`https://test.nimiq.watch/#${room.payoutTxHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#675e3e] underline decoration-[#c7a838] underline-offset-4"
+          >
+            View payout proof <Link2 size={13} />
+          </a>
         )}
       </section>
     );

@@ -28,7 +28,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Server-side Nimiq signature and address verification
 - Replay protection and one verified wallet per event
 - Creator-held NIM rewards with verified-winner payout preparation
-- Fail-closed TestAlbatross vault foundation with encrypted payout registration, automatic payout and refund logic
+- Live fail-closed TestAlbatross vault with encrypted payout registration, automatic payout and refund logic
 - Funded Community Unlocks that split NIM exactly between verified finishers after a shared finale target is cleared
 - A visible locked room promise: creators can cancel before play, but cannot cancel or rewrite a room after it starts
 - Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
@@ -36,7 +36,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Wallet-owned Community Studio profiles with real pictures and durable public links
 - Permanent community pages that collect their live events in one place
 
-Mimo does not claim that proposed rewards are escrowed or funded. Creator-held rewards remain a clearly labelled promise and require wallet approval. Automatic settlement stays unavailable unless a real TestAlbatross vault, RPC and encryption key are configured.
+Mimo does not claim that proposed rewards are escrowed or funded. Creator-held rewards remain a clearly labelled promise and require wallet approval. The production competition build has a valueless TestAlbatross vault and automatic settlement enabled; mainnet custody is deliberately disabled.
 
 ## Nimiq Pay flow
 
@@ -95,9 +95,10 @@ npm run lint
 npm run build
 npm run test:room -- http://localhost:3000
 npm run test:community -- http://localhost:3000
+node scripts/test-real-testnet-reward.mjs https://mimo-flax.vercel.app
 ```
 
-The automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. It is QA—not proof of a blockchain payment. Native Nimiq Pay dialogs and real TestAlbatross transactions must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
+The local automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. The production testnet check performs real TestAlbatross funding and automatic payout transactions. Native Nimiq Pay dialogs must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
 
 ## Product direction
 

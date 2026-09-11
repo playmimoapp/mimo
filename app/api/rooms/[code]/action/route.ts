@@ -6,7 +6,10 @@ import {
   json,
   readJson,
 } from '@/lib/live-room';
-import { attemptAutomaticRefund } from '@/lib/reward-vault';
+import {
+  attemptAutomaticPayout,
+  attemptAutomaticRefund,
+} from '@/lib/reward-vault';
 
 const nextStatus = {
   start: 'live',
@@ -270,9 +273,13 @@ export async function POST(
   }
 
   const settlement =
-    action === 'cancel' && roomConfig.custody === 'mimo_vault'
-      ? await attemptAutomaticRefund(room.id)
-      : undefined;
+    roomConfig.custody !== 'mimo_vault'
+      ? undefined
+      : action === 'cancel'
+        ? await attemptAutomaticRefund(room.id)
+        : action === 'finish'
+          ? await attemptAutomaticPayout(room.id)
+          : undefined;
 
   return json({
     status,

@@ -119,12 +119,18 @@ export async function POST(
     action === 'pause_auto' || action === 'resume_auto'
       ? room.status
       : nextStatus[action];
+  let applied = false;
   if (action === 'pause_auto' || action === 'resume_auto') {
-    await db.batch([
-      db
-        .prepare(`UPDATE events SET auto_host_enabled = ? WHERE id = ?`)
-        .bind(action === 'resume_auto' ? 1 : 0, room.id),
-      db
+    const enabled = action === 'resume_auto' ? 1 : 0;
+    const changed = await db
+      .prepare(`UPDATE events SET auto_host_enabled = ?, state_changed_at = ?
+        WHERE id = ? AND auto_host_enabled = ?
+        AND status NOT IN ('complete', 'cancelled')`)
+      .bind(enabled, now, room.id, enabled ? 0 : 1)
+      .run();
+    applied = changed.meta.changes > 0;
+    if (applied) {
+      await db
         .prepare(`INSERT INTO event_audit
           (id, event_id, actor_hash, action, payload_json, created_at)
           VALUES (?, ?, ?, ?, ?, ?)`)
@@ -135,141 +141,189 @@ export async function POST(
           action === 'pause_auto' ? 'live_moment_held' : 'auto_host_resumed',
           JSON.stringify({ roundId: room.activeRoundId, status: room.status }),
           now,
-        ),
-    ]);
+        )
+        .run();
+    }
   } else if (action === 'extend') {
-    await db
+    const changed = await db
       .prepare(
-        `UPDATE events SET round_duration_seconds = MIN(round_duration_seconds + 10, 90) WHERE id = ?`,
+        `UPDATE events SET round_duration_seconds = MIN(round_duration_seconds + 10, 90),
+          state_changed_at = ?
+        WHERE id = ? AND status = 'live' AND round_duration_seconds = ?`,
       )
-      .bind(room.id)
+      .bind(now, room.id, room.roundDurationSeconds)
       .run();
+    applied = changed.meta.changes > 0;
   } else if (action === 'cancel') {
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE events SET status = 'cancelled', state_changed_at = ? WHERE id = ?`,
-        )
-        .bind(now, room.id),
-      ...(roomConfig.custody === 'mimo_vault'
-        ? [
-            db
-              .prepare(`UPDATE rewards SET state = 'cancelled', updated_at = ?
-                WHERE event_id = ? AND state NOT IN ('payout_submitted', 'payout_confirmed')`)
-              .bind(now, room.id),
-          ]
-        : []),
-    ]);
+    const changed = await db
+      .prepare(`UPDATE events SET status = 'cancelled', state_changed_at = ?
+        WHERE id = ? AND status = 'lobby'`)
+      .bind(now, room.id)
+      .run();
+    applied = changed.meta.changes > 0;
+    if (applied && roomConfig.custody === 'mimo_vault') {
+      await db
+        .prepare(`UPDATE rewards SET state = 'cancelled', updated_at = ?
+          WHERE event_id = ? AND state NOT IN ('payout_submitted', 'payout_confirmed')`)
+        .bind(now, room.id)
+        .run();
+    }
   } else if (action === 'start') {
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE events SET status = 'live', round_started_at = ?,
-            round_duration_seconds = ?, state_changed_at = ? WHERE id = ?`,
-        )
-        .bind(now, roundDuration(currentRound.configJson), now, room.id),
-      db
-        .prepare(
-          `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
-        )
-        .bind(room.id),
-      db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
-      ...(roomConfig.custody === 'mimo_vault'
-        ? [
-            db
-              .prepare(`UPDATE rewards SET state = 'event_live', updated_at = ?
+    const changed = await db
+      .prepare(`UPDATE events SET status = 'live', round_started_at = ?,
+        round_duration_seconds = ?, state_changed_at = ?
+        WHERE id = ? AND status = 'lobby' AND active_round_id = ?`)
+      .bind(
+        now,
+        roundDuration(currentRound.configJson),
+        now,
+        room.id,
+        room.activeRoundId,
+      )
+      .run();
+    applied = changed.meta.changes > 0;
+    if (applied) {
+      await db.batch([
+        db
+          .prepare(
+            `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
+          )
+          .bind(room.id),
+        db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
+        ...(roomConfig.custody === 'mimo_vault'
+          ? [
+              db
+                .prepare(`UPDATE rewards SET state = 'event_live', updated_at = ?
                 WHERE event_id = ? AND state = 'funded'`)
-              .bind(now, room.id),
-          ]
-        : []),
-    ]);
+                .bind(now, room.id),
+            ]
+          : []),
+      ]);
+    }
   } else if (action === 'next' && nextRound) {
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE events SET status = 'live', active_round_id = ?, round_started_at = ?,
-            round_duration_seconds = ?, state_changed_at = ? WHERE id = ?`,
-        )
-        .bind(
-          nextRound.id,
-          now,
-          roundDuration(nextRound.configJson),
-          now,
-          room.id,
-        ),
-      db
+    const changed = await db
+      .prepare(`UPDATE events SET status = 'live', active_round_id = ?,
+        round_started_at = ?, round_duration_seconds = ?, state_changed_at = ?
+        WHERE id = ? AND status = 'verifying' AND active_round_id = ?`)
+      .bind(
+        nextRound.id,
+        now,
+        roundDuration(nextRound.configJson),
+        now,
+        room.id,
+        room.activeRoundId,
+      )
+      .run();
+    applied = changed.meta.changes > 0;
+    if (applied) {
+      await db
         .prepare(`UPDATE participants SET answer_locked = 0 WHERE event_id = ?`)
-        .bind(room.id),
-    ]);
+        .bind(room.id)
+        .run();
+    }
   } else if (action === 'reset') {
     const firstRound = roundRows.results[0];
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE events SET status = 'lobby', active_round_id = ?,
-            round_started_at = NULL, round_duration_seconds = ?,
-            state_changed_at = ? WHERE id = ?`,
-        )
-        .bind(
-          firstRound.id,
-          roundDuration(firstRound.configJson),
-          now,
-          room.id,
-        ),
-      db
-        .prepare(
-          `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
-        )
-        .bind(room.id),
-      db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
-    ]);
-  } else if (action === 'finish') {
-    const schedule = await db
-      .prepare(`SELECT recurrence, next_event_at AS nextEventAt
-        FROM communities WHERE id = ? LIMIT 1`)
-      .bind(room.communityId)
-      .first<{ recurrence: string; nextEventAt: number | null }>();
-    let followingEventAt: number | null = null;
-    if (schedule?.nextEventAt && schedule.recurrence !== 'none') {
-      const nextDate = new Date(schedule.nextEventAt);
-      if (schedule.recurrence === 'weekly')
-        nextDate.setDate(nextDate.getDate() + 7);
-      if (schedule.recurrence === 'fortnightly')
-        nextDate.setDate(nextDate.getDate() + 14);
-      if (schedule.recurrence === 'monthly')
-        nextDate.setMonth(nextDate.getMonth() + 1);
-      followingEventAt = nextDate.getTime();
-    }
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE events SET status = ?, state_changed_at = ? WHERE id = ?`,
-        )
-        .bind(status, now, room.id),
-      ...(followingEventAt
-        ? [
-            db
-              .prepare(`UPDATE communities SET next_event_at = ?, updated_at = ?
-                WHERE id = ?`)
-              .bind(followingEventAt, now, room.communityId),
-          ]
-        : []),
-      ...(roomConfig.custody === 'mimo_vault'
-        ? [
-            db
-              .prepare(`UPDATE rewards SET state = 'results_under_verification',
-                updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
-              .bind(now, room.id),
-          ]
-        : []),
-    ]);
-  } else {
-    await db
-      .prepare(
-        `UPDATE events SET status = ?, state_changed_at = ? WHERE id = ?`,
-      )
-      .bind(status, now, room.id)
+    const changed = await db
+      .prepare(`UPDATE events SET status = 'lobby', active_round_id = ?,
+        round_started_at = NULL, round_duration_seconds = ?, state_changed_at = ?
+        WHERE id = ? AND status = 'complete'`)
+      .bind(firstRound.id, roundDuration(firstRound.configJson), now, room.id)
       .run();
+    applied = changed.meta.changes > 0;
+    if (applied) {
+      await db.batch([
+        db
+          .prepare(
+            `UPDATE participants SET answer_locked = 0, score = 0 WHERE event_id = ?`,
+          )
+          .bind(room.id),
+        db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
+      ]);
+    }
+  } else if (action === 'finish') {
+    const changed = await db
+      .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
+        WHERE id = ? AND status = 'verifying' AND active_round_id = ?`)
+      .bind(now, room.id, room.activeRoundId)
+      .run();
+    applied = changed.meta.changes > 0;
+    if (applied) {
+      const schedule = await db
+        .prepare(`SELECT recurrence, next_event_at AS nextEventAt
+          FROM communities WHERE id = ? LIMIT 1`)
+        .bind(room.communityId)
+        .first<{ recurrence: string; nextEventAt: number | null }>();
+      let followingEventAt: number | null = null;
+      if (schedule?.nextEventAt && schedule.recurrence !== 'none') {
+        const nextDate = new Date(schedule.nextEventAt);
+        if (schedule.recurrence === 'weekly')
+          nextDate.setDate(nextDate.getDate() + 7);
+        if (schedule.recurrence === 'fortnightly')
+          nextDate.setDate(nextDate.getDate() + 14);
+        if (schedule.recurrence === 'monthly')
+          nextDate.setMonth(nextDate.getMonth() + 1);
+        followingEventAt = nextDate.getTime();
+      }
+      await db.batch([
+        ...(followingEventAt
+          ? [
+              db
+                .prepare(`UPDATE communities SET next_event_at = ?, updated_at = ?
+                  WHERE id = ?`)
+                .bind(followingEventAt, now, room.communityId),
+            ]
+          : []),
+        ...(roomConfig.custody === 'mimo_vault'
+          ? [
+              db
+                .prepare(`UPDATE rewards SET state = 'results_under_verification',
+                  updated_at = ? WHERE event_id = ? AND state = 'event_live'`)
+                .bind(now, room.id),
+            ]
+          : []),
+      ]);
+    }
+  } else {
+    const changed = await db
+      .prepare(`UPDATE events SET status = ?, state_changed_at = ?
+        WHERE id = ? AND status = 'live' AND active_round_id = ?`)
+      .bind(status, now, room.id, room.activeRoundId)
+      .run();
+    applied = changed.meta.changes > 0;
+  }
+
+  if (!applied) {
+    const latest = await getRoom(code);
+    const alreadyApplied =
+      Boolean(latest) &&
+      ((action === 'pause_auto' && !latest?.autoHostEnabled) ||
+        (action === 'resume_auto' && Boolean(latest?.autoHostEnabled)) ||
+        (action === 'extend' &&
+          (latest?.roundDurationSeconds ?? 0) > room.roundDurationSeconds) ||
+        (action === 'cancel' && latest?.status === 'cancelled') ||
+        (action === 'start' && latest?.status !== 'lobby') ||
+        (action === 'reveal' && latest?.status !== 'live') ||
+        (action === 'next' && latest?.activeRoundId === nextRound?.id) ||
+        (action === 'finish' && latest?.status === 'complete') ||
+        (action === 'reset' && latest?.status === 'lobby'));
+    if (!latest || !alreadyApplied) {
+      return json({ error: 'The room changed. Refresh and try again.' }, 409);
+    }
+    const settlement =
+      roomConfig.custody !== 'mimo_vault'
+        ? undefined
+        : action === 'cancel'
+          ? await attemptAutomaticRefund(room.id)
+          : action === 'finish'
+            ? await attemptAutomaticPayout(room.id)
+            : undefined;
+    return json({
+      status: latest.status,
+      autoHostEnabled: Boolean(latest.autoHostEnabled),
+      extendedBy: action === 'extend' ? 10 : undefined,
+      alreadyApplied: true,
+      settlement,
+    });
   }
 
   const settlement =

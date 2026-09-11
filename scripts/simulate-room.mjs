@@ -558,10 +558,24 @@ assert(
   'The automatic refund must reach a confirmed state.',
 );
 
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'start', hostKey: room.hostKey }),
-});
+const simultaneousStarts = await Promise.all(
+  [0, 1].map(() =>
+    fetch(`${base}/api/rooms/${room.code}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'start', hostKey: room.hostKey }),
+    }),
+  ),
+);
+assert(
+  simultaneousStarts.some((response) => response.ok),
+  'One simultaneous host start must claim the room transition.',
+);
+const startedRoom = await request(`/api/rooms/${room.code}`);
+assert(
+  startedRoom.status === 'live' && startedRoom.roundIndex === 0,
+  'Repeated host starts must not skip or restart the first moment.',
+);
 const activeCancellation = await fetch(
   `${base}/api/rooms/${room.code}/action`,
   {

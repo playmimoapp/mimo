@@ -208,12 +208,36 @@ export async function POST(
       db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
     ]);
   } else if (action === 'finish') {
+    const schedule = await db
+      .prepare(`SELECT recurrence, next_event_at AS nextEventAt
+        FROM communities WHERE id = ? LIMIT 1`)
+      .bind(room.communityId)
+      .first<{ recurrence: string; nextEventAt: number | null }>();
+    let followingEventAt: number | null = null;
+    if (schedule?.nextEventAt && schedule.recurrence !== 'none') {
+      const nextDate = new Date(schedule.nextEventAt);
+      if (schedule.recurrence === 'weekly')
+        nextDate.setDate(nextDate.getDate() + 7);
+      if (schedule.recurrence === 'fortnightly')
+        nextDate.setDate(nextDate.getDate() + 14);
+      if (schedule.recurrence === 'monthly')
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      followingEventAt = nextDate.getTime();
+    }
     await db.batch([
       db
         .prepare(
           `UPDATE events SET status = ?, state_changed_at = ? WHERE id = ?`,
         )
         .bind(status, now, room.id),
+      ...(followingEventAt
+        ? [
+            db
+              .prepare(`UPDATE communities SET next_event_at = ?, updated_at = ?
+                WHERE id = ?`)
+              .bind(followingEventAt, now, room.communityId),
+          ]
+        : []),
       ...(roomConfig.custody === 'mimo_vault'
         ? [
             db

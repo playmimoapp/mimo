@@ -41,7 +41,7 @@ export async function getRoom(codeValue: string) {
   if (!code) return null;
   return getD1()
     .prepare(`
-    SELECT e.id, e.title, e.status, e.room_code AS roomCode,
+    SELECT e.id, e.community_id AS communityId, e.title, e.status, e.room_code AS roomCode,
       e.host_key_hash AS hostKeyHash, e.active_round_id AS activeRoundId,
       e.round_started_at AS roundStartedAt,
       e.round_duration_seconds AS roundDurationSeconds,
@@ -57,6 +57,7 @@ export async function getRoom(codeValue: string) {
     .bind(code)
     .first<{
       id: string;
+      communityId: string;
       title: string;
       status: 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
       roomCode: string;

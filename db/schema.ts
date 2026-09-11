@@ -16,6 +16,12 @@ export const communities = sqliteTable(
     ownerWalletHash: text('owner_wallet_hash').notNull(),
     avatarKey: text('avatar_key'),
     accentColor: text('accent_color').notNull().default('#2577de'),
+    recurrence: text('recurrence', {
+      enum: ['none', 'weekly', 'fortnightly', 'monthly'],
+    })
+      .notNull()
+      .default('none'),
+    nextEventAt: integer('next_event_at', { mode: 'timestamp_ms' }),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },

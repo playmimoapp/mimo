@@ -9,7 +9,8 @@ export async function GET(request: Request) {
   if (!account) return json({ error: 'Sign in again to open Studio.' }, 401);
   const communities = await getD1()
     .prepare(`SELECT slug, name, description, accent_color AS accentColor,
-      avatar_key IS NOT NULL AS hasAvatar, created_at AS createdAt
+      avatar_key IS NOT NULL AS hasAvatar, recurrence,
+      next_event_at AS nextEventAt, created_at AS createdAt
       FROM communities WHERE owner_wallet_hash = ? ORDER BY created_at DESC`)
     .bind(account.walletHash)
     .all();
@@ -67,6 +68,8 @@ export async function POST(request: Request) {
         description,
         accentColor,
         hasAvatar: false,
+        recurrence: 'none',
+        nextEventAt: null,
         createdAt: now,
       },
     },

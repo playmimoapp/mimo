@@ -60,6 +60,16 @@ export async function POST(request: Request) {
     );
   }
   const accessMode = body.accessMode === 'private' ? 'private' : 'public';
+  const requestedStart = Number(body.startsAt);
+  const startsAt =
+    Number.isFinite(requestedStart) && requestedStart > Date.now() - 5 * 60_000
+      ? requestedStart
+      : null;
+  const recurrence = ['weekly', 'fortnightly', 'monthly'].includes(
+    String(body.recurrence),
+  )
+    ? String(body.recurrence)
+    : 'none';
   const rewardAmount =
     rewardMode === 'nim'
       ? (typeof body.rewardAmount === 'string' ||
@@ -210,6 +220,7 @@ export async function POST(request: Request) {
     rewardRule,
     eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,
+    recurrence,
   });
 
   try {
@@ -232,14 +243,15 @@ export async function POST(request: Request) {
       db
         .prepare(`INSERT INTO events
         (id, community_id, title, status, launched_config_json, config_version,
-          room_code, host_key_hash, active_round_id, round_duration_seconds,
+          starts_at, room_code, host_key_hash, active_round_id, round_duration_seconds,
           state_changed_at, auto_host_enabled, created_at)
-        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, 1, ?)`)
+        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, ?, 1, ?)`)
         .bind(
           eventId,
           communityId,
           title,
           reward,
+          startsAt,
           code,
           hostKeyHash,
           roundIds[0],

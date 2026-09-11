@@ -8,7 +8,9 @@ import {
   CalendarDays,
   Camera,
   Check,
+  Clock3,
   Copy,
+  Repeat2,
   ShieldCheck,
   Users,
 } from 'lucide-react';
@@ -23,6 +25,8 @@ type Community = {
   accentColor: string;
   hasAvatar: boolean;
   createdAt: number;
+  recurrence: 'none' | 'weekly' | 'fortnightly' | 'monthly';
+  nextEventAt: number | null;
 };
 
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
@@ -30,7 +34,12 @@ const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
 export function CommunityStudio({
   createEvent,
 }: {
-  createEvent: (community: { name: string; slug: string }) => void;
+  createEvent: (community: {
+    name: string;
+    slug: string;
+    recurrence: Community['recurrence'];
+    nextEventAt: number | null;
+  }) => void;
 }) {
   const nimiq = useRef(new MimoNimiq());
   const [session, setSession] = useState('');
@@ -202,35 +211,56 @@ export function CommunityStudio({
   if (!session) {
     return (
       <StudioShell>
-        <div className="mx-auto grid max-w-[760px] items-center gap-7 lg:grid-cols-[.8fr_1.2fr]">
-          <div className="mx-auto w-44">
-            <MimoCharacter mood="happy" />
+        <div className="grid items-stretch overflow-hidden rounded-[34px] border border-[#d5dde3] bg-white shadow-[0_28px_90px_rgba(28,55,82,.1)] lg:grid-cols-[minmax(380px,.95fr)_minmax(0,1.05fr)]">
+          <div className="relative flex min-h-[360px] items-end justify-center overflow-hidden bg-[#dceeff] px-8 pt-10 lg:min-h-[560px]">
+            <div className="absolute left-7 top-7 rounded-full bg-white px-3 py-2 text-xs font-black uppercase tracking-[.12em] text-[#2577de]">
+              Creator home
+            </div>
+            <div className="absolute right-[-54px] top-20 h-48 w-48 rounded-full border-[34px] border-white/35" />
+            <div className="absolute bottom-8 left-7 z-20 hidden w-[210px] rounded-[20px] bg-white/95 p-4 shadow-[0_16px_45px_rgba(32,55,82,.14)] sm:block">
+              <p className="text-xs font-black uppercase tracking-[.12em] text-[#c94f3b]">
+                Next up
+              </p>
+              <p className="mt-2 font-display text-lg font-extrabold">
+                Friday Game Night
+              </p>
+              <p className="mt-1 flex items-center gap-2 text-xs font-bold text-[#607486]">
+                <Clock3 size={14} /> Weekly · 7:00 PM
+              </p>
+            </div>
+            <motion.div
+              animate={{ y: [0, -8, 0], rotate: [-1, 1, -1] }}
+              transition={{ duration: 2.4, repeat: Infinity }}
+              className="relative z-10 w-[260px] sm:w-[310px]"
+            >
+              <MimoCharacter mood="happy" />
+            </motion.div>
           </div>
-          <div>
+          <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-14">
             <span className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
               Your permanent home
             </span>
-            <h1 className="font-display mt-2 text-4xl font-extrabold tracking-[-.05em] sm:text-5xl">
-              Come back. Your community remembers.
+            <h1 className="font-display mt-3 max-w-[560px] text-4xl font-extrabold leading-[.98] tracking-[-.055em] sm:text-5xl lg:text-[3.65rem]">
+              One home for every Mimo you host.
             </h1>
-            <p className="mt-4 leading-7 text-[#53687c]">
-              Sign once with Nimiq Pay to create communities, schedule rooms and
-              keep seasons together.
+            <p className="mt-5 max-w-[560px] text-lg leading-8 text-[#53687c]">
+              Schedule the next room, share one permanent community link and
+              keep every event together.
             </p>
-            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-[#d9e3eb] bg-white p-4 text-sm text-[#405b72]">
+            <div className="mt-6 flex items-start gap-3 border-y border-[#d9e3eb] py-4 text-sm text-[#405b72]">
               <ShieldCheck
                 className="mt-0.5 shrink-0 text-[#19805b]"
                 size={20}
               />
               <span>
-                The signature proves ownership. It cannot move NIM and no full
-                wallet address is stored.
+                Nimiq Pay confirms this Studio belongs to you. Signing in cannot
+                move NIM.
               </span>
             </div>
             <Button
               onClick={() => void signIn()}
               disabled={working}
-              className="mt-5 h-12 w-full rounded-xl bg-[#172f49] text-base font-extrabold text-white sm:w-auto sm:px-7"
+              className="mt-6 h-14 w-full rounded-[18px] bg-[#172f49] text-base font-extrabold text-white sm:w-fit sm:px-8"
             >
               {working ? 'Waiting for Nimiq Pay…' : 'Sign in with Nimiq Pay'}{' '}
               <ArrowRight />
@@ -269,6 +299,8 @@ export function CommunityStudio({
                 key={community.slug}
                 community={community}
                 createEvent={createEvent}
+                session={session}
+                onSaved={() => void loadCommunities(session)}
               />
             ))
           ) : (
@@ -430,16 +462,68 @@ function Field({
 function CommunityCard({
   community,
   createEvent,
+  session,
+  onSaved,
 }: {
   community: Community;
-  createEvent: (community: { name: string; slug: string }) => void;
+  createEvent: (community: {
+    name: string;
+    slug: string;
+    recurrence: Community['recurrence'];
+    nextEventAt: number | null;
+  }) => void;
+  session: string;
+  onSaved: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
+  const [recurrence, setRecurrence] = useState<Community['recurrence']>(
+    community.recurrence,
+  );
+  const [nextEvent, setNextEvent] = useState(() => {
+    const defaultTime = new Date();
+    defaultTime.setDate(defaultTime.getDate() + 1);
+    defaultTime.setHours(19, 0, 0, 0);
+    return toLocalDateTime(community.nextEventAt ?? defaultTime.getTime());
+  });
   const path = `/?community=${community.slug}`;
   async function copyLink() {
     await navigator.clipboard.writeText(`${window.location.origin}${path}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  }
+  async function saveSchedule() {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(`/api/communities/${community.slug}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mimo-account': session,
+        },
+        body: JSON.stringify({
+          recurrence,
+          nextEventAt:
+            recurrence === 'none' ? null : new Date(nextEvent).getTime(),
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'The schedule could not be saved.');
+      setEditingSchedule(false);
+      onSaved();
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'The schedule could not be saved.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
   }
   return (
     <motion.article
@@ -462,10 +546,79 @@ function CommunityCard({
         <p className="mt-4 min-h-12 text-sm leading-6 text-[#53687c]">
           {community.description || 'A live home for this community.'}
         </p>
+        <div className="mt-4 flex items-center justify-between gap-4 border-y border-[#e0e5e8] py-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-extrabold">
+              <Repeat2 size={16} className="text-[#2577de]" />
+              {community.recurrence === 'none'
+                ? 'No recurring schedule yet'
+                : `${recurrenceLabel(community.recurrence)} Mimo`}
+            </p>
+            {community.nextEventAt && (
+              <p className="mt-1 text-xs font-bold text-[#718295]">
+                Next · {new Date(community.nextEventAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => setEditingSchedule((value) => !value)}
+            className="shrink-0 text-sm font-extrabold text-[#2577de]"
+          >
+            {editingSchedule ? 'Close' : 'Set schedule'}
+          </button>
+        </div>
+        {editingSchedule && (
+          <div className="mt-3 rounded-[18px] bg-[#f3f7fa] p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-extrabold text-[#53687c]">
+                Repeats
+                <select
+                  value={recurrence}
+                  onChange={(event) =>
+                    setRecurrence(event.target.value as Community['recurrence'])
+                  }
+                  className="mt-2 h-11 w-full rounded-xl border border-[#cbd5dc] bg-white px-3 font-bold text-[#203752]"
+                >
+                  <option value="none">Does not repeat</option>
+                  <option value="weekly">Every week</option>
+                  <option value="fortnightly">Every two weeks</option>
+                  <option value="monthly">Every month</option>
+                </select>
+              </label>
+              <label className="text-xs font-extrabold text-[#53687c]">
+                Next event
+                <input
+                  type="datetime-local"
+                  value={nextEvent}
+                  disabled={recurrence === 'none'}
+                  onChange={(event) => setNextEvent(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-[#cbd5dc] bg-white px-3 font-bold text-[#203752] disabled:opacity-45"
+                />
+              </label>
+            </div>
+            <Button
+              onClick={() => void saveSchedule()}
+              disabled={savingSchedule || (recurrence !== 'none' && !nextEvent)}
+              className="mt-3 h-11 rounded-xl bg-[#2577de] px-5 font-extrabold text-white"
+            >
+              {savingSchedule ? 'Saving…' : 'Save schedule'}
+            </Button>
+            {scheduleError && (
+              <p className="mt-2 text-xs font-bold text-[#b53636]">
+                {scheduleError}
+              </p>
+            )}
+          </div>
+        )}
         <div className="mt-5 flex flex-wrap gap-2">
           <Button
             onClick={() =>
-              createEvent({ name: community.name, slug: community.slug })
+              createEvent({
+                name: community.name,
+                slug: community.slug,
+                recurrence: community.recurrence,
+                nextEventAt: community.nextEventAt,
+              })
             }
             className="h-11 rounded-xl bg-[#172f49] px-4 font-extrabold text-white"
           >
@@ -488,6 +641,23 @@ function CommunityCard({
       </div>
     </motion.article>
   );
+}
+
+function toLocalDateTime(timestamp: number) {
+  const date = new Date(
+    timestamp - new Date(timestamp).getTimezoneOffset() * 60_000,
+  );
+  return date.toISOString().slice(0, 16);
+}
+
+function recurrenceLabel(recurrence: Community['recurrence']) {
+  return recurrence === 'weekly'
+    ? 'Weekly'
+    : recurrence === 'fortnightly'
+      ? 'Every-two-weeks'
+      : recurrence === 'monthly'
+        ? 'Monthly'
+        : 'One-off';
 }
 
 export function CommunityAvatar({
@@ -577,6 +747,8 @@ export function PublicCommunity({
   const next = data.events.find((event) =>
     ['scheduled', 'lobby', 'live'].includes(event.status),
   );
+  const nextTime = next?.startsAt ?? data.community.nextEventAt;
+  const completed = data.events.filter((event) => event.status === 'complete');
   return (
     <StudioShell>
       <section className="overflow-hidden rounded-[32px] border border-[#d9dee3] bg-white shadow-[0_24px_70px_rgba(26,47,80,.09)]">
@@ -616,6 +788,7 @@ export function PublicCommunity({
                       ? 'Live now'
                       : 'Room is open'}
                 </p>
+                {nextTime && <Countdown timestamp={nextTime} />}
                 {next.roomCode && (
                   <a
                     href={`/?room=${next.roomCode}`}
@@ -624,6 +797,23 @@ export function PublicCommunity({
                     Join the room <ArrowRight size={18} />
                   </a>
                 )}
+              </>
+            ) : nextTime ? (
+              <>
+                <p className="mt-4 text-xs font-extrabold uppercase tracking-[.12em] text-[#2577de]">
+                  {recurrenceLabel(data.community.recurrence)} series
+                </p>
+                <h2 className="mt-2 text-2xl font-extrabold">
+                  The next Mimo is scheduled.
+                </h2>
+                <p className="mt-2 text-sm font-bold text-[#60758a]">
+                  {new Date(nextTime).toLocaleString()}
+                </p>
+                <Countdown timestamp={nextTime} />
+                <p className="mt-4 text-sm leading-6 text-[#60758a]">
+                  The Join button will appear here when the host publishes the
+                  room. This public community link stays the same.
+                </p>
               </>
             ) : (
               <>
@@ -642,6 +832,39 @@ export function PublicCommunity({
           </div>
         </div>
       </section>
+      {completed.length > 0 && (
+        <section className="mt-6 border-t border-[#d7dde1] pt-6">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.13em] text-[#c94f3b]">
+                Previous events
+              </p>
+              <h2 className="font-display mt-1 text-2xl font-extrabold">
+                This community’s Mimo history
+              </h2>
+            </div>
+            <span className="text-sm font-bold text-[#60758a]">
+              {completed.length} completed
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {completed.slice(0, 3).map((event) => (
+              <article
+                key={`${event.title}-${event.startsAt ?? event.roomCode}`}
+                className="rounded-[20px] border border-[#d8dfe4] bg-white p-4"
+              >
+                <span className="text-xs font-extrabold uppercase tracking-[.1em] text-[#19805b]">
+                  Complete
+                </span>
+                <h3 className="mt-2 font-extrabold">{event.title}</h3>
+                <p className="mt-2 text-xs font-bold text-[#718295]">
+                  Results recorded by Mimo
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-[#dae2e8] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-bold text-[#53687c]">
           Own this community? Your Studio keeps every event together.
@@ -655,5 +878,33 @@ export function PublicCommunity({
         </Button>
       </div>
     </StudioShell>
+  );
+}
+
+function Countdown({ timestamp }: { timestamp: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const remaining = Math.max(0, timestamp - now);
+  const days = Math.floor(remaining / 86_400_000);
+  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  return (
+    <div className="mt-4 grid grid-cols-3 gap-2" aria-label="Event countdown">
+      {[
+        [days, 'days'],
+        [hours, 'hours'],
+        [minutes, 'mins'],
+      ].map(([value, label]) => (
+        <div key={label} className="rounded-xl bg-white px-2 py-3 text-center">
+          <strong className="font-display block text-xl">{value}</strong>
+          <span className="text-[10px] font-extrabold uppercase tracking-[.1em] text-[#718295]">
+            {label}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }

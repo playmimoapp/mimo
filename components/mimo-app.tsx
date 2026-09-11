@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  CalendarDays,
   ChevronRight,
   CircleDot,
   FileText,
@@ -154,6 +155,8 @@ type EventDraft = {
   rewardAmount: string;
   rewardRule: RewardRule;
   adaptiveMoments: boolean;
+  startsAt: number | null;
+  recurrence: 'none' | 'weekly' | 'fortnightly' | 'monthly';
   rounds: RoundDraft[];
 };
 
@@ -168,6 +171,13 @@ function blankRound(type: RoundType = 'multiple_choice'): RoundDraft {
     scoringMode: type === 'multiple_choice' ? 'speed' : 'accuracy',
     collectiveTargetPercent: 60,
   };
+}
+
+function toLocalDateTime(timestamp: number) {
+  const date = new Date(
+    timestamp - new Date(timestamp).getTimezoneOffset() * 60_000,
+  );
+  return date.toISOString().slice(0, 16);
 }
 
 declare global {
@@ -331,6 +341,8 @@ export function MimoApp() {
     rewardAmount: '',
     rewardRule: 'skill',
     adaptiveMoments: true,
+    startsAt: null,
+    recurrence: 'none',
     rounds: [blankRound()],
   });
 
@@ -497,6 +509,8 @@ export function MimoApp() {
         ...body.draft,
         community: event.communitySlug ? event.community : body.draft.community,
         communitySlug: event.communitySlug ?? '',
+        startsAt: event.startsAt,
+        recurrence: event.recurrence,
         rewardRule: 'skill',
         adaptiveMoments: true,
         custodyMode: rewardCapabilities.mimoFundingAvailable
@@ -715,6 +729,8 @@ export function MimoApp() {
                   ...current,
                   community: community.name,
                   communitySlug: community.slug,
+                  startsAt: community.nextEventAt,
+                  recurrence: community.recurrence,
                 }));
                 setAssistantBrief((current) => ({
                   ...current,
@@ -1414,6 +1430,48 @@ function CreateEvent({
               className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
             />
           </label>
+          <fieldset className="border-y border-[#cfd5d8] py-5">
+            <legend className="px-2 text-sm font-extrabold">When is it?</legend>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => update('startsAt', null)}
+                className={`min-h-20 border-2 p-4 text-left ${event.startsAt === null ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
+              >
+                <Radio size={18} className="text-[#1f72d2]" />
+                <strong className="mt-2 block">Open the room now</strong>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  update('startsAt', Date.now() + 24 * 60 * 60_000)
+                }
+                className={`min-h-20 border-2 p-4 text-left ${event.startsAt !== null ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
+              >
+                <CalendarDays size={18} className="text-[#203752]" />
+                <strong className="mt-2 block">Schedule it</strong>
+              </button>
+            </div>
+            {event.startsAt !== null && (
+              <label className="mt-4 block text-sm font-extrabold">
+                Guests see this time on the community page
+                <input
+                  type="datetime-local"
+                  value={toLocalDateTime(event.startsAt)}
+                  onChange={(input) =>
+                    update('startsAt', new Date(input.target.value).getTime())
+                  }
+                  className="mt-2 h-12 w-full rounded-xl border border-[#bdc9d1] bg-white px-4 font-bold sm:max-w-[340px]"
+                />
+              </label>
+            )}
+            {event.communitySlug && event.recurrence !== 'none' && (
+              <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#19805b]">
+                <CalendarDays size={16} /> Part of this community’s{' '}
+                {event.recurrence} schedule
+              </p>
+            )}
+          </fieldset>
           <div className="border-y border-[#cfd5d8] py-6">
             <div className="flex items-center justify-between gap-4">
               <div>

@@ -704,6 +704,11 @@ export function PublicCommunity({
       status: string;
       startsAt: number | null;
       roomCode: string | null;
+      createdAt: number;
+      playerCount: number;
+      rewardState: string | null;
+      rewardAmount: number | null;
+      scores: Array<{ nickname: string; score: number }>;
     }>;
   } | null>(null);
   const [error, setError] = useState('');
@@ -717,6 +722,11 @@ export function PublicCommunity({
             status: string;
             startsAt: number | null;
             roomCode: string | null;
+            createdAt: number;
+            playerCount: number;
+            rewardState: string | null;
+            rewardAmount: number | null;
+            scores: Array<{ nickname: string; score: number }>;
           }>;
           error?: string;
         };
@@ -748,7 +758,9 @@ export function PublicCommunity({
     ['scheduled', 'lobby', 'live'].includes(event.status),
   );
   const nextTime = next?.startsAt ?? data.community.nextEventAt;
-  const completed = data.events.filter((event) => event.status === 'complete');
+  const completed = data.events
+    .filter((event) => event.status === 'complete')
+    .sort((a, b) => b.createdAt - a.createdAt);
   return (
     <StudioShell>
       <section className="overflow-hidden rounded-[32px] border border-[#d9dee3] bg-white shadow-[0_24px_70px_rgba(26,47,80,.09)]">
@@ -857,9 +869,31 @@ export function PublicCommunity({
                   Complete
                 </span>
                 <h3 className="mt-2 font-extrabold">{event.title}</h3>
-                <p className="mt-2 text-xs font-bold text-[#718295]">
-                  Results recorded by Mimo
+                <p className="mt-1 text-xs font-bold text-[#718295]">
+                  {event.playerCount}{' '}
+                  {event.playerCount === 1 ? 'player' : 'players'}
+                  {event.rewardAmount ? ` · ${event.rewardAmount} NIM` : ''}
                 </p>
+                {event.scores.length > 0 && (
+                  <ol className="mt-4 border-t border-[#e1e6e9] pt-2">
+                    {event.scores.map((score, index) => (
+                      <li
+                        key={`${score.nickname}-${index}`}
+                        className="flex items-center gap-3 py-1.5 text-sm"
+                      >
+                        <span className="w-4 font-display font-extrabold text-[#8a98a4]">
+                          {index + 1}
+                        </span>
+                        <strong className="min-w-0 flex-1 truncate">
+                          {score.nickname}
+                        </strong>
+                        <span className="font-display font-extrabold">
+                          {score.score.toLocaleString()}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </article>
             ))}
           </div>

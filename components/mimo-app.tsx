@@ -305,6 +305,64 @@ function CreationRail({ screen }: { screen: Screen }) {
   );
 }
 
+function ProductFooter() {
+  return (
+    <footer className="app-frame mt-10 border-t border-[#d7dcdf] py-8 sm:mt-16">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <Image
+            src="/mimo-logo.svg"
+            alt="Mimo"
+            width={110}
+            height={40}
+            className="h-7 w-auto"
+          />
+          <p className="mt-2 text-sm font-bold text-[#607486]">
+            Live community play, powered by Nimiq.
+          </p>
+        </div>
+        <nav
+          aria-label="Mimo links"
+          className="flex flex-wrap items-center gap-x-5 gap-y-3"
+        >
+          <a
+            href="https://x.com/playmimoapp"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+          >
+            @playmimoapp
+          </a>
+          <a
+            href="https://github.com/playmimoapp/mimo"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://github.com/playmimoapp/mimo/blob/main/LICENSE"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+          >
+            MIT License
+          </a>
+          <a
+            href="https://nimiq.com"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+          >
+            Nimiq
+          </a>
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
 export function MimoApp() {
   const reduceMotion = useReducedMotion();
   const [screen, setScreen] = useState<Screen>('home');
@@ -790,6 +848,7 @@ export function MimoApp() {
           )}
         </motion.div>
       </AnimatePresence>
+      {!['live_host', 'live_player'].includes(screen) && <ProductFooter />}
     </main>
   );
 }

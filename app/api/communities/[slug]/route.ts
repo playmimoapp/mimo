@@ -26,14 +26,60 @@ export async function GET(
     }>();
   if (!community) return json({ error: 'That community does not exist.' }, 404);
   const events = await getD1()
-    .prepare(`SELECT title, status, starts_at AS startsAt, room_code AS roomCode
-      FROM events WHERE community_id = ? AND status != 'cancelled'
-      ORDER BY CASE WHEN starts_at IS NULL THEN 1 ELSE 0 END, starts_at ASC, created_at DESC LIMIT 8`)
+    .prepare(`SELECT e.id, e.title, e.status, e.starts_at AS startsAt,
+      e.room_code AS roomCode, e.created_at AS createdAt,
+      r.state AS rewardState, r.amount_luna AS rewardAmountLuna,
+      (SELECT COUNT(*) FROM participants p WHERE p.event_id = e.id) AS playerCount
+      FROM events e LEFT JOIN rewards r ON r.event_id = e.id
+      WHERE e.community_id = ? AND e.status != 'cancelled'
+      ORDER BY CASE WHEN e.status IN ('live', 'lobby', 'scheduled') THEN 0 ELSE 1 END,
+      CASE WHEN e.status IN ('live', 'lobby', 'scheduled')
+        THEN COALESCE(e.starts_at, e.created_at) END ASC,
+      e.created_at DESC LIMIT 8`)
     .bind(community.id)
-    .all();
+    .all<{
+      id: string;
+      title: string;
+      status: string;
+      startsAt: number | null;
+      roomCode: string | null;
+      createdAt: number;
+      rewardState: string | null;
+      rewardAmountLuna: string | null;
+      playerCount: number;
+    }>();
+  const scoreRows = await getD1()
+    .prepare(`SELECT e.id AS eventId, p.nickname, p.score
+      FROM events e JOIN participants p ON p.event_id = e.id
+      WHERE e.community_id = ? AND e.status = 'complete'
+      ORDER BY e.created_at DESC, p.score DESC, p.joined_at ASC`)
+    .bind(community.id)
+    .all<{ eventId: string; nickname: string; score: number }>();
+  const scoresByEvent = new Map<
+    string,
+    Array<{ nickname: string; score: number }>
+  >();
+  for (const row of scoreRows.results) {
+    const scores = scoresByEvent.get(row.eventId) ?? [];
+    if (scores.length < 3)
+      scores.push({ nickname: row.nickname, score: row.score });
+    scoresByEvent.set(row.eventId, scores);
+  }
   return json({
     community: { ...community, hasAvatar: Boolean(community.hasAvatar) },
-    events: events.results,
+    events: events.results.map((event) => ({
+      title: event.title,
+      status: event.status,
+      startsAt: event.startsAt,
+      roomCode: event.roomCode,
+      createdAt: event.createdAt,
+      playerCount: event.playerCount,
+      rewardState: event.rewardState,
+      rewardAmount: event.rewardAmountLuna
+        ? Number(event.rewardAmountLuna) / 100_000
+        : null,
+      scores: scoresByEvent.get(event.id) ?? [],
+    })),
   });
 }
 

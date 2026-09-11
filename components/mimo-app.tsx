@@ -11,10 +11,12 @@ import {
   CalendarDays,
   ChevronRight,
   CircleDot,
+  Compass,
   FileText,
   Gamepad2,
   Gift,
   Globe2,
+  House,
   LockKeyhole,
   PenLine,
   Plus,
@@ -54,6 +56,7 @@ const CommunityDirectory = dynamic(() =>
 
 type Screen =
   | 'home'
+  | 'host_entry'
   | 'create_choice'
   | 'create_assisted'
   | 'create'
@@ -263,7 +266,7 @@ function Header({
           <button
             onClick={discover}
             aria-label="Discover communities"
-            className="grid h-10 w-10 place-items-center rounded-full text-[#29445f] hover:bg-white sm:flex sm:w-auto sm:gap-2 sm:px-3 sm:text-sm sm:font-extrabold"
+            className="hidden h-10 items-center rounded-full text-[#29445f] hover:bg-white sm:flex sm:w-auto sm:gap-2 sm:px-3 sm:text-sm sm:font-extrabold"
           >
             <Search size={17} />{' '}
             <span className="hidden sm:inline">Discover</span>
@@ -273,7 +276,7 @@ function Header({
           <button
             onClick={studio}
             aria-label="Open Community Studio"
-            className="grid h-10 w-10 place-items-center rounded-full border border-[#cbd4dc] bg-white text-[#29445f] transition hover:-translate-y-0.5 hover:border-[#8ba9c3] sm:flex sm:w-auto sm:gap-2 sm:px-4"
+            className="hidden h-10 w-10 place-items-center rounded-full border border-[#cbd4dc] bg-white text-[#29445f] transition hover:-translate-y-0.5 hover:border-[#8ba9c3] sm:flex sm:w-auto sm:gap-2 sm:px-4"
           >
             <Users size={16} />
             <span className="hidden text-sm font-extrabold sm:inline">
@@ -397,6 +400,51 @@ function ProductFooter() {
   );
 }
 
+function MobileDock({
+  screen,
+  unreadCount,
+  home,
+  discover,
+  studio,
+}: {
+  screen: Screen;
+  unreadCount: number;
+  home: () => void;
+  discover: () => void;
+  studio: () => void;
+}) {
+  const items = [
+    { id: 'home', label: 'Home', icon: House, action: home },
+    { id: 'discover', label: 'Discover', icon: Compass, action: discover },
+    { id: 'studio', label: 'You', icon: Users, action: studio },
+  ] as const;
+  const active =
+    screen === 'directory' || screen === 'community' ? 'discover' : screen;
+  return (
+    <nav
+      aria-label="Main navigation"
+      className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 border-t border-[#ced8df] bg-[#fffdf9] px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_28px_rgba(24,45,68,.08)] sm:hidden"
+    >
+      {items.map(({ id, label, icon: Icon, action }) => {
+        const selected = active === id;
+        return (
+          <button
+            key={id}
+            onClick={action}
+            aria-current={selected ? 'page' : undefined}
+            className={`relative flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-extrabold transition ${selected ? 'bg-[#e8f3ff] text-[#1f72d2]' : 'text-[#5b7082]'}`}
+          >
+            <Icon size={17} /> {label}
+            {id === 'studio' && unreadCount > 0 && (
+              <span className="absolute right-2 top-1.5 h-2 w-2 rounded-full bg-[#ff7c68] ring-2 ring-white" />
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function MimoApp() {
   const reduceMotion = useReducedMotion();
   const [screen, setScreen] = useState<Screen>('home');
@@ -407,6 +455,7 @@ export function MimoApp() {
   const [roomCode, setRoomCode] = useState('');
   const [hostKey, setHostKey] = useState('');
   const [participantToken, setParticipantToken] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
   const [inviteToken, setInviteToken] = useState('');
   const [working, setWorking] = useState(false);
   const [roomError, setRoomError] = useState('');
@@ -472,7 +521,12 @@ export function MimoApp() {
         if (!response.ok) return;
         const body = (await response.json()) as {
           profile?: { displayName?: string; profileStyle?: MimoProfileStyle };
+          notifications?: Array<{ readAt?: number | null }>;
         };
+        setUnreadCount(
+          body.notifications?.filter((notification) => !notification.readAt)
+            .length ?? 0,
+        );
         if (body.profile?.displayName) setName(body.profile.displayName);
         if (
           body.profile?.profileStyle &&
@@ -489,6 +543,10 @@ export function MimoApp() {
       const query = new URLSearchParams(window.location.search);
       if (query.get('discover') === '1') {
         setScreen('directory');
+        return;
+      }
+      if (query.get('studio') === '1') {
+        setScreen('studio');
         return;
       }
       if (query.get('communityInvite')) {
@@ -575,7 +633,7 @@ export function MimoApp() {
           },
           annotations: { readOnlyHint: false, untrustedContentHint: false },
           execute: () => {
-            setScreen('create_choice');
+            setScreen('host_entry');
             return { status: 'creator_opened' };
           },
         },
@@ -596,6 +654,18 @@ export function MimoApp() {
     setRoomError('');
   };
 
+  const startOneTimeRoom = () => {
+    setEvent((current) => ({
+      ...current,
+      community: '',
+      communitySlug: '',
+      startsAt: null,
+      recurrence: 'none',
+    }));
+    setAssistantBrief((current) => ({ ...current, community: '' }));
+    setScreen('create_choice');
+  };
+
   const goBack = () => {
     setRoomError('');
     if (screen === 'preview') {
@@ -608,6 +678,10 @@ export function MimoApp() {
     }
     if (screen === 'create_assisted') {
       setScreen('create_choice');
+      return;
+    }
+    if (screen === 'create_choice') {
+      setScreen(event.communitySlug ? 'studio' : 'host_entry');
       return;
     }
     goHome();
@@ -752,12 +826,18 @@ export function MimoApp() {
     window.history.replaceState({}, '', `/?room=${code}`);
     setScreen('join');
   };
+  const dockVisible = ['home', 'directory', 'studio', 'community'].includes(
+    screen,
+  );
 
   return (
-    <main className="min-h-dvh overflow-x-hidden bg-[#f6f4ef] text-[#16283d]">
+    <main
+      className={`min-h-dvh overflow-x-hidden bg-[#f6f4ef] text-[#16283d] ${dockVisible ? 'pb-20 sm:pb-0' : ''}`}
+    >
       <Header
         back={
           screen === 'create_choice' ||
+          screen === 'host_entry' ||
           screen === 'create_assisted' ||
           screen === 'create' ||
           screen === 'preview' ||
@@ -768,7 +848,7 @@ export function MimoApp() {
             ? goBack
             : undefined
         }
-        host={screen === 'home' ? () => setScreen('create_choice') : undefined}
+        host={screen === 'home' ? () => setScreen('host_entry') : undefined}
         studio={screen === 'home' ? () => setScreen('studio') : undefined}
         discover={
           screen === 'home'
@@ -783,15 +863,17 @@ export function MimoApp() {
             screen,
           )
             ? 'Create an event'
-            : screen === 'studio'
-              ? 'Community Studio'
-              : screen === 'directory'
-                ? 'Discover'
-                : screen === 'community'
-                  ? 'Community home'
-                  : screen === 'join'
-                    ? `Join ${roomCode}`
-                    : undefined
+            : screen === 'host_entry'
+              ? 'Host a Mimo'
+              : screen === 'studio'
+                ? 'Community Studio'
+                : screen === 'directory'
+                  ? 'Discover'
+                  : screen === 'community'
+                    ? 'Community home'
+                    : screen === 'join'
+                      ? `Join ${roomCode}`
+                      : undefined
         }
       />
       {['create_choice', 'create_assisted', 'create', 'preview'].includes(
@@ -813,8 +895,17 @@ export function MimoApp() {
               code={joinCode}
               setCode={setJoinCode}
               join={openRoomCode}
-              host={() => setScreen('create_choice')}
+              host={() => setScreen('host_entry')}
               error={roomError}
+            />
+          )}
+          {screen === 'host_entry' && (
+            <HostEntry
+              oneTime={startOneTimeRoom}
+              community={() => {
+                window.history.replaceState({}, '', '/?studio=1');
+                setScreen('studio');
+              }}
             />
           )}
           {screen === 'create_choice' && (
@@ -936,6 +1027,21 @@ export function MimoApp() {
         </motion.div>
       </AnimatePresence>
       {!['live_host', 'live_player'].includes(screen) && <ProductFooter />}
+      {dockVisible && (
+        <MobileDock
+          screen={screen}
+          unreadCount={unreadCount}
+          home={goHome}
+          discover={() => {
+            window.history.replaceState({}, '', '/?discover=1');
+            setScreen('directory');
+          }}
+          studio={() => {
+            window.history.replaceState({}, '', '/?studio=1');
+            setScreen('studio');
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -1157,6 +1263,86 @@ function EventFormatVisual({ kind }: { kind: EventKind }) {
         <Plus size={18} />
       </span>
     </span>
+  );
+}
+
+function HostEntry({
+  oneTime,
+  community,
+}: {
+  oneTime: () => void;
+  community: () => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <section className="app-frame grid gap-8 pb-12 pt-4 sm:pt-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-center">
+      <div>
+        <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
+          Start with the right home
+        </p>
+        <h1 className="font-display mt-3 max-w-3xl text-5xl font-extrabold leading-[.94] tracking-[-.06em] sm:text-6xl">
+          One room tonight, or a community that returns?
+        </h1>
+        <p className="mt-5 max-w-2xl text-lg leading-8 text-[#53697c]">
+          Both can run games, votes and challenges. Both can use verified NIM
+          rewards. Choose what should remain after the room ends.
+        </p>
+        <div className="mt-8 border-y border-[#cfd8df]">
+          <button
+            onClick={oneTime}
+            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#d9e1e6] py-6 text-left"
+          >
+            <span>
+              <span className="text-xs font-black uppercase tracking-[.12em] text-[#2577de]">
+                Fastest path
+              </span>
+              <strong className="mt-1 block text-2xl">One-time room</strong>
+              <span className="mt-2 block max-w-xl text-sm leading-6 text-[#60758a]">
+                Create, share and go live. No community or profile setup is
+                required.
+              </span>
+            </span>
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-[#2577de] text-white transition group-hover:translate-x-1">
+              <ArrowRight />
+            </span>
+          </button>
+          <button
+            onClick={community}
+            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-6 text-left"
+          >
+            <span>
+              <span className="text-xs font-black uppercase tracking-[.12em] text-[#19805b]">
+                Built to return
+              </span>
+              <strong className="mt-1 block text-2xl">Community series</strong>
+              <span className="mt-2 block max-w-xl text-sm leading-6 text-[#60758a]">
+                Use a permanent page with followers, recurring events, seasons
+                and a shared host team.
+              </span>
+            </span>
+            <span className="grid h-12 w-12 place-items-center rounded-full border border-[#9eb8aa] bg-[#edf8f1] text-[#19805b] transition group-hover:translate-x-1">
+              <ArrowRight />
+            </span>
+          </button>
+        </div>
+      </div>
+      <div className="relative mx-auto w-full max-w-[310px] overflow-hidden rounded-[32px] bg-[#e5f2ff] px-5 pb-0 pt-8">
+        <MimoCue
+          message="Tell me if this is for tonight or for the long run."
+          mood="thinking"
+          className="relative z-10"
+        />
+        <motion.div
+          animate={
+            reduceMotion ? undefined : { y: [0, -7, 0], rotate: [-1, 1, -1] }
+          }
+          transition={{ duration: 2.6, repeat: Infinity }}
+          className="mx-auto mt-4 w-[220px] translate-y-5"
+        >
+          <MimoCharacter mood="thinking" />
+        </motion.div>
+      </div>
+    </section>
   );
 }
 

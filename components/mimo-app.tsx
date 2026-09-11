@@ -334,7 +334,7 @@ function CreationRail({ screen }: { screen: Screen }) {
 
 function ProductFooter() {
   return (
-    <footer className="mt-10 border-t border-[#d7e0e6] bg-[#eef5fa] sm:mt-16">
+    <footer className="border-t border-[#d7e0e6] bg-[#eef5fa] sm:mt-16">
       <div className="app-frame flex flex-col gap-6 py-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <Image
@@ -963,7 +963,7 @@ function ProductHome({
     return () => window.clearInterval(timer);
   }, []);
   return (
-    <section className="mobile-page mx-auto grid max-w-[1240px] gap-6 px-5 pb-8 pt-2 sm:px-8 lg:min-h-[calc(100dvh-72px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:items-center lg:gap-12 lg:py-8 xl:gap-16">
+    <section className="mobile-page home-page mx-auto grid max-w-[1240px] gap-6 px-5 pb-8 pt-2 sm:px-8 lg:min-h-[calc(100dvh-72px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:items-center lg:gap-12 lg:py-8 xl:gap-16">
       <div className="order-2 pb-3 lg:order-1">
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
           Live inside Nimiq Pay

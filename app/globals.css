@@ -395,6 +395,9 @@ button {
     padding-right: 18px !important;
     padding-bottom: max(28px, env(safe-area-inset-bottom)) !important;
   }
+  .mobile-page.home-page {
+    min-height: 0;
+  }
   .mobile-page > * {
     min-width: 0;
   }

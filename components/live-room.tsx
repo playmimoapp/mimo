@@ -162,6 +162,8 @@ export function LiveRoom({
     rewardState: LiveRoomState['rewardState'];
   } | null>(null);
   const previousSecond = useRef<number | null>(null);
+  const refreshSequence = useRef(0);
+  const serverClockOffset = useRef(0);
 
   const inviteUrl = useCallback(
     () =>
@@ -193,6 +195,7 @@ export function LiveRoom({
   }, [inviteOpen, inviteUrl]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshSequence.current;
     try {
       const headers: Record<string, string> = {};
       if (hostKey) headers['x-mimo-host'] = hostKey;
@@ -204,12 +207,16 @@ export function LiveRoom({
       });
       if (!response.ok) throw new Error(await getError(response));
       const next = (await response.json()) as LiveRoomState;
+      if (requestId !== refreshSequence.current) return;
+      serverClockOffset.current = next.serverNow - Date.now();
       setRoom(next);
-      setNow(next.serverNow);
+      setNow(Date.now() + serverClockOffset.current);
       setError('');
       if (mode === 'player' && nickname) {
         const me = next.players.find(
-          (player) => player.nickname.toLowerCase() === nickname.toLowerCase(),
+          (player) =>
+            player.id === next.viewerParticipantId ||
+            player.nickname.toLowerCase() === nickname.toLowerCase(),
         );
         const answerIsLocked = Boolean(me?.answerLocked);
         setLocked(answerIsLocked);
@@ -229,10 +236,13 @@ export function LiveRoom({
         }
       }
     } catch (cause) {
+      if (requestId !== refreshSequence.current) return;
       setError(
-        cause instanceof Error
-          ? cause.message
-          : 'The room could not be reached.',
+        typeof navigator !== 'undefined' && !navigator.onLine
+          ? 'You are offline. Mimo will reconnect when your signal returns.'
+          : cause instanceof Error && !/fetch|network/i.test(cause.message)
+            ? cause.message
+            : 'Live connection interrupted. Mimo is reconnecting.',
       );
     }
   }, [code, hostKey, inviteToken, nickname, mode, participantToken]);
@@ -240,11 +250,22 @@ export function LiveRoom({
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
     const poll = window.setInterval(() => void refresh(), 1200);
-    const clock = window.setInterval(() => setNow((value) => value + 250), 250);
+    const clock = window.setInterval(
+      () => setNow(Date.now() + serverClockOffset.current),
+      250,
+    );
+    const recover = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    const reconnect = () => void refresh();
+    document.addEventListener('visibilitychange', recover);
+    window.addEventListener('online', reconnect);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(poll);
       window.clearInterval(clock);
+      document.removeEventListener('visibilitychange', recover);
+      window.removeEventListener('online', reconnect);
     };
   }, [refresh]);
 

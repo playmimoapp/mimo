@@ -176,6 +176,13 @@ assert(
   lobbyTeams.signal === 2 && lobbyTeams.spark === 2,
   'Simultaneous joins must keep both teams balanced.',
 );
+const restoredLobby = await request(`/api/rooms/${room.code}`, {
+  headers: { 'x-mimo-session': players[0].participantToken },
+});
+assert(
+  restoredLobby.viewerParticipantId === players[0].participantId,
+  'A restored room session must identify the same participant.',
+);
 const lobbyCue = await request(`/api/rooms/${room.code}/cue`, {
   method: 'POST',
 });

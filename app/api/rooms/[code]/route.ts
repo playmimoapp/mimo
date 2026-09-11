@@ -3,6 +3,7 @@ import {
   canViewRoom,
   getRoom,
   getRoomConfig,
+  hashToken,
   json,
   reconcileRoom,
 } from '@/lib/live-room';
@@ -25,6 +26,7 @@ export async function GET(
   room = await reconcileRoom(room);
 
   const db = getD1();
+  const participantToken = request.headers.get('x-mimo-session');
   const reward = getRoomConfig(room.launchedConfigJson);
   const vault =
     reward.mode === 'nim' && reward.custody === 'mimo_vault'
@@ -37,6 +39,7 @@ export async function GET(
     answerRows,
     reactionRows,
     rewardRow,
+    viewerParticipant,
   ] = await Promise.all([
     db
       .prepare(
@@ -107,6 +110,13 @@ export async function GET(
         refundTxHash: string | null;
         rulesJson: string;
       }>(),
+    participantToken
+      ? db
+          .prepare(`SELECT id FROM participants
+            WHERE event_id = ? AND session_token_hash = ? LIMIT 1`)
+          .bind(room.id, await hashToken(participantToken))
+          .first<{ id: string }>()
+      : Promise.resolve(null),
   ]);
 
   const config = round
@@ -215,6 +225,7 @@ export async function GET(
     autoHostEnabled: Boolean(room.autoHostEnabled),
     adaptiveMode: reward.adaptiveMode,
     serverNow,
+    viewerParticipantId: viewerParticipant?.id ?? null,
     deadline,
     activeRoundId: room.activeRoundId,
     roundIndex,

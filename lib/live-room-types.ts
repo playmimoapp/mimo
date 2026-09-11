@@ -57,6 +57,7 @@ export type LiveRoomState = {
   autoHostEnabled: boolean;
   adaptiveMode: 'auto' | 'ask' | 'off';
   serverNow: number;
+  viewerParticipantId: string | null;
   deadline: number | null;
   activeRoundId: string;
   roundIndex: number;

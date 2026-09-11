@@ -1,6 +1,8 @@
 import { getD1 } from '@/db';
 import { hashToken } from '@/lib/live-room';
 
+export const MIMO_ACCOUNT_SESSION_MS = 7 * 24 * 60 * 60_000;
+
 export type MimoAccount = {
   id: string;
   walletHash: string;
@@ -20,8 +22,8 @@ export async function getAccountBySession(request: Request) {
       a.profile_style AS profileStyle
       FROM account_sessions s
       JOIN accounts a ON a.id = s.account_id
-      WHERE s.token_hash = ? AND s.expires_at > ? LIMIT 1`)
-    .bind(tokenHash, Date.now())
+      WHERE s.token_hash = ? AND s.expires_at > ? AND s.created_at > ? LIMIT 1`)
+    .bind(tokenHash, Date.now(), Date.now() - MIMO_ACCOUNT_SESSION_MS)
     .first<MimoAccount>();
   if (!account) return null;
   await getD1()

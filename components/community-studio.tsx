@@ -121,8 +121,13 @@ export function CommunityStudio({
       followed?: Community[];
       error?: string;
     };
-    if (!response.ok || !body.profile)
+    if (!response.ok || !body.profile) {
+      if (response.status === 401) {
+        window.localStorage.removeItem('mimo:studio:session');
+        setSession('');
+      }
       throw new Error(body.error || 'Your profile could not load.');
+    }
     setProfile(body.profile);
     setNotifications(body.notifications ?? []);
     setFollowed(body.followed ?? []);
@@ -237,6 +242,20 @@ export function CommunityStudio({
     }
   }
 
+  async function signOut() {
+    const token = session;
+    window.localStorage.removeItem('mimo:studio:session');
+    setSession('');
+    setProfile(null);
+    setCommunities([]);
+    setNotifications([]);
+    if (!token) return;
+    await fetch('/api/account/session', {
+      method: 'DELETE',
+      headers: { 'x-mimo-account': token },
+    }).catch(() => undefined);
+  }
+
   async function createCommunity() {
     if (!session || working) return;
     setWorking(true);
@@ -344,7 +363,8 @@ export function CommunityStudio({
               />
               <span>
                 Nimiq Pay confirms this Studio belongs to you. Signing in cannot
-                move NIM.
+                move NIM. Access expires after 7 days; sign again with the same
+                wallet and everything returns.
               </span>
             </div>
             <Button
@@ -415,12 +435,20 @@ export function CommunityStudio({
                 : 'Your identity across Mimo'}
             </p>
           </div>
-          <button
-            onClick={() => setShowProfile((value) => !value)}
-            className="shrink-0 text-sm font-extrabold text-[#2577de]"
-          >
-            {showProfile ? 'Done' : 'Edit profile'}
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
+            <button
+              onClick={() => setShowProfile((value) => !value)}
+              className="text-sm font-extrabold text-[#2577de]"
+            >
+              {showProfile ? 'Done' : 'Edit profile'}
+            </button>
+            <button
+              onClick={() => void signOut()}
+              className="text-xs font-bold text-[#718295] underline-offset-4 hover:underline"
+            >
+              Sign out
+            </button>
+          </div>
         </section>
       )}
       {inviteMessage && (

@@ -2,6 +2,8 @@ import { getRuntimeVariable } from '@/lib/runtime-env';
 
 type DraftRequest = {
   eventKind?: unknown;
+  hostingMode?: unknown;
+  recurrence?: unknown;
   community?: unknown;
   topic?: unknown;
   audience?: unknown;
@@ -135,9 +137,27 @@ export async function POST(request: Request) {
   ].includes(String(body?.eventKind))
     ? String(body?.eventKind)
     : 'game_night';
+  const hostingMode =
+    body?.hostingMode === 'community' ? 'community' : 'one_time';
+  const recurrence = ['weekly', 'fortnightly', 'monthly'].includes(
+    String(body?.recurrence),
+  )
+    ? String(body?.recurrence)
+    : 'none';
 
-  if (community.length < 2 || topic.length < 6) {
-    return json({ error: 'Add a community and a clear topic.' }, 400);
+  if (
+    topic.length < 6 ||
+    (hostingMode === 'community' && community.length < 2)
+  ) {
+    return json(
+      {
+        error:
+          hostingMode === 'community'
+            ? 'Add a community and a clear topic.'
+            : 'Describe the one-time event in a little more detail.',
+      },
+      400,
+    );
   }
 
   const formatInstruction =
@@ -161,7 +181,12 @@ widely established facts. Avoid trick wording, subjective judgment, politics, me
 financial advice, gambling, random reward rules and promotional claims. Keep the language
 warm, concise and suitable for a fast mobile game. Return only the requested JSON.`;
 
-  const input = `Format: ${eventKind}\nCommunity: ${community}\nAudience: ${audience}\nDifficulty: ${difficulty}\nBrief: ${topic}\n${
+  const continuityInstruction =
+    hostingMode === 'community'
+      ? `This belongs to the recurring ${recurrence} series ${community}. It may acknowledge returning members, but this event must still make sense to a newcomer.`
+      : 'This is a one-time room. Keep it completely self-contained: do not mention seasons, recurring meetings, previous events or a next event.';
+
+  const input = `Format: ${eventKind}\nHosting mode: ${hostingMode}\n${continuityInstruction}\nAudience: ${audience}\nDifficulty: ${difficulty}\nBrief: ${topic}\n${
     source ? `Approved source text:\n${source}` : 'No source text was supplied.'
   }`;
 

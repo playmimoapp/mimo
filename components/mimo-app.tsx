@@ -58,6 +58,7 @@ type Screen =
   | 'home'
   | 'host_entry'
   | 'create_choice'
+  | 'creation_method'
   | 'create_assisted'
   | 'create'
   | 'preview'
@@ -155,6 +156,8 @@ type RoundDraft = {
 
 type AssistantBrief = {
   eventKind: EventKind;
+  hostingMode: 'one_time' | 'community';
+  recurrence: EventDraft['recurrence'];
   community: string;
   topic: string;
   audience: 'newcomers' | 'community' | 'experts';
@@ -305,7 +308,9 @@ function CreationRail({ screen }: { screen: Screen }) {
   const active =
     screen === 'create_choice'
       ? 0
-      : screen === 'create_assisted' || screen === 'create'
+      : screen === 'creation_method' ||
+          screen === 'create_assisted' ||
+          screen === 'create'
         ? 1
         : screen === 'preview'
           ? 2
@@ -465,6 +470,8 @@ export function MimoApp() {
   }>({ mimoFundingAvailable: false, network: null });
   const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
     eventKind: 'game_night',
+    hostingMode: 'one_time',
+    recurrence: 'none',
     community: '',
     topic: '',
     audience: 'community',
@@ -662,7 +669,12 @@ export function MimoApp() {
       startsAt: null,
       recurrence: 'none',
     }));
-    setAssistantBrief((current) => ({ ...current, community: '' }));
+    setAssistantBrief((current) => ({
+      ...current,
+      hostingMode: 'one_time',
+      recurrence: 'none',
+      community: '',
+    }));
     setScreen('create_choice');
   };
 
@@ -673,10 +685,14 @@ export function MimoApp() {
       return;
     }
     if (screen === 'create') {
-      setScreen('create_choice');
+      setScreen('creation_method');
       return;
     }
     if (screen === 'create_assisted') {
+      setScreen('creation_method');
+      return;
+    }
+    if (screen === 'creation_method') {
       setScreen('create_choice');
       return;
     }
@@ -837,6 +853,7 @@ export function MimoApp() {
       <Header
         back={
           screen === 'create_choice' ||
+          screen === 'creation_method' ||
           screen === 'host_entry' ||
           screen === 'create_assisted' ||
           screen === 'create' ||
@@ -859,9 +876,13 @@ export function MimoApp() {
             : undefined
         }
         context={
-          ['create_choice', 'create_assisted', 'create', 'preview'].includes(
-            screen,
-          )
+          [
+            'create_choice',
+            'creation_method',
+            'create_assisted',
+            'create',
+            'preview',
+          ].includes(screen)
             ? 'Create an event'
             : screen === 'host_entry'
               ? 'Host a Mimo'
@@ -876,9 +897,13 @@ export function MimoApp() {
                       : undefined
         }
       />
-      {['create_choice', 'create_assisted', 'create', 'preview'].includes(
-        screen,
-      ) && <CreationRail screen={screen} />}
+      {[
+        'create_choice',
+        'creation_method',
+        'create_assisted',
+        'create',
+        'preview',
+      ].includes(screen) && <CreationRail screen={screen} />}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={screen}
@@ -915,6 +940,21 @@ export function MimoApp() {
                 setEvent({ ...event, eventKind });
                 setAssistantBrief({ ...assistantBrief, eventKind });
               }}
+              context={
+                event.communitySlug
+                  ? `${event.community} · ${event.recurrence} series`
+                  : 'One-time room'
+              }
+              next={() => setScreen('creation_method')}
+            />
+          )}
+          {screen === 'creation_method' && (
+            <CreationMethod
+              context={
+                event.communitySlug
+                  ? `${event.community} · ${event.recurrence} series`
+                  : 'One-time room'
+              }
               assisted={() => setScreen('create_assisted')}
               manual={() => setScreen('create')}
             />
@@ -961,6 +1001,8 @@ export function MimoApp() {
                 }));
                 setAssistantBrief((current) => ({
                   ...current,
+                  hostingMode: 'community',
+                  recurrence: community.recurrence,
                   community: community.name,
                 }));
                 setScreen('create_choice');
@@ -1349,128 +1391,154 @@ function HostEntry({
 function CreateChoice({
   selectedKind,
   selectKind,
-  assisted,
-  manual,
+  context,
+  next,
 }: {
   selectedKind: EventKind;
   selectKind: (kind: EventKind) => void;
-  assisted: () => void;
-  manual: () => void;
+  context: string;
+  next: () => void;
 }) {
+  const selected = EVENT_FORMATS.find((format) => format.id === selectedKind)!;
   return (
     <section className="mobile-page create-choice-page app-frame pb-16 pt-3 sm:pt-8">
-      <div className="create-choice-hero grid items-end gap-6 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
+      <div className="create-choice-hero grid items-end gap-5 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
         <div>
           <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
-            Start a new Mimo
+            {context}
           </p>
           <h1 className="mobile-flow-title font-display mt-3 max-w-[720px] text-[clamp(3rem,7vw,5.6rem)] font-extrabold leading-[.9] tracking-[-.065em]">
-            What should Mimo host?
+            Choose the room.
           </h1>
         </div>
         <MimoCue
           className="md:justify-self-end"
           mood="thinking"
-          message="Tell me the crowd and the idea. I’ll draft it; you approve every word."
+          message="Pick the experience first. We’ll decide how to build it next."
         />
       </div>
 
-      <div className="mt-7 flex items-end justify-between gap-4">
-        <div>
-          <h2 className="font-display text-2xl font-extrabold tracking-[-.03em]">
-            Pick a starting format
-          </h2>
-          <p className="mt-1 text-sm font-medium text-[#607486]">
-            This shapes the room. You can still edit every moment.
-          </p>
-        </div>
-        <span className="hidden text-sm font-extrabold text-[#1f72d2] sm:block">
-          {EVENT_FORMATS.find((format) => format.id === selectedKind)?.label}
-        </span>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-5 border-y border-[#ccd5db]">
         {EVENT_FORMATS.map((format) => (
           <button
             key={format.id}
             type="button"
             aria-pressed={selectedKind === format.id}
             onClick={() => selectKind(format.id)}
-            className={`group overflow-hidden rounded-[22px] border-2 bg-white text-left transition hover:-translate-y-0.5 ${
-              selectedKind === format.id
-                ? 'border-[#1f72d2] ring-4 ring-[#1f72d2]/10'
-                : 'border-[#ccd5db] hover:border-[#8ba9c3]'
+            className={`group grid w-full grid-cols-[84px_minmax(0,1fr)_auto] items-center gap-4 border-b border-[#d8dfe3] py-3 text-left transition last:border-b-0 sm:grid-cols-[116px_minmax(0,1fr)_auto] ${
+              selectedKind === format.id ? 'bg-[#eaf4ff]' : 'hover:bg-white'
             }`}
           >
-            <EventFormatVisual kind={format.id} />
-            <span className="block px-4 pb-4 pt-3">
-              <strong className="font-display block text-lg font-extrabold">
+            <span className="overflow-hidden rounded-[14px] [&>span]:h-[64px] sm:[&>span]:h-[74px]">
+              <EventFormatVisual kind={format.id} />
+            </span>
+            <span className="min-w-0">
+              <strong className="font-display block text-xl font-extrabold">
                 {format.label}
               </strong>
-              <span className="mt-1 block text-sm leading-5 text-[#607486]">
+              <span className="mt-0.5 block text-sm leading-5 text-[#607486]">
                 {format.description}
               </span>
-              <span className="mt-2 block text-xs font-extrabold uppercase tracking-[.08em] text-[#1f72d2]">
+              <span className="mt-1 hidden text-xs font-extrabold uppercase tracking-[.08em] text-[#1f72d2] sm:block">
                 {format.moments}
               </span>
+            </span>
+            <span
+              className={`mr-1 grid h-8 w-8 place-items-center rounded-full border ${
+                selectedKind === format.id
+                  ? 'border-[#1f72d2] bg-[#1f72d2] text-white'
+                  : 'border-[#b8c5ce] bg-white text-transparent'
+              }`}
+            >
+              <CircleDot size={15} />
             </span>
           </button>
         ))}
       </div>
+      <div className="mobile-action-bar mt-7 flex items-center justify-between gap-4">
+        <p className="hidden text-sm font-semibold text-[#607486] sm:block">
+          Selected: <strong className="text-[#203752]">{selected.label}</strong>
+        </p>
+        <Button
+          onClick={next}
+          className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 font-extrabold"
+        >
+          Continue <ArrowRight />
+        </Button>
+      </div>
+    </section>
+  );
+}
 
-      <h2 className="font-display mt-8 text-2xl font-extrabold tracking-[-.03em]">
-        How should we build it?
-      </h2>
-      <div className="create-choice-grid mt-4 grid gap-4 md:grid-cols-[1.08fr_.92fr]">
-        <motion.button
-          whileTap={{ scale: 0.99 }}
+function CreationMethod({
+  context,
+  assisted,
+  manual,
+}: {
+  context: string;
+  assisted: () => void;
+  manual: () => void;
+}) {
+  return (
+    <section className="mobile-page app-frame pb-16 pt-3 sm:pt-8">
+      <div className="grid items-end gap-5 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
+        <div>
+          <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
+            {context}
+          </p>
+          <h1 className="mobile-flow-title font-display mt-3 max-w-[760px] text-[clamp(3rem,7vw,5.6rem)] font-extrabold leading-[.9] tracking-[-.065em]">
+            Start with a draft—or your own words.
+          </h1>
+        </div>
+        <MimoCue
+          mood="happy"
+          message="I can do the first pass. You stay in control."
+        />
+      </div>
+
+      <div className="mt-7 border-y border-[#ccd5db]">
+        <button
           onClick={assisted}
-          className="create-choice-card create-choice-card-ai group relative min-h-[270px] overflow-hidden rounded-[28px] bg-[#1f72d2] p-6 text-left text-white transition hover:-translate-y-1 sm:p-8"
+          className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-[#d8dfe3] py-6 text-left"
         >
-          <div className="absolute right-[-34px] top-[-42px] h-40 w-40 rounded-full border-[24px] border-white/10" />
-          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-extrabold text-[#175da8]">
-            <Sparkles size={17} /> Mimo-assisted
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#dceeff] text-[#1f72d2]">
+            <Sparkles size={20} />
           </span>
-          <div className="mt-12 flex items-end justify-between gap-5">
-            <div>
-              <h2 className="font-display text-[clamp(2rem,5vw,3.35rem)] font-extrabold leading-none tracking-[-.045em]">
-                Let Mimo draft it
-              </h2>
-              <p className="mt-3 max-w-md text-base font-semibold leading-6 text-[#dceeff]">
-                Describe the event. Get editable polls, questions and timing in
-                seconds.
-              </p>
-            </div>
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[#1f72d2] transition group-hover:translate-x-1">
-              <ArrowRight />
+          <span>
+            <span className="text-xs font-black uppercase tracking-[.1em] text-[#1f72d2]">
+              Fastest
             </span>
-          </div>
-        </motion.button>
-
-        <motion.button
-          whileTap={{ scale: 0.99 }}
+            <strong className="font-display mt-1 block text-2xl font-extrabold">
+              Draft with Mimo
+            </strong>
+            <span className="mt-1 block text-sm leading-6 text-[#607486]">
+              Describe the idea. Mimo prepares editable moments, answers and
+              timing.
+            </span>
+          </span>
+          <ArrowRight className="transition group-hover:translate-x-1" />
+        </button>
+        <button
           onClick={manual}
-          className="create-choice-card group min-h-[270px] rounded-[28px] border-2 border-[#c9d1d6] bg-white p-6 text-left transition hover:-translate-y-1 hover:border-[#86a5be] sm:p-8"
+          className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 py-6 text-left"
         >
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-[#edf2f5] text-[#203752]">
-            <PenLine size={19} />
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#edf2f5] text-[#203752]">
+            <PenLine size={20} />
           </span>
-          <div className="mt-12 flex items-end justify-between gap-5">
-            <div>
-              <h2 className="font-display text-[clamp(2rem,5vw,3.35rem)] font-extrabold leading-none tracking-[-.045em]">
-                Start from blank
-              </h2>
-              <p className="mt-3 max-w-md text-base font-medium leading-6 text-[#5e7283]">
-                Build only the polls, questions or challenges you need.
-              </p>
-            </div>
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#203752] text-white transition group-hover:translate-x-1">
-              <ArrowRight />
+          <span>
+            <strong className="font-display block text-2xl font-extrabold">
+              Build it yourself
+            </strong>
+            <span className="mt-1 block text-sm leading-6 text-[#607486]">
+              Begin with a clean editor and add only the moments you want.
             </span>
-          </div>
-        </motion.button>
+          </span>
+          <ArrowRight className="transition group-hover:translate-x-1" />
+        </button>
       </div>
       <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-[#607486]">
-        <ShieldCheck size={17} /> You review every detail before it goes live.
+        <ShieldCheck size={17} /> Nothing is published or funded without your
+        review.
       </p>
     </section>
   );
@@ -1496,7 +1564,8 @@ function AssistedCreate({
     value: AssistantBrief[K],
   ) => setBrief({ ...brief, [key]: value });
   const ready =
-    brief.community.trim().length > 1 && brief.topic.trim().length > 5;
+    brief.topic.trim().length > 5 &&
+    (brief.hostingMode === 'one_time' || brief.community.trim().length > 1);
 
   return (
     <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -1518,16 +1587,18 @@ function AssistedCreate({
         />
 
         <div className="creator-form-shell mt-8 grid gap-7">
-          <label className="grid gap-2 text-sm font-extrabold">
-            Community
-            <input
-              value={brief.community}
-              onChange={(event) => update('community', event.target.value)}
-              maxLength={60}
-              placeholder="e.g. Nimiq Lagos"
-              className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
-            />
-          </label>
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#d7dcdf] pb-4 text-sm font-bold text-[#526a7c]">
+            <span className="rounded-full bg-[#eaf4ff] px-3 py-2 text-[#1f72d2]">
+              {brief.hostingMode === 'community'
+                ? `${brief.community} · ${brief.recurrence}`
+                : 'One-time room'}
+            </span>
+            <span>
+              {brief.hostingMode === 'community'
+                ? 'Mimo will write this as part of your series.'
+                : 'Mimo will keep this event self-contained.'}
+            </span>
+          </div>
           <label className="grid gap-2 text-sm font-extrabold">
             Topic or idea
             <textarea

@@ -4,6 +4,7 @@ import {
   normalizeNimiqAccount,
   verifyNimiqSignedMessage,
 } from '@/lib/nimiq-signature';
+import { MIMO_ACCOUNT_SESSION_MS } from '@/lib/mimo-account';
 
 function cleanHex(value: unknown, length: number) {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
         .run();
     }
     const sessionToken = makeToken();
+    const sessionExpiresAt = now + MIMO_ACCOUNT_SESSION_MS;
     await getD1()
       .prepare(`INSERT INTO account_sessions
         (id, account_id, token_hash, expires_at, created_at, last_seen_at)
@@ -71,12 +73,16 @@ export async function POST(request: Request) {
         crypto.randomUUID(),
         account.id,
         await hashToken(sessionToken),
-        now + 30 * 24 * 60 * 60_000,
+        sessionExpiresAt,
         now,
         now,
       )
       .run();
-    return json({ sessionToken, displayName: account.displayName });
+    return json({
+      sessionToken,
+      sessionExpiresAt,
+      displayName: account.displayName,
+    });
   } catch (error) {
     console.error('studio_wallet_proof_failed', error);
     return json({ error: 'Nimiq Pay could not verify this wallet.' }, 403);

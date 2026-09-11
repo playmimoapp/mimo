@@ -75,6 +75,54 @@ type CommunityEventSummary = {
 
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
 
+async function signInWithNimiqPay(nimiq: MimoNimiq) {
+  const connected = await nimiq.connect();
+  if (connected.status !== 'ready') {
+    throw new Error(
+      connected.status === 'cancelled'
+        ? 'You cancelled sign-in. Nothing changed.'
+        : 'Open Mimo inside Nimiq Pay to sign in.',
+    );
+  }
+  const challengeResponse = await fetch('/api/account/challenge', {
+    method: 'POST',
+  });
+  const challenge = (await challengeResponse.json()) as {
+    challengeId?: string;
+    message?: string;
+    error?: string;
+  };
+  if (!challengeResponse.ok || !challenge.challengeId || !challenge.message) {
+    throw new Error(challenge.error || 'Mimo could not start sign-in.');
+  }
+  const signed = await nimiq.signChallenge(challenge.message);
+  if ('status' in signed) {
+    throw new Error(
+      signed.status === 'cancelled'
+        ? 'You cancelled sign-in. Nothing changed.'
+        : 'The signature was not completed.',
+    );
+  }
+  const verifyResponse = await fetch('/api/account/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      challengeId: challenge.challengeId,
+      account: connected.account,
+      publicKey: signed.publicKey,
+      signature: signed.signature,
+    }),
+  });
+  const verified = (await verifyResponse.json()) as {
+    sessionToken?: string;
+    error?: string;
+  };
+  if (!verifyResponse.ok || !verified.sessionToken) {
+    throw new Error(verified.error || 'Mimo could not verify the wallet.');
+  }
+  return verified.sessionToken;
+}
+
 export function CommunityStudio({
   createEvent,
 }: {
@@ -207,49 +255,10 @@ export function CommunityStudio({
     setWorking(true);
     setError('');
     try {
-      const connected = await nimiq.current.connect();
-      if (connected.status !== 'ready')
-        throw new Error(
-          connected.status === 'cancelled'
-            ? 'You cancelled sign-in. Nothing changed.'
-            : 'Open Mimo inside Nimiq Pay to sign in.',
-        );
-      const challengeResponse = await fetch('/api/account/challenge', {
-        method: 'POST',
-      });
-      const challenge = (await challengeResponse.json()) as {
-        challengeId?: string;
-        message?: string;
-        error?: string;
-      };
-      if (!challengeResponse.ok || !challenge.challengeId || !challenge.message)
-        throw new Error(challenge.error || 'Mimo could not start sign-in.');
-      const signed = await nimiq.current.signChallenge(challenge.message);
-      if ('status' in signed)
-        throw new Error(
-          signed.status === 'cancelled'
-            ? 'You cancelled sign-in. Nothing changed.'
-            : 'The signature was not completed.',
-        );
-      const verifyResponse = await fetch('/api/account/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          challengeId: challenge.challengeId,
-          account: connected.account,
-          publicKey: signed.publicKey,
-          signature: signed.signature,
-        }),
-      });
-      const verified = (await verifyResponse.json()) as {
-        sessionToken?: string;
-        error?: string;
-      };
-      if (!verifyResponse.ok || !verified.sessionToken)
-        throw new Error(verified.error || 'Mimo could not verify the wallet.');
-      window.localStorage.setItem('mimo:studio:session', verified.sessionToken);
-      setSession(verified.sessionToken);
-      await loadDashboard(verified.sessionToken);
+      const sessionToken = await signInWithNimiqPay(nimiq.current);
+      window.localStorage.setItem('mimo:studio:session', sessionToken);
+      setSession(sessionToken);
+      await loadDashboard(sessionToken);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : 'Sign-in did not finish.',
@@ -1420,6 +1429,7 @@ export function PublicCommunity({
   slug: string;
   host: () => void;
 }) {
+  const nimiq = useRef(new MimoNimiq());
   const [data, setData] = useState<{
     community: Community;
     events: CommunityEventSummary[];
@@ -1438,6 +1448,9 @@ export function PublicCommunity({
   } | null>(null);
   const [error, setError] = useState('');
   const [following, setFollowing] = useState(false);
+  const [accountSession, setAccountSession] = useState('');
+  const [followWorking, setFollowWorking] = useState(false);
+  const [followError, setFollowError] = useState('');
   const [showAllHistory, setShowAllHistory] = useState(false);
   useEffect(() => {
     const session = window.localStorage.getItem('mimo:studio:session') ?? '';
@@ -1473,6 +1486,7 @@ export function PublicCommunity({
           standings: body.standings,
           team: body.team,
         });
+        setAccountSession(session);
         setFollowing(Boolean(body.community.following));
       })
       .catch((cause) =>
@@ -1480,16 +1494,6 @@ export function PublicCommunity({
           cause instanceof Error ? cause.message : 'Community could not load.',
         ),
       );
-  }, [slug]);
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() =>
-      setFollowing(
-        (current) =>
-          current ||
-          window.localStorage.getItem(`mimo:follow:${slug}`) === 'yes',
-      ),
-    );
-    return () => window.cancelAnimationFrame(frame);
   }, [slug]);
   if (!data)
     return (
@@ -1510,22 +1514,61 @@ export function PublicCommunity({
   const completed = data.events
     .filter((event) => event.status === 'complete')
     .sort((a, b) => b.createdAt - a.createdAt);
-  const toggleFollow = () => {
-    setFollowing((current) => {
-      const nextValue = !current;
-      const session = window.localStorage.getItem('mimo:studio:session') ?? '';
-      window.localStorage.setItem(
-        `mimo:follow:${slug}`,
-        nextValue ? 'yes' : 'no',
-      );
-      if (session) {
-        void fetch(`/api/communities/${slug}/follow`, {
-          method: nextValue ? 'POST' : 'DELETE',
-          headers: { 'x-mimo-account': session },
-        }).catch(() => undefined);
+  const toggleFollow = async () => {
+    if (followWorking) return;
+    setFollowWorking(true);
+    setFollowError('');
+    const nextValue = !following;
+    try {
+      let session = accountSession;
+      if (!session) {
+        session = await signInWithNimiqPay(nimiq.current);
+        window.localStorage.setItem('mimo:studio:session', session);
+        setAccountSession(session);
       }
-      return nextValue;
-    });
+      const sendFollow = (token: string) =>
+        fetch(`/api/communities/${slug}/follow`, {
+          method: nextValue ? 'POST' : 'DELETE',
+          headers: { 'x-mimo-account': token },
+        });
+      let response = await sendFollow(session);
+      if (response.status === 401) {
+        window.localStorage.removeItem('mimo:studio:session');
+        session = await signInWithNimiqPay(nimiq.current);
+        window.localStorage.setItem('mimo:studio:session', session);
+        setAccountSession(session);
+        response = await sendFollow(session);
+      }
+      const body = (await response.json()) as {
+        following?: boolean;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error || 'Follow could not be updated.');
+      }
+      setFollowing(nextValue);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              community: {
+                ...current.community,
+                following: nextValue,
+                followerCount: Math.max(
+                  0,
+                  (current.community.followerCount ?? 0) + (nextValue ? 1 : -1),
+                ),
+              },
+            }
+          : current,
+      );
+    } catch (cause) {
+      setFollowError(
+        cause instanceof Error ? cause.message : 'Follow could not be updated.',
+      );
+    } finally {
+      setFollowWorking(false);
+    }
   };
   const addToCalendar = () => {
     if (!nextTime) return;
@@ -1583,12 +1626,17 @@ export function PublicCommunity({
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
               <Button
-                onClick={toggleFollow}
+                onClick={() => void toggleFollow()}
+                disabled={followWorking}
                 variant="outline"
                 className={`h-11 rounded-full px-4 font-extrabold ${following ? 'border-[#8fc9aa] bg-[#edf9f1] text-[#237044]' : 'bg-white'}`}
               >
                 <Bell size={16} />{' '}
-                {following ? 'Following' : 'Follow community'}
+                {followWorking
+                  ? 'Updating…'
+                  : following
+                    ? 'Following'
+                    : 'Follow community'}
               </Button>
               {nextTime && (
                 <Button
@@ -1617,6 +1665,17 @@ export function PublicCommunity({
                 ) : null,
               )}
             </div>
+            <p className="mt-3 text-xs font-bold text-[#718295]">
+              {data.community.followerCount ?? 0}{' '}
+              {(data.community.followerCount ?? 0) === 1
+                ? 'follower'
+                : 'followers'}
+            </p>
+            {followError && (
+              <p role="alert" className="mt-2 text-xs font-bold text-[#b53636]">
+                {followError}
+              </p>
+            )}
           </div>
           <div className="rounded-[24px] bg-[#f3f7fa] p-5">
             <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#c94f3b]">
@@ -1884,12 +1943,12 @@ export function CommunityDirectory({
           />
         </label>
       </div>
-      <div className="mt-10 divide-y divide-[#dbe2e7] border-y border-[#dbe2e7]">
+      <div className="mt-8 space-y-1">
         {communities.map((community) => (
           <button
             key={community.slug}
             onClick={() => openCommunity(community.slug)}
-            className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 py-5 text-left sm:gap-6"
+            className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-[22px] px-1 py-4 text-left transition hover:bg-white sm:gap-6 sm:px-3"
           >
             <CommunityAvatar community={community} />
             <span className="min-w-0">
@@ -1900,7 +1959,11 @@ export function CommunityDirectory({
                 {community.description || `@${community.slug}`}
               </span>
               <span className="mt-2 block text-xs font-extrabold text-[#718295]">
-                {community.followerCount ?? 0} following ·{' '}
+                {community.followerCount ?? 0}{' '}
+                {(community.followerCount ?? 0) === 1
+                  ? 'follower'
+                  : 'followers'}{' '}
+                ·{' '}
                 {community.recurrence === 'none'
                   ? 'Live events'
                   : `${recurrenceLabel(community.recurrence)} series`}

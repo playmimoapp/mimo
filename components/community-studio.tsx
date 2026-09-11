@@ -261,7 +261,7 @@ export function CommunityStudio({
           <Check size={16} /> Wallet verified
         </span>
       </div>
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_.95fr]">
+      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,.95fr)]">
         <section className="space-y-4">
           {communities.length ? (
             communities.map((community) => (
@@ -387,7 +387,7 @@ export function CommunityStudio({
 
 function StudioShell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mx-auto min-h-[calc(100dvh-72px)] max-w-[1080px] px-5 pb-16 pt-8 sm:px-8 sm:pt-12">
+    <section className="app-frame min-h-[calc(100dvh-72px)] pb-16 pt-8 sm:pt-12">
       {children}
     </section>
   );
@@ -525,7 +525,7 @@ export function PublicCommunity({
   host,
 }: {
   slug: string;
-  host: (name: string) => void;
+  host: () => void;
 }) {
   const [data, setData] = useState<{
     community: Community;
@@ -584,7 +584,7 @@ export function PublicCommunity({
           className="h-3"
           style={{ background: data.community.accentColor }}
         />
-        <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_.75fr]">
+        <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,.75fr)]">
           <div>
             <CommunityAvatar community={data.community} size="hero" />
             <p
@@ -642,12 +642,12 @@ export function PublicCommunity({
           </div>
         </div>
       </section>
-      <div className="mt-6 flex items-center justify-between rounded-2xl border border-[#dae2e8] bg-white p-4">
+      <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-[#dae2e8] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-bold text-[#53687c]">
           Own this community? Your Studio keeps every event together.
         </p>
         <Button
-          onClick={() => host(data.community.name)}
+          onClick={host}
           variant="outline"
           className="rounded-xl font-extrabold"
         >

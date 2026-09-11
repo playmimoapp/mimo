@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import QRCode from 'qrcode';
 import {
+  ArrowRight,
   Check,
   Clock3,
   Link2,
@@ -59,6 +60,7 @@ type LiveRoomProps = {
   inviteToken?: string;
   nickname?: string;
   onExit: () => void;
+  onOpenCommunity?: (slug: string) => void;
 };
 
 type WalletProofUi = {
@@ -126,6 +128,7 @@ export function LiveRoom({
   inviteToken,
   nickname,
   onExit,
+  onOpenCommunity,
 }: LiveRoomProps) {
   const [room, setRoom] = useState<LiveRoomState | null>(null);
   const [error, setError] = useState('');
@@ -603,7 +606,7 @@ export function LiveRoom({
         : 'happy');
 
   return (
-    <section className="mobile-page relative mx-auto max-w-[1180px] px-5 pb-24 pt-1 sm:px-8 sm:pt-3">
+    <section className="mobile-page app-frame relative pb-24 pt-1 sm:pt-3">
       <ReactionSky reactions={room.reactions} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d1d5d5] pb-4">
         <div className="flex items-center gap-3">
@@ -872,6 +875,7 @@ export function LiveRoom({
                   nimiq={nimiq}
                   currentPlayerId={me?.id}
                   participantToken={participantToken}
+                  onOpenCommunity={onOpenCommunity}
                 />
               )}
               {room.status === 'cancelled' && <CancelledState room={room} />}
@@ -1865,6 +1869,7 @@ function ResultsState({
   nimiq,
   currentPlayerId,
   participantToken,
+  onOpenCommunity,
 }: {
   room: LiveRoomState;
   leaderboard: LiveRoomState['players'];
@@ -1878,6 +1883,7 @@ function ResultsState({
   nimiq: MimoNimiq;
   currentPlayerId?: string;
   participantToken?: string;
+  onOpenCommunity?: (slug: string) => void;
 }) {
   const finaleCorrect =
     room.roundType === 'finale' && room.correctChoice !== null
@@ -2145,6 +2151,15 @@ function ResultsState({
                 ? 'Mimo is checking the final result.'
                 : 'The host will close the final result.'}
         </p>
+      )}
+      {room.status === 'complete' && onOpenCommunity && (
+        <Button
+          onClick={() => onOpenCommunity(room.communitySlug)}
+          variant="outline"
+          className="mt-4 h-12 rounded-full border-[#afbdc7] bg-white px-6 font-extrabold"
+        >
+          Back to {room.community} <ArrowRight size={17} />
+        </Button>
       )}
     </div>
   );

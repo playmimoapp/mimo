@@ -198,6 +198,7 @@ export async function GET(
     code: room.roomCode,
     title: room.title,
     community: room.communityName,
+    communitySlug: room.communitySlug,
     status: room.status,
     rewardMode: reward.mode,
     rewardAmount: reward.amount,

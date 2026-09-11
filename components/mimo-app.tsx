@@ -205,10 +205,12 @@ function Header({
   back,
   host,
   studio,
+  context,
 }: {
   back?: () => void;
   host?: () => void;
   studio?: () => void;
+  context?: string;
 }) {
   return (
     <header className="mx-auto flex h-[60px] max-w-[1240px] items-center justify-between px-[18px] sm:h-[72px] sm:px-8">
@@ -223,6 +225,11 @@ function Header({
           </button>
         )}
         <Logo />
+        {context && (
+          <span className="hidden items-center gap-3 text-sm font-extrabold text-[#607486] md:flex">
+            <span className="h-5 w-px bg-[#cbd4dc]" /> {context}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {studio && (
@@ -249,6 +256,42 @@ function Header({
         )}
       </div>
     </header>
+  );
+}
+
+const CREATION_STEPS = ['Format', 'Create', 'Rehearse', 'Live'] as const;
+
+function CreationRail({ screen }: { screen: Screen }) {
+  const active =
+    screen === 'create_choice'
+      ? 0
+      : screen === 'create_assisted' || screen === 'create'
+        ? 1
+        : screen === 'preview'
+          ? 2
+          : 3;
+  return (
+    <nav
+      aria-label="Event creation progress"
+      className="app-frame border-y border-[#dde1e3] py-3"
+    >
+      <ol className="grid grid-cols-4 gap-2">
+        {CREATION_STEPS.map((step, index) => (
+          <li
+            key={step}
+            aria-current={index === active ? 'step' : undefined}
+            className={`flex min-w-0 items-center gap-2 text-xs font-extrabold sm:text-sm ${index <= active ? 'text-[#203752]' : 'text-[#95a0a9]'}`}
+          >
+            <span
+              className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] ${index < active ? 'bg-[#dceeff] text-[#1f72d2]' : index === active ? 'bg-[#203752] text-white' : 'border border-[#cbd4dc] bg-white'}`}
+            >
+              {index + 1}
+            </span>
+            <span className="min-w-0 truncate">{step}</span>
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }
 
@@ -418,7 +461,11 @@ export function MimoApp() {
 
   const goBack = () => {
     setRoomError('');
-    if (screen === 'create' || screen === 'preview') {
+    if (screen === 'preview') {
+      setScreen('create');
+      return;
+    }
+    if (screen === 'create') {
       setScreen('create_choice');
       return;
     }
@@ -583,7 +630,23 @@ export function MimoApp() {
         }
         host={screen === 'home' ? () => setScreen('create_choice') : undefined}
         studio={screen === 'home' ? () => setScreen('studio') : undefined}
+        context={
+          ['create_choice', 'create_assisted', 'create', 'preview'].includes(
+            screen,
+          )
+            ? 'Create an event'
+            : screen === 'studio'
+              ? 'Community Studio'
+              : screen === 'community'
+                ? 'Community home'
+                : screen === 'join'
+                  ? `Join ${roomCode}`
+                  : undefined
+        }
       />
+      {['create_choice', 'create_assisted', 'create', 'preview'].includes(
+        screen,
+      ) && <CreationRail screen={screen} />}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={screen}
@@ -687,6 +750,11 @@ export function MimoApp() {
               hostKey={hostKey}
               inviteToken={inviteToken}
               onExit={goHome}
+              onOpenCommunity={(slug) => {
+                setCommunitySlug(slug);
+                window.history.replaceState({}, '', `/?community=${slug}`);
+                setScreen('community');
+              }}
             />
           )}
           {screen === 'live_player' && roomCode && (
@@ -697,6 +765,11 @@ export function MimoApp() {
               inviteToken={inviteToken}
               nickname={name}
               onExit={goHome}
+              onOpenCommunity={(slug) => {
+                setCommunitySlug(slug);
+                window.history.replaceState({}, '', `/?community=${slug}`);
+                setScreen('community');
+              }}
             />
           )}
         </motion.div>
@@ -937,7 +1010,7 @@ function CreateChoice({
   manual: () => void;
 }) {
   return (
-    <section className="mobile-page create-choice-page mx-auto max-w-[1040px] px-5 pb-16 pt-3 sm:px-8 sm:pt-8">
+    <section className="mobile-page create-choice-page app-frame pb-16 pt-3 sm:pt-8">
       <div className="create-choice-hero grid items-end gap-6 border-b border-[#ccd3d7] pb-7 md:grid-cols-[1fr_260px]">
         <div>
           <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
@@ -1078,7 +1151,7 @@ function AssistedCreate({
     brief.community.trim().length > 1 && brief.topic.trim().length > 5;
 
   return (
-    <section className="mobile-page creator-form-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:px-8 sm:pt-6 lg:grid-cols-[1fr_320px]">
+    <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div>
         <p className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
           <Bot size={17} /> Make it with Mimo
@@ -1296,7 +1369,7 @@ function CreateEvent({
     (event.rewardMode === 'free' || Number(event.rewardAmount) > 0),
   );
   return (
-    <section className="mobile-page creator-form-page mx-auto grid max-w-[1000px] gap-8 px-5 pb-16 pt-3 sm:pt-6 lg:grid-cols-[1fr_340px]">
+    <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div>
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
           Create a live event
@@ -1916,7 +1989,7 @@ function CreatorRehearsal({
     }
   };
   return (
-    <section className="mobile-page mx-auto grid max-w-[1060px] gap-8 px-5 pb-16 pt-3 lg:grid-cols-[1fr_390px]">
+    <section className="mobile-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_390px]">
       <div>
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c65340]">
           Private rehearsal · nothing is live
@@ -2046,7 +2119,7 @@ function Join({
   privateInvite: boolean;
 }) {
   return (
-    <section className="mobile-page mx-auto grid max-w-[920px] items-center gap-5 px-5 pb-12 pt-3 sm:pt-10 md:grid-cols-[290px_1fr]">
+    <section className="mobile-page app-frame grid max-w-[1060px] items-center gap-8 pb-12 pt-3 sm:pt-10 md:grid-cols-[290px_minmax(0,1fr)]">
       <MimoCharacter className="mx-auto hidden w-[260px] md:block" />
       <div>
         <MimoCue

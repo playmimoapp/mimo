@@ -48,7 +48,7 @@ export async function getRoom(codeValue: string) {
       e.state_changed_at AS stateChangedAt,
       e.auto_host_enabled AS autoHostEnabled,
       e.launched_config_json AS launchedConfigJson,
-      c.name AS communityName
+      c.name AS communityName, c.slug AS communitySlug
     FROM events e
     JOIN communities c ON c.id = e.community_id
     WHERE e.room_code = ?
@@ -68,6 +68,7 @@ export async function getRoom(codeValue: string) {
       autoHostEnabled: number;
       launchedConfigJson: string | null;
       communityName: string;
+      communitySlug: string;
     }>();
 }
 

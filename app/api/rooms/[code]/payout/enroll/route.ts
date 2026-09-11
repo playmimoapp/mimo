@@ -1,4 +1,3 @@
-import { PublicKey, Signature } from '@nimiq/core';
 import { getD1 } from '@/db';
 import {
   getParticipantBySession,
@@ -13,6 +12,7 @@ import {
   getRewardEligibility,
   normalizeNimiqAddress,
 } from '@/lib/reward-vault';
+import { verifyNimiqSignedMessage } from '@/lib/nimiq-signature';
 
 function cleanHex(value: unknown, length: number) {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -75,15 +75,12 @@ export async function POST(
   }
 
   try {
-    const publicKey = PublicKey.fromHex(publicKeyHex);
-    const signature = Signature.fromHex(signatureHex);
-    const valid = publicKey.verify(
-      signature,
-      new TextEncoder().encode(message),
-    );
-    const derivedAccount = normalizeNimiqAddress(
-      publicKey.toAddress().toUserFriendlyAddress(),
-    );
+    const { valid, derivedAccount } = verifyNimiqSignedMessage({
+      message,
+      publicKeyHex,
+      signatureHex,
+      claimedAccount,
+    });
     const addressHash = await hashToken(derivedAccount);
     if (
       !valid ||

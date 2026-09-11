@@ -1,24 +1,21 @@
-import { PublicKey, Signature } from '@nimiq/core';
 import { getD1 } from '@/db';
 import { hashToken, json, makeToken, readJson } from '@/lib/live-room';
+import {
+  normalizeNimiqAccount,
+  verifyNimiqSignedMessage,
+} from '@/lib/nimiq-signature';
 
 function cleanHex(value: unknown, length: number) {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
   return new RegExp(`^[0-9a-f]{${length}}$`).test(text) ? text : '';
 }
-function normalizeAddress(value: unknown) {
-  return (typeof value === 'string' ? value : '')
-    .toUpperCase()
-    .replace(/\s/g, '');
-}
-
 export async function POST(request: Request) {
   const body = await readJson(request);
   const challengeId =
     typeof body?.challengeId === 'string' ? body.challengeId : '';
   const publicKeyHex = cleanHex(body?.publicKey, 64);
   const signatureHex = cleanHex(body?.signature, 128);
-  const claimedAccount = normalizeAddress(body?.account);
+  const claimedAccount = normalizeNimiqAccount(body?.account);
   if (!challengeId || !publicKeyHex || !signatureHex || !claimedAccount) {
     return json({ error: 'The wallet proof is incomplete.' }, 400);
   }
@@ -31,16 +28,13 @@ export async function POST(request: Request) {
     return json({ error: 'That sign-in request expired. Try again.' }, 409);
   }
   try {
-    const publicKey = PublicKey.fromHex(publicKeyHex);
-    const signature = Signature.fromHex(signatureHex);
-    const valid = publicKey.verify(
-      signature,
-      new TextEncoder().encode(challenge.message),
-    );
-    const derivedAccount = normalizeAddress(
-      publicKey.toAddress().toUserFriendlyAddress(),
-    );
-    if (!valid || derivedAccount !== claimedAccount) {
+    const { valid, derivedAccount } = verifyNimiqSignedMessage({
+      message: challenge.message,
+      publicKeyHex,
+      signatureHex,
+      claimedAccount,
+    });
+    if (!valid) {
       return json({ error: 'Nimiq Pay could not verify this wallet.' }, 403);
     }
     const consumed = await getD1()

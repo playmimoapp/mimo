@@ -580,13 +580,38 @@ await request(`/api/rooms/${room.code}/action`, {
   body: JSON.stringify({ action: 'extend', hostKey: room.hostKey }),
 });
 
+const firstLockedAnswer = await request(`/api/rooms/${room.code}/answer`, {
+  method: 'POST',
+  body: JSON.stringify({
+    participantToken: players[0].participantToken,
+    choice: 0,
+  }),
+});
+assert(
+  firstLockedAnswer.locked === true &&
+    !('correct' in firstLockedAnswer) &&
+    !('score' in firstLockedAnswer),
+  'A live answer response must not leak correctness or score before reveal.',
+);
+const duplicateAnswer = await request(`/api/rooms/${room.code}/answer`, {
+  method: 'POST',
+  body: JSON.stringify({
+    participantToken: players[0].participantToken,
+    choice: 0,
+  }),
+});
+assert(
+  duplicateAnswer.locked === true && duplicateAnswer.alreadyLocked === true,
+  'A repeated network submission must restore the locked state safely.',
+);
+
 await Promise.all(
-  players.map((player, index) =>
+  players.slice(1).map((player, index) =>
     request(`/api/rooms/${room.code}/answer`, {
       method: 'POST',
       body: JSON.stringify({
         participantToken: player.participantToken,
-        choice: index,
+        choice: index + 1,
       }),
     }),
   ),

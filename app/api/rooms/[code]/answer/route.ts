@@ -51,8 +51,9 @@ export async function POST(
       409,
     );
   }
-  if (participant.answerLocked)
-    return json({ error: 'Your answer is already locked.' }, 409);
+  if (participant.answerLocked) {
+    return json({ locked: true, alreadyLocked: true });
+  }
 
   const round = await db
     .prepare(
@@ -99,6 +100,14 @@ export async function POST(
         .bind(score, now, participant.id),
     ]);
   } catch (error) {
+    const existingAnswer = await db
+      .prepare(`SELECT id FROM answers
+        WHERE round_id = ? AND participant_id = ? LIMIT 1`)
+      .bind(room.activeRoundId, participant.id)
+      .first<{ id: string }>();
+    if (existingAnswer) {
+      return json({ locked: true, alreadyLocked: true });
+    }
     console.error('answer_submit_failed', error);
     return json(
       { error: 'Your answer was not saved. Try again before time runs out.' },
@@ -106,5 +115,5 @@ export async function POST(
     );
   }
 
-  return json({ locked: true, correct, score });
+  return json({ locked: true });
 }

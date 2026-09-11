@@ -933,6 +933,7 @@ export function LiveRoom({
                   onFinish={() => void hostAction('finish')}
                   onNext={() => void hostAction('next')}
                   onReset={() => void hostAction('reset')}
+                  onHoldMoment={() => void hostAction('pause_auto')}
                   hostKey={hostKey}
                   nimiq={nimiq}
                   currentPlayerId={me?.id}
@@ -1927,6 +1928,7 @@ function ResultsState({
   onNext,
   onFinish,
   onReset,
+  onHoldMoment,
   hostKey,
   nimiq,
   currentPlayerId,
@@ -1941,6 +1943,7 @@ function ResultsState({
   onNext: () => void;
   onFinish: () => void;
   onReset: () => void;
+  onHoldMoment: () => void;
   hostKey?: string;
   nimiq: MimoNimiq;
   currentPlayerId?: string;
@@ -1994,7 +1997,15 @@ function ResultsState({
                 : 'Mimo takes this one.'
               : 'Round revealed.'}
       </h2>
-      {room.roomSignal && <LivingRoomMoment signal={room.roomSignal} />}
+      {room.roomSignal && (
+        <LivingRoomMoment
+          signal={room.roomSignal}
+          role={role}
+          autoHost={autoHost}
+          busy={busy}
+          onHold={onHoldMoment}
+        />
+      )}
       {room.correctChoice !== null && (
         <p className="mt-4 text-lg text-[#526a7e]">
           Correct:{' '}
@@ -2229,8 +2240,16 @@ function ResultsState({
 
 function LivingRoomMoment({
   signal,
+  role,
+  autoHost,
+  busy,
+  onHold,
 }: {
   signal: NonNullable<LiveRoomState['roomSignal']>;
+  role: 'host' | 'player';
+  autoHost: boolean;
+  busy: boolean;
+  onHold: () => void;
 }) {
   const content =
     signal.kind === 'split_room'
@@ -2238,6 +2257,7 @@ function LivingRoomMoment({
           label: 'Mimo spotted a split',
           title: 'The room has two strong sides.',
           detail: 'Back your take with a reaction before the next moment.',
+          action: 'Open a reaction break',
           tone: 'border-[#7aaee0] bg-[#eaf4ff] text-[#174f84]',
           icon: <Users size={21} />,
         }
@@ -2246,6 +2266,7 @@ function LivingRoomMoment({
             label: 'Comeback pressure',
             title: `Team ${signal.trailingTeam === 'signal' ? 'Signal' : 'Spark'} can still turn this.`,
             detail: 'The next scored answer can change the room.',
+            action: 'Give them a rally moment',
             tone: 'border-[#e0b752] bg-[#fff7d8] text-[#735800]',
             icon: <Zap size={21} />,
           }
@@ -2254,6 +2275,7 @@ function LivingRoomMoment({
             title: 'The room did it together.',
             detail:
               'Mimo verified the collective result from every locked answer.',
+            action: 'Hold the celebration',
             tone: 'border-[#65ad80] bg-[#edf9f1] text-[#246c41]',
             icon: <Trophy size={21} />,
           };
@@ -2278,6 +2300,20 @@ function LivingRoomMoment({
           <p className="mt-1 text-sm font-bold leading-5 opacity-80">
             {content.detail}
           </p>
+          {role === 'host' && autoHost && (
+            <button
+              onClick={onHold}
+              disabled={busy}
+              className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full bg-white/80 px-4 text-sm font-extrabold shadow-sm transition hover:bg-white disabled:opacity-50"
+            >
+              <PauseCircle size={16} /> {content.action}
+            </button>
+          )}
+          {role === 'host' && !autoHost && (
+            <p className="mt-3 flex items-center gap-2 text-xs font-extrabold">
+              <Check size={15} /> Room held. Continue when the moment is ready.
+            </p>
+          )}
         </div>
       </div>
     </motion.div>

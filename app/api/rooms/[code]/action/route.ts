@@ -117,10 +117,23 @@ export async function POST(
       ? room.status
       : nextStatus[action];
   if (action === 'pause_auto' || action === 'resume_auto') {
-    await db
-      .prepare(`UPDATE events SET auto_host_enabled = ? WHERE id = ?`)
-      .bind(action === 'resume_auto' ? 1 : 0, room.id)
-      .run();
+    await db.batch([
+      db
+        .prepare(`UPDATE events SET auto_host_enabled = ? WHERE id = ?`)
+        .bind(action === 'resume_auto' ? 1 : 0, room.id),
+      db
+        .prepare(`INSERT INTO event_audit
+          (id, event_id, actor_hash, action, payload_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)`)
+        .bind(
+          crypto.randomUUID(),
+          room.id,
+          `host:${room.hostKeyHash.slice(0, 24)}`,
+          action === 'pause_auto' ? 'live_moment_held' : 'auto_host_resumed',
+          JSON.stringify({ roundId: room.activeRoundId, status: room.status }),
+          now,
+        ),
+    ]);
   } else if (action === 'extend') {
     await db
       .prepare(

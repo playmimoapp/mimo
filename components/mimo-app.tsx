@@ -211,7 +211,7 @@ function Header({
   studio?: () => void;
 }) {
   return (
-    <header className="mx-auto flex h-[60px] max-w-[1120px] items-center justify-between px-[18px] sm:h-[72px] sm:px-8">
+    <header className="mx-auto flex h-[60px] max-w-[1240px] items-center justify-between px-[18px] sm:h-[72px] sm:px-8">
       <div className="flex items-center gap-2">
         {back && (
           <button
@@ -728,12 +728,12 @@ function ProductHome({
     return () => window.clearInterval(timer);
   }, []);
   return (
-    <section className="mobile-page mx-auto grid min-h-[calc(100dvh-60px)] max-w-[1080px] gap-6 px-5 pb-10 pt-2 sm:min-h-[calc(100dvh-72px)] sm:px-8 lg:grid-cols-[.92fr_1.08fr] lg:items-center">
+    <section className="mobile-page mx-auto grid min-h-[calc(100dvh-60px)] max-w-[1240px] gap-6 px-5 pb-10 pt-2 sm:min-h-[calc(100dvh-72px)] sm:px-8 lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:items-center lg:gap-12 lg:py-8 xl:gap-16">
       <div className="order-2 pb-3 lg:order-1">
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
           Live inside Nimiq Pay
         </p>
-        <h1 className="mobile-flow-title font-display mt-3 max-w-2xl text-[clamp(3rem,8vw,6.5rem)] font-extrabold leading-[.88] tracking-[-.072em]">
+        <h1 className="mobile-flow-title font-display mt-3 max-w-[650px] text-[clamp(3rem,8vw,6.5rem)] font-extrabold leading-[.9] tracking-[-.066em] lg:text-[clamp(4rem,5vw,5rem)]">
           Bring your community. Mimo makes it live.
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#53697c] sm:text-lg">
@@ -782,12 +782,12 @@ function ProductHome({
           seconds. Nimiq Pay confirms wallets and funded rewards when needed.
         </p>
       </div>
-      <div className="mimo-stage relative order-1 mx-auto h-[250px] w-full max-w-[520px] overflow-hidden rounded-[28px] bg-[#e8f3ff] sm:h-[440px] sm:rounded-[36px] lg:order-2 lg:h-[520px]">
+      <div className="mimo-stage relative order-1 mx-auto h-[250px] w-full max-w-[560px] overflow-hidden rounded-[28px] bg-[#e8f3ff] sm:h-[440px] sm:rounded-[36px] lg:order-2 lg:h-[500px] xl:h-[520px]">
         <div className="absolute left-4 top-4 z-20 rounded-full bg-white px-3 py-2 text-xs font-extrabold text-[#31506b] shadow-[0_6px_20px_rgba(39,77,111,.1)] sm:left-6 sm:top-6">
           MIMO IS READY
         </div>
         <motion.div
-          className="absolute -bottom-7 left-1/2 z-10 w-[230px] -translate-x-1/2 sm:-bottom-10 sm:w-[370px]"
+          className="absolute -bottom-7 left-1/2 z-10 w-[230px] -translate-x-1/2 sm:-bottom-10 sm:w-[370px] lg:bottom-0 lg:w-[350px] xl:w-[380px]"
           animate={
             reduceMotion
               ? undefined
@@ -816,7 +816,7 @@ function ProductHome({
             initial={{ opacity: 0, y: 8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -5 }}
-            className="host-line absolute right-4 top-[74px] z-30 max-w-[165px] bg-[#203752] px-3 py-2 text-xs font-bold leading-4 text-white sm:right-6 sm:top-24 sm:max-w-[220px] sm:px-4 sm:py-3 sm:text-sm sm:leading-5"
+            className="host-line absolute right-4 top-[74px] z-30 max-w-[165px] bg-[#203752] px-3 py-2 text-xs font-bold leading-4 text-white sm:right-6 sm:top-24 sm:max-w-[220px] sm:px-4 sm:py-3 sm:text-sm sm:leading-5 lg:right-8 lg:top-28"
           >
             {HOME_LINES[homeLineIndex]}
           </motion.div>

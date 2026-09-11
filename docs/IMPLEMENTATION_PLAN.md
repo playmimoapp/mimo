@@ -113,7 +113,8 @@ Nimiq Pay handles wallet proof and explicit funding. Mimo verifies the live resu
 
 - [x] Establish the visual system, animated host presence, free/NIM event choice, and a playable participant journey.
 - [x] Model communities, immutable launched events, rounds, participants, authoritative answers, rewards, payouts, and audit history.
-- [x] Implement D1-backed community/event APIs and protected create/join/answer commands.
+- [x] Implement Turso-backed community/event APIs and protected create/join/answer commands.
+- [x] Add wallet-owned Community Studio profiles, Vercel Blob pictures, public links and permanent event ownership.
 - [x] Add authoritative room snapshots, server deadlines, reconnect tokens, and host session recovery.
 - [x] Add assisted and manual creation entrances that converge on one editable event.
 - [x] Add visual creator format selection for game nights, live votes, launches, onboarding and open-format rooms.

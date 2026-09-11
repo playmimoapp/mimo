@@ -2,7 +2,7 @@
 
 **Live community games and interactive NIM rewards, built for Nimiq Pay.**
 
-[Open Mimo](https://mimo-live.kobi6542.chatgpt.site)
+[Open Mimo](https://mimo-flax.vercel.app)
 
 Mimo gives communities one place to host a live game, vote together, react in real time, verify participation with Nimiq Pay, and reward declared skill with NIM.
 
@@ -33,6 +33,8 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - A visible locked room promise: creators can cancel before play, but cannot cancel or rewrite a room after it starts
 - Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
 - Mobile-first participant and host experiences
+- Wallet-owned Community Studio profiles with real pictures and durable public links
+- Permanent community pages that collect their live events in one place
 
 Mimo does not claim that proposed rewards are escrowed or funded. Creator-held rewards remain a clearly labelled promise and require wallet approval. Automatic settlement stays unavailable unless a real TestAlbatross vault, RPC and encryption key are configured.
 
@@ -52,10 +54,11 @@ This is lightweight Sybil resistance, not a promise of perfect personhood. It pr
 
 ## Architecture
 
-- TypeScript, React and Vinext
+- TypeScript, React and Next.js 16
 - Tailwind CSS and accessible UI primitives
-- Cloudflare Workers-compatible server runtime
-- Cloudflare D1 relational persistence
+- Vercel Functions and edge delivery
+- Turso managed SQLite for durable relational persistence
+- Vercel Blob for community profile images
 - `@nimiq/mini-app-sdk` for native Nimiq Pay requests
 - `@nimiq/core` for server-side signature and transaction verification
 - Motion for live transitions and reduced-motion-aware animation
@@ -64,7 +67,7 @@ The server is authoritative for room lifecycle, timers, answer deadlines, scores
 
 ## Local development
 
-Requirements: Node.js 22.13 or newer.
+Requirements: Node.js 24.
 
 ```bash
 npm install
@@ -76,6 +79,10 @@ Optional Gemini-assisted drafting uses server-only environment variables:
 ```bash
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.7-flash
+TURSO_DATABASE_URL=
+TURSO_AUTH_TOKEN=
+BLOB_READ_WRITE_TOKEN=
+MIMO_DATA_ENCRYPTION_KEY=
 ```
 
 Never expose the Gemini key in client-side code.
@@ -87,6 +94,7 @@ npx tsc --noEmit
 npm run lint
 npm run build
 npm run test:room -- http://localhost:3000
+npm run test:community -- http://localhost:3000
 ```
 
 The automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. It is QA—not proof of a blockchain payment. Native Nimiq Pay dialogs and real TestAlbatross transactions must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).

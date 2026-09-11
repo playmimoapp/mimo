@@ -1,6 +1,5 @@
-import initNimiqCore, { PublicKey, Signature } from '@nimiq/core/web';
+import { PublicKey, Signature } from '@nimiq/core';
 import { getD1 } from '@/db';
-import nimiqCoreModule from '@/lib/nimiq-core.wasm';
 import {
   getParticipantBySession,
   getRoom,
@@ -20,13 +19,6 @@ function normalizeAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
     .toUpperCase()
     .replace(/\s/g, '');
-}
-
-let nimiqCoreReady: Promise<unknown> | null = null;
-
-function ensureNimiqCore() {
-  nimiqCoreReady ??= initNimiqCore({ module_or_path: nimiqCoreModule });
-  return nimiqCoreReady;
 }
 
 export async function POST(
@@ -88,7 +80,6 @@ export async function POST(
   }
 
   try {
-    await ensureNimiqCore();
     const publicKey = PublicKey.fromHex(publicKeyHex);
     const signature = Signature.fromHex(signatureHex);
     const valid = publicKey.verify(

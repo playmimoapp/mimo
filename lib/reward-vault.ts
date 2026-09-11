@@ -1,10 +1,5 @@
-import initNimiqCore, {
-  Address,
-  KeyPair,
-  TransactionBuilder,
-} from '@nimiq/core/web';
+import { Address, KeyPair, TransactionBuilder } from '@nimiq/core';
 import { getD1 } from '@/db';
-import nimiqCoreModule from '@/lib/nimiq-core.wasm';
 import { getRuntimeVariable } from '@/lib/runtime-env';
 import {
   decryptSecret,
@@ -22,13 +17,6 @@ export type VaultConfig = {
   ready: boolean;
 };
 
-let nimiqCoreReady: Promise<unknown> | null = null;
-
-function ensureNimiqCore() {
-  nimiqCoreReady ??= initNimiqCore({ module_or_path: nimiqCoreModule });
-  return nimiqCoreReady;
-}
-
 export function normalizeNimiqAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
     .toUpperCase()
@@ -42,7 +30,6 @@ export async function getVaultConfig(): Promise<VaultConfig | null> {
     getRuntimeVariable('MIMO_VAULT_NETWORK') === 'TestAlbatross'
       ? 'TestAlbatross'
       : 'MainAlbatross';
-  await ensureNimiqCore();
   try {
     const address = Address.fromUserFriendlyAddress(rawAddress);
     return {
@@ -188,7 +175,6 @@ async function vaultKeyPair(config: VaultConfig) {
   if (!config.ready || config.network !== 'TestAlbatross') {
     throw new Error('automatic_settlement_unavailable');
   }
-  await ensureNimiqCore();
   const raw = getRuntimeVariable('MIMO_VAULT_KEYPAIR_HEX');
   const keyPair = KeyPair.fromHex(raw);
   if (

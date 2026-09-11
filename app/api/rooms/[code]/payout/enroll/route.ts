@@ -1,6 +1,5 @@
-import initNimiqCore, { PublicKey, Signature } from '@nimiq/core/web';
+import { PublicKey, Signature } from '@nimiq/core';
 import { getD1 } from '@/db';
-import nimiqCoreModule from '@/lib/nimiq-core.wasm';
 import {
   getParticipantBySession,
   getRoom,
@@ -14,12 +13,6 @@ import {
   getRewardEligibility,
   normalizeNimiqAddress,
 } from '@/lib/reward-vault';
-
-let nimiqCoreReady: Promise<unknown> | null = null;
-function ensureNimiqCore() {
-  nimiqCoreReady ??= initNimiqCore({ module_or_path: nimiqCoreModule });
-  return nimiqCoreReady;
-}
 
 function cleanHex(value: unknown, length: number) {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -82,7 +75,6 @@ export async function POST(
   }
 
   try {
-    await ensureNimiqCore();
     const publicKey = PublicKey.fromHex(publicKeyHex);
     const signature = Signature.fromHex(signatureHex);
     const valid = publicKey.verify(

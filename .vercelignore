@@ -1,0 +1,10 @@
+.next
+.vinext
+.wrangler
+.edge-*
+dist
+outputs
+local-assets
+local-mimo.db*
+.env*
+tsconfig.tsbuildinfo

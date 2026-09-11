@@ -7,6 +7,7 @@ import {
   readJson,
 } from '@/lib/live-room';
 import { getVaultConfig } from '@/lib/reward-vault';
+import { cleanCommunitySlug, getAccountBySession } from '@/lib/mimo-account';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   const community = (typeof body.community === 'string' ? body.community : '')
     .trim()
     .slice(0, 60);
+  const requestedCommunitySlug = cleanCommunitySlug(body.communitySlug);
   const rewardMode = body.rewardMode === 'nim' ? 'nim' : 'free';
   const eventKind = [
     'game_night',
@@ -171,7 +173,27 @@ export async function POST(request: Request) {
   const hostKeyHash = await hashToken(hostKey);
   const inviteToken = accessMode === 'private' ? makeToken() : '';
   const inviteTokenHash = inviteToken ? await hashToken(inviteToken) : '';
-  const communityId = crypto.randomUUID();
+  let communityId = crypto.randomUUID();
+  let permanentCommunity = false;
+  if (requestedCommunitySlug) {
+    const account = await getAccountBySession(request);
+    if (!account) {
+      return json({ error: 'Sign in again to host for this community.' }, 401);
+    }
+    const owned = await getD1()
+      .prepare(`SELECT id FROM communities
+        WHERE slug = ? AND owner_wallet_hash = ? LIMIT 1`)
+      .bind(requestedCommunitySlug, account.walletHash)
+      .first<{ id: string }>();
+    if (!owned) {
+      return json(
+        { error: 'That community is not owned by this wallet.' },
+        403,
+      );
+    }
+    communityId = owned.id;
+    permanentCommunity = true;
+  }
   const eventId = crypto.randomUUID();
   const roundIds = parsedRounds.map(() => crypto.randomUUID());
   const now = Date.now();
@@ -192,17 +214,21 @@ export async function POST(request: Request) {
 
   try {
     await db.batch([
-      db
-        .prepare(`INSERT INTO communities
+      ...(!permanentCommunity
+        ? [
+            db
+              .prepare(`INSERT INTO communities
         (id, slug, name, description, owner_wallet_hash, created_at)
         VALUES (?, ?, ?, '', ?, ?)`)
-        .bind(
-          communityId,
-          `room-${code.toLowerCase()}`,
-          community,
-          `host:${hostKeyHash.slice(0, 24)}`,
-          now,
-        ),
+              .bind(
+                communityId,
+                `room-${code.toLowerCase()}`,
+                community,
+                `host:${hostKeyHash.slice(0, 24)}`,
+                now,
+              ),
+          ]
+        : []),
       db
         .prepare(`INSERT INTO events
         (id, community_id, title, status, launched_config_json, config_version,

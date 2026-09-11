@@ -23,6 +23,10 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
+import {
+  CommunityStudio,
+  PublicCommunity,
+} from '@/components/community-studio';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { LiveRoom } from '@/components/live-room';
@@ -39,6 +43,8 @@ type Screen =
   | 'create_assisted'
   | 'create'
   | 'preview'
+  | 'studio'
+  | 'community'
   | 'join'
   | 'live_host'
   | 'live_player';
@@ -141,6 +147,7 @@ type EventDraft = {
   eventKind: EventKind;
   title: string;
   community: string;
+  communitySlug?: string;
   accessMode: 'public' | 'private';
   rewardMode: RewardMode;
   custodyMode: RewardCustody;
@@ -194,7 +201,15 @@ function Logo() {
   );
 }
 
-function Header({ back, host }: { back?: () => void; host?: () => void }) {
+function Header({
+  back,
+  host,
+  studio,
+}: {
+  back?: () => void;
+  host?: () => void;
+  studio?: () => void;
+}) {
   return (
     <header className="mx-auto flex h-[60px] max-w-[1120px] items-center justify-between px-[18px] sm:h-[72px] sm:px-8">
       <div className="flex items-center gap-2">
@@ -209,16 +224,30 @@ function Header({ back, host }: { back?: () => void; host?: () => void }) {
         )}
         <Logo />
       </div>
-      {host && (
-        <button
-          onClick={host}
-          className="flex h-10 items-center gap-2 rounded-full border border-[#cbd4dc] bg-white px-4 text-sm font-extrabold text-[#29445f] transition hover:-translate-y-0.5 hover:border-[#8ba9c3]"
-        >
-          <Plus size={16} />
-          <span className="sm:hidden">Host</span>
-          <span className="hidden sm:inline">Host a Mimo</span>
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {studio && (
+          <button
+            onClick={studio}
+            aria-label="Open Community Studio"
+            className="grid h-10 w-10 place-items-center rounded-full border border-[#cbd4dc] bg-white text-[#29445f] transition hover:-translate-y-0.5 hover:border-[#8ba9c3] sm:flex sm:w-auto sm:gap-2 sm:px-4"
+          >
+            <Users size={16} />
+            <span className="hidden text-sm font-extrabold sm:inline">
+              Studio
+            </span>
+          </button>
+        )}
+        {host && (
+          <button
+            onClick={host}
+            className="flex h-10 items-center gap-2 rounded-full border border-[#cbd4dc] bg-white px-4 text-sm font-extrabold text-[#29445f] transition hover:-translate-y-0.5 hover:border-[#8ba9c3]"
+          >
+            <Plus size={16} />
+            <span className="sm:hidden">Host</span>
+            <span className="hidden sm:inline">Host a Mimo</span>
+          </button>
+        )}
+      </div>
     </header>
   );
 }
@@ -226,6 +255,7 @@ function Header({ back, host }: { back?: () => void; host?: () => void }) {
 export function MimoApp() {
   const reduceMotion = useReducedMotion();
   const [screen, setScreen] = useState<Screen>('home');
+  const [communitySlug, setCommunitySlug] = useState('');
   const [name, setName] = useState('');
   const [profileStyle, setProfileStyle] = useState<MimoProfileStyle>('hype');
   const [joinCode, setJoinCode] = useState('');
@@ -251,6 +281,7 @@ export function MimoApp() {
     eventKind: 'game_night',
     title: '',
     community: '',
+    communitySlug: '',
     accessMode: 'public',
     rewardMode: 'free',
     custodyMode: 'host_wallet',
@@ -284,6 +315,16 @@ export function MimoApp() {
   useEffect(() => {
     const initial = window.setTimeout(() => {
       const query = new URLSearchParams(window.location.search);
+      const linkedCommunity =
+        query
+          .get('community')
+          ?.toLowerCase()
+          .replace(/[^a-z0-9-]/g, '') ?? '';
+      if (linkedCommunity) {
+        setCommunitySlug(linkedCommunity);
+        setScreen('community');
+        return;
+      }
       const code =
         query
           .get('room')
@@ -371,6 +412,7 @@ export function MimoApp() {
     setHostKey('');
     setParticipantToken('');
     setInviteToken('');
+    setCommunitySlug('');
     setRoomError('');
   };
 
@@ -406,6 +448,8 @@ export function MimoApp() {
       }
       setEvent({
         ...body.draft,
+        community: event.communitySlug ? event.community : body.draft.community,
+        communitySlug: event.communitySlug ?? '',
         rewardRule: 'skill',
         adaptiveMoments: true,
         custodyMode: rewardCapabilities.mimoFundingAvailable
@@ -431,7 +475,16 @@ export function MimoApp() {
     try {
       const response = await fetch('/api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(window.localStorage.getItem('mimo:studio:session')
+            ? {
+                'x-mimo-account': window.localStorage.getItem(
+                  'mimo:studio:session',
+                )!,
+              }
+            : {}),
+        },
         body: JSON.stringify(event),
       });
       const body = (await response.json()) as {
@@ -522,11 +575,14 @@ export function MimoApp() {
           screen === 'create_assisted' ||
           screen === 'create' ||
           screen === 'preview' ||
+          screen === 'studio' ||
+          screen === 'community' ||
           screen === 'join'
             ? goBack
             : undefined
         }
         host={screen === 'home' ? () => setScreen('create_choice') : undefined}
+        studio={screen === 'home' ? () => setScreen('studio') : undefined}
       />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -587,6 +643,28 @@ export function MimoApp() {
               back={() => setScreen('create')}
               launch={() => void launchLiveRoom()}
               working={working}
+            />
+          )}
+          {screen === 'studio' && (
+            <CommunityStudio
+              createEvent={(community) => {
+                setEvent((current) => ({
+                  ...current,
+                  community: community.name,
+                  communitySlug: community.slug,
+                }));
+                setAssistantBrief((current) => ({
+                  ...current,
+                  community: community.name,
+                }));
+                setScreen('create_choice');
+              }}
+            />
+          )}
+          {screen === 'community' && communitySlug && (
+            <PublicCommunity
+              slug={communitySlug}
+              host={() => setScreen('studio')}
             />
           )}
           {screen === 'join' && (
@@ -1235,11 +1313,23 @@ function CreateEvent({
             Community
             <input
               value={event.community}
-              onChange={(e) => update('community', e.target.value)}
+              onChange={(e) =>
+                setEvent({
+                  ...event,
+                  community: e.target.value,
+                  communitySlug: '',
+                })
+              }
+              disabled={Boolean(event.communitySlug)}
               maxLength={60}
               placeholder="e.g. Nimiq Lagos"
-              className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
+              className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2] disabled:cursor-not-allowed disabled:text-[#53687c]"
             />
+            {event.communitySlug && (
+              <span className="text-xs font-bold text-[#19805b]">
+                Connected to @{event.communitySlug}
+              </span>
+            )}
           </label>
           <label className="grid gap-2 text-sm font-extrabold">
             Event name

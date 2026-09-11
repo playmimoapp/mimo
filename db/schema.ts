@@ -14,9 +14,54 @@ export const communities = sqliteTable(
     name: text('name').notNull(),
     description: text('description').notNull().default(''),
     ownerWalletHash: text('owner_wallet_hash').notNull(),
+    avatarKey: text('avatar_key'),
+    accentColor: text('accent_color').notNull().default('#2577de'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [uniqueIndex('idx_communities_slug').on(t.slug)],
+);
+
+export const accounts = sqliteTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    walletHash: text('wallet_hash').notNull(),
+    displayName: text('display_name').notNull().default(''),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('idx_accounts_wallet_hash').on(t.walletHash)],
+);
+
+export const accountChallenges = sqliteTable(
+  'account_challenges',
+  {
+    id: text('id').primaryKey(),
+    message: text('message').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    usedAt: integer('used_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_account_challenges_expiry').on(t.expiresAt)],
+);
+
+export const accountSessions = sqliteTable(
+  'account_sessions',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_account_sessions_token').on(t.tokenHash),
+    index('idx_account_sessions_account').on(t.accountId),
+  ],
 );
 
 export const events = sqliteTable(

@@ -1,0 +1,10 @@
+CREATE TABLE `accounts` (`id` text PRIMARY KEY NOT NULL, `wallet_hash` text NOT NULL, `display_name` text DEFAULT '' NOT NULL, `created_at` integer NOT NULL, `updated_at` integer NOT NULL);
+CREATE UNIQUE INDEX `idx_accounts_wallet_hash` ON `accounts` (`wallet_hash`);
+CREATE TABLE `account_challenges` (`id` text PRIMARY KEY NOT NULL, `message` text NOT NULL, `expires_at` integer NOT NULL, `used_at` integer, `created_at` integer NOT NULL);
+CREATE INDEX `idx_account_challenges_expiry` ON `account_challenges` (`expires_at`);
+CREATE TABLE `account_sessions` (`id` text PRIMARY KEY NOT NULL, `account_id` text NOT NULL, `token_hash` text NOT NULL, `expires_at` integer NOT NULL, `created_at` integer NOT NULL, `last_seen_at` integer NOT NULL, FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE no action);
+CREATE UNIQUE INDEX `idx_account_sessions_token` ON `account_sessions` (`token_hash`);
+CREATE INDEX `idx_account_sessions_account` ON `account_sessions` (`account_id`);
+ALTER TABLE `communities` ADD `avatar_key` text;
+ALTER TABLE `communities` ADD `accent_color` text DEFAULT '#2577de' NOT NULL;
+ALTER TABLE `communities` ADD `updated_at` integer DEFAULT 0 NOT NULL;

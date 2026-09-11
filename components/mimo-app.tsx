@@ -1317,60 +1317,73 @@ function HostEntry({
 }) {
   const reduceMotion = useReducedMotion();
   return (
-    <section className="app-frame grid gap-8 pb-12 pt-4 sm:pt-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-center">
+    <section className="app-frame grid gap-8 pb-10 pt-3 sm:pt-10 lg:min-h-[calc(100dvh-76px)] lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
       <div>
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
-          Start with the right home
+          Host a Mimo
         </p>
-        <h1 className="font-display mt-3 max-w-3xl text-5xl font-extrabold leading-[.94] tracking-[-.06em] sm:text-6xl">
-          One room tonight, or a community that returns?
+        <h1 className="font-display mt-3 max-w-3xl text-[clamp(2.75rem,11vw,4rem)] font-extrabold leading-[.94] tracking-[-.06em] lg:text-[4.75rem]">
+          What are you hosting?
         </h1>
-        <p className="mt-5 max-w-2xl text-lg leading-8 text-[#53697c]">
-          Both can run games, votes and challenges. Both can use verified NIM
-          rewards. Choose what should remain after the room ends.
+        <p className="mt-4 max-w-2xl text-base font-medium leading-7 text-[#53697c] sm:text-lg sm:leading-8">
+          Start quickly for one event, or give a returning community a permanent
+          home.
         </p>
-        <div className="mt-8 border-y border-[#cfd8df]">
+
+        <MimoCue
+          message="Either way, I’ll run the room. Choose what should live after it ends."
+          mood="thinking"
+          className="mobile-only mt-5"
+        />
+
+        <div className="mt-6 border-y border-[#cfd8df] sm:mt-8">
           <button
             onClick={oneTime}
-            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[#d9e1e6] py-6 text-left"
+            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[#d9e1e6] py-5 text-left sm:gap-4 sm:py-6"
           >
             <span>
               <span className="text-xs font-black uppercase tracking-[.12em] text-[#2577de]">
-                Fastest path
+                One event
               </span>
-              <strong className="mt-1 block text-2xl">One-time room</strong>
-              <span className="mt-2 block max-w-xl text-sm leading-6 text-[#60758a]">
-                Create, share and go live. No community or profile setup is
-                required.
+              <strong className="font-display mt-1 block text-2xl font-extrabold">
+                One-time room
+              </strong>
+              <span className="mt-1 block max-w-xl text-sm leading-5 text-[#60758a] sm:mt-2 sm:leading-6">
+                Create, share and go live. No community setup required.
               </span>
             </span>
-            <span className="grid h-12 w-12 place-items-center rounded-full bg-[#2577de] text-white transition group-hover:translate-x-1">
-              <ArrowRight />
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-[#2577de] text-white transition group-hover:translate-x-1 sm:h-12 sm:w-12">
+              <ArrowRight size={21} />
             </span>
           </button>
           <button
             onClick={community}
-            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-6 text-left"
+            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-5 text-left sm:gap-4 sm:py-6"
           >
             <span>
               <span className="text-xs font-black uppercase tracking-[.12em] text-[#19805b]">
-                Built to return
+                Returning community
               </span>
-              <strong className="mt-1 block text-2xl">Community series</strong>
-              <span className="mt-2 block max-w-xl text-sm leading-6 text-[#60758a]">
-                Use a permanent page with followers, recurring events, seasons
-                and a shared host team.
+              <strong className="font-display mt-1 block text-2xl font-extrabold">
+                Community home
+              </strong>
+              <span className="mt-1 block max-w-xl text-sm leading-5 text-[#60758a] sm:mt-2 sm:leading-6">
+                Keep followers, schedules, seasons and your host team together.
               </span>
             </span>
-            <span className="grid h-12 w-12 place-items-center rounded-full border border-[#9eb8aa] bg-[#edf8f1] text-[#19805b] transition group-hover:translate-x-1">
-              <ArrowRight />
+            <span className="grid h-11 w-11 place-items-center rounded-full border border-[#9eb8aa] bg-[#edf8f1] text-[#19805b] transition group-hover:translate-x-1 sm:h-12 sm:w-12">
+              <ArrowRight size={21} />
             </span>
           </button>
         </div>
+        <p className="mt-4 flex items-start gap-2 text-xs font-bold leading-5 text-[#6b7f90] sm:text-sm">
+          <ShieldCheck className="mt-0.5 shrink-0 text-[#19805b]" size={16} />
+          Games, live votes and skill rewards work in either option.
+        </p>
       </div>
-      <div className="relative mx-auto w-full max-w-[310px] overflow-hidden rounded-[32px] bg-[#e5f2ff] px-5 pb-0 pt-8">
+      <div className="desktop-only relative mx-auto w-full max-w-[340px] overflow-hidden rounded-[32px] bg-[#e5f2ff] px-5 pb-0 pt-8">
         <MimoCue
-          message="Tell me if this is for tonight or for the long run."
+          message="One event or a lasting home—I’m ready for either."
           mood="thinking"
           className="relative z-10"
         />

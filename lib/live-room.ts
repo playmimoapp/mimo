@@ -47,6 +47,7 @@ export async function getRoom(codeValue: string) {
       e.round_duration_seconds AS roundDurationSeconds,
       e.state_changed_at AS stateChangedAt,
       e.auto_host_enabled AS autoHostEnabled,
+      e.starts_at AS startsAt,
       e.launched_config_json AS launchedConfigJson,
       c.name AS communityName, c.slug AS communitySlug
     FROM events e
@@ -67,6 +68,7 @@ export async function getRoom(codeValue: string) {
       roundDurationSeconds: number;
       stateChangedAt: number;
       autoHostEnabled: number;
+      startsAt: number | null;
       launchedConfigJson: string | null;
       communityName: string;
       communitySlug: string;
@@ -87,12 +89,60 @@ function durationFromConfig(configJson: string) {
 }
 
 export async function reconcileRoom(room: RoomRecord) {
-  if (!room.autoHostEnabled || !['live', 'verifying'].includes(room.status)) {
+  if (!room.autoHostEnabled) {
     return room;
   }
 
   const db = getD1();
   const now = Date.now();
+  const roomConfig = getRoomConfig(room.launchedConfigJson);
+
+  if (room.status === 'lobby' && room.startsAt && room.startsAt <= now) {
+    if (roomConfig.mode === 'nim' && roomConfig.custody === 'mimo_vault') {
+      const reward = await db
+        .prepare(`SELECT state FROM rewards WHERE event_id = ? LIMIT 1`)
+        .bind(room.id)
+        .first<{ state: string }>();
+      if (reward?.state !== 'funded') return room;
+    }
+
+    const changed = await db
+      .prepare(`UPDATE events SET status = 'live', round_started_at = ?,
+        state_changed_at = ? WHERE id = ? AND status = 'lobby'
+        AND auto_host_enabled = 1`)
+      .bind(now, now, room.id)
+      .run();
+    if ((changed.meta.changes ?? 0) > 0) {
+      await db.batch([
+        db
+          .prepare(`UPDATE participants SET answer_locked = 0, score = 0
+            WHERE event_id = ?`)
+          .bind(room.id),
+        db.prepare(`DELETE FROM answers WHERE event_id = ?`).bind(room.id),
+        db
+          .prepare(`INSERT INTO event_audit
+            (id, event_id, actor_hash, action, payload_json, created_at)
+            VALUES (?, ?, 'mimo:show-engine', 'scheduled_start', ?, ?)`)
+          .bind(
+            crypto.randomUUID(),
+            room.id,
+            JSON.stringify({ scheduledFor: room.startsAt }),
+            now,
+          ),
+        ...(roomConfig.custody === 'mimo_vault'
+          ? [
+              db
+                .prepare(`UPDATE rewards SET state = 'event_live', updated_at = ?
+                  WHERE event_id = ? AND state = 'funded'`)
+                .bind(now, room.id),
+            ]
+          : []),
+      ]);
+    }
+    return (await getRoom(room.roomCode)) ?? room;
+  }
+
+  if (!['live', 'verifying'].includes(room.status)) return room;
 
   if (room.status === 'live' && room.roundStartedAt) {
     const counts = await db
@@ -131,8 +181,8 @@ export async function reconcileRoom(room: RoomRecord) {
 
   if (room.status === 'verifying' && room.stateChangedAt > 0) {
     let revealDuration = 5000;
-    if (getRoomConfig(room.launchedConfigJson).adaptiveMoments) {
-      const [currentRound, answers] = await Promise.all([
+    if (roomConfig.adaptiveMoments) {
+      const [currentRound, answers, players, nextRound] = await Promise.all([
         db
           .prepare(`SELECT type, config_json AS configJson
             FROM rounds WHERE id = ? LIMIT 1`)
@@ -143,49 +193,106 @@ export async function reconcileRoom(room: RoomRecord) {
             FROM answers WHERE round_id = ?`)
           .bind(room.activeRoundId)
           .all<{ answerJson: string }>(),
+        db
+          .prepare(`SELECT team_id AS teamId, score FROM participants
+            WHERE event_id = ?`)
+          .bind(room.id)
+          .all<{ teamId: 'signal' | 'spark'; score: number }>(),
+        db
+          .prepare(`SELECT next.id FROM rounds current
+            JOIN rounds next ON next.event_id = current.event_id
+              AND next.position = current.position + 1
+            WHERE current.id = ? LIMIT 1`)
+          .bind(room.activeRoundId)
+          .first<{ id: string }>(),
       ]);
-      if (currentRound?.type === 'pulse') {
-        let choiceCount = 0;
-        try {
-          const config = JSON.parse(currentRound.configJson) as {
-            choices?: unknown;
-          };
-          choiceCount = Array.isArray(config.choices)
-            ? config.choices.length
-            : 0;
-        } catch {
-          choiceCount = 0;
-        }
-        const choiceCounts = Array.from({ length: choiceCount }, () => 0);
-        for (const answer of answers.results) {
-          try {
-            const choice = Number(
-              (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
-            );
-            if (
-              Number.isInteger(choice) &&
-              choice >= 0 &&
-              choice < choiceCounts.length
-            ) {
-              choiceCounts[choice] += 1;
-            }
-          } catch {
-            // Ignore malformed historical answers.
-          }
-        }
-        const signal = detectLivingRoomSignal({
-          status: room.status,
-          roundType: currentRound.type,
-          hasNextRound: true,
-          choiceCounts,
-          finalePassed: null,
-          signalScore: 0,
-          sparkScore: 0,
-          signalPlayers: 0,
-          sparkPlayers: 0,
-        });
-        if (signal?.kind === 'split_room') revealDuration = 9000;
+      let choices: unknown[] = [];
+      let correctChoice: number | null = null;
+      let collectiveTargetPercent = 60;
+      try {
+        const config = JSON.parse(currentRound?.configJson ?? '{}') as {
+          choices?: unknown;
+          correctChoice?: unknown;
+          collectiveTargetPercent?: unknown;
+        };
+        choices = Array.isArray(config.choices) ? config.choices : [];
+        correctChoice = Number.isInteger(config.correctChoice)
+          ? Number(config.correctChoice)
+          : null;
+        collectiveTargetPercent = Math.max(
+          1,
+          Math.min(100, Number(config.collectiveTargetPercent) || 60),
+        );
+      } catch {
+        choices = [];
       }
+      const choiceCounts = Array.from({ length: choices.length }, () => 0);
+      for (const answer of answers.results) {
+        try {
+          const choice = Number(
+            (JSON.parse(answer.answerJson) as { choice?: unknown }).choice,
+          );
+          if (
+            Number.isInteger(choice) &&
+            choice >= 0 &&
+            choice < choiceCounts.length
+          ) {
+            choiceCounts[choice] += 1;
+          }
+        } catch {
+          // Ignore malformed historical answers.
+        }
+      }
+      const signalPlayers = players.results.filter(
+        (player) => player.teamId === 'signal',
+      );
+      const sparkPlayers = players.results.filter(
+        (player) => player.teamId === 'spark',
+      );
+      const finalePassed =
+        currentRound?.type === 'finale' && correctChoice !== null
+          ? (choiceCounts[correctChoice] ?? 0) >=
+            Math.ceil(players.results.length * (collectiveTargetPercent / 100))
+          : null;
+      const signal = detectLivingRoomSignal({
+        status: room.status,
+        roundType: currentRound?.type ?? 'multiple_choice',
+        hasNextRound: Boolean(nextRound),
+        choiceCounts,
+        finalePassed,
+        signalScore: signalPlayers.reduce(
+          (total, player) => total + player.score,
+          0,
+        ),
+        sparkScore: sparkPlayers.reduce(
+          (total, player) => total + player.score,
+          0,
+        ),
+        signalPlayers: signalPlayers.length,
+        sparkPlayers: sparkPlayers.length,
+      });
+      if (signal && roomConfig.adaptiveMode === 'ask') {
+        const changed = await db
+          .prepare(`UPDATE events SET auto_host_enabled = 0 WHERE id = ?
+            AND status = 'verifying' AND auto_host_enabled = 1`)
+          .bind(room.id)
+          .run();
+        if ((changed.meta.changes ?? 0) > 0) {
+          await db
+            .prepare(`INSERT INTO event_audit
+              (id, event_id, actor_hash, action, payload_json, created_at)
+              VALUES (?, ?, 'mimo:show-engine', 'adaptive_hold', ?, ?)`)
+            .bind(
+              crypto.randomUUID(),
+              room.id,
+              JSON.stringify({ signal: signal.kind }),
+              now,
+            )
+            .run();
+        }
+        return (await getRoom(room.roomCode)) ?? room;
+      }
+      if (signal && roomConfig.adaptiveMode === 'auto') revealDuration = 10000;
     }
     if (now - room.stateChangedAt < revealDuration) return room;
 
@@ -225,7 +332,7 @@ export async function reconcileRoom(room: RoomRecord) {
           .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
             WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
           .bind(now, room.id),
-        ...(getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault'
+        ...(roomConfig.custody === 'mimo_vault'
           ? [
               db
                 .prepare(`UPDATE rewards SET state = 'results_under_verification',
@@ -253,6 +360,7 @@ export function getRoomConfig(value: string | null) {
     rewardRule: 'skill' as const,
     eventKind: 'custom' as const,
     adaptiveMoments: false,
+    adaptiveMode: 'off' as const,
   };
   if (!value) return fallback;
   try {
@@ -290,6 +398,11 @@ export function getRoomConfig(value: string | null) {
             | 'onboarding')
         : ('custom' as const),
       adaptiveMoments: config.adaptiveMoments === true,
+      adaptiveMode: ['auto', 'ask', 'off'].includes(String(config.adaptiveMode))
+        ? (config.adaptiveMode as 'auto' | 'ask' | 'off')
+        : config.adaptiveMoments === true
+          ? ('auto' as const)
+          : ('off' as const),
     };
   } catch {
     return fallback;

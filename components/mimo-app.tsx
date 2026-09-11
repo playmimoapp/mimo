@@ -29,7 +29,6 @@ import {
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { LiveRoom } from '@/components/live-room';
 import {
   MimoCharacter,
@@ -78,6 +77,7 @@ type EventKind =
   | 'product_launch'
   | 'onboarding'
   | 'custom';
+type AdaptiveMode = 'auto' | 'ask' | 'off';
 
 const CHOICE_TONES = [
   {
@@ -176,6 +176,7 @@ type EventDraft = {
   rewardAmount: string;
   rewardRule: RewardRule;
   adaptiveMoments: boolean;
+  adaptiveMode: AdaptiveMode;
   startsAt: number | null;
   recurrence: 'none' | 'weekly' | 'fortnightly' | 'monthly';
   rounds: RoundDraft[];
@@ -489,6 +490,7 @@ export function MimoApp() {
     rewardAmount: '',
     rewardRule: 'skill',
     adaptiveMoments: true,
+    adaptiveMode: 'auto',
     startsAt: null,
     recurrence: 'none',
     rounds: [blankRound()],
@@ -728,6 +730,7 @@ export function MimoApp() {
         recurrence: event.recurrence,
         rewardRule: 'skill',
         adaptiveMoments: true,
+        adaptiveMode: 'auto',
         custodyMode: rewardCapabilities.mimoFundingAvailable
           ? 'mimo_vault'
           : 'host_wallet',
@@ -2218,25 +2221,48 @@ function CreateEvent({
             </p>
           </div>
           <div className={`grid gap-7 ${sectionClass('access')}`}>
-            <div className="flex items-start justify-between gap-5 border-y border-[#cfd5d8] py-5">
+            <div className="border-y border-[#cfd5d8] py-5">
               <div>
                 <p className="flex items-center gap-2 text-sm font-extrabold">
                   <Sparkles size={17} className="text-[#1f72d2]" /> Living Room
                   moments
                 </p>
                 <p className="mt-1 max-w-[560px] text-sm font-medium leading-5 text-[#617486]">
-                  Let Mimo hold close poll reveals for a quick room face-off.
-                  This never changes your scoring or reward rules.
+                  Pre-approve how Mimo handles close votes, comeback pressure
+                  and shared wins. Scoring and reward rules stay locked.
                 </p>
               </div>
-              <Switch
-                checked={event.adaptiveMoments}
-                onCheckedChange={(checked) =>
-                  update('adaptiveMoments', Boolean(checked))
-                }
-                aria-label="Enable Living Room moments"
-                className="mt-1 data-checked:bg-[#1f72d2]"
-              />
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(
+                  [
+                    ['auto', 'Autopilot'],
+                    ['ask', 'Ask me live'],
+                    ['off', 'Fixed flow'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() =>
+                      setEvent({
+                        ...event,
+                        adaptiveMode: mode,
+                        adaptiveMoments: mode !== 'off',
+                      })
+                    }
+                    className={`min-h-11 rounded-full border px-4 text-sm font-extrabold ${event.adaptiveMode === mode ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-xs font-bold leading-5 text-[#718295]">
+                {event.adaptiveMode === 'auto'
+                  ? 'Mimo runs approved social moments and continues on time—even when you step away.'
+                  : event.adaptiveMode === 'ask'
+                    ? 'Mimo recommends a moment and waits for your decision.'
+                    : 'Mimo follows the published rounds without adaptive moments.'}
+              </p>
             </div>
             <fieldset>
               <legend className="text-sm font-extrabold">Who can join?</legend>

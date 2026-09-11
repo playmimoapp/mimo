@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Share2,
   ShieldCheck,
+  Sparkles,
   Trophy,
   Users,
   WalletCards,
@@ -933,7 +934,6 @@ export function LiveRoom({
                   onFinish={() => void hostAction('finish')}
                   onNext={() => void hostAction('next')}
                   onReset={() => void hostAction('reset')}
-                  onHoldMoment={() => void hostAction('pause_auto')}
                   hostKey={hostKey}
                   nimiq={nimiq}
                   currentPlayerId={me?.id}
@@ -1928,7 +1928,6 @@ function ResultsState({
   onNext,
   onFinish,
   onReset,
-  onHoldMoment,
   hostKey,
   nimiq,
   currentPlayerId,
@@ -1943,7 +1942,6 @@ function ResultsState({
   onNext: () => void;
   onFinish: () => void;
   onReset: () => void;
-  onHoldMoment: () => void;
   hostKey?: string;
   nimiq: MimoNimiq;
   currentPlayerId?: string;
@@ -2002,8 +2000,7 @@ function ResultsState({
           signal={room.roomSignal}
           role={role}
           autoHost={autoHost}
-          busy={busy}
-          onHold={onHoldMoment}
+          adaptiveMode={room.adaptiveMode}
         />
       )}
       {room.correctChoice !== null && (
@@ -2242,14 +2239,12 @@ function LivingRoomMoment({
   signal,
   role,
   autoHost,
-  busy,
-  onHold,
+  adaptiveMode,
 }: {
   signal: NonNullable<LiveRoomState['roomSignal']>;
   role: 'host' | 'player';
   autoHost: boolean;
-  busy: boolean;
-  onHold: () => void;
+  adaptiveMode: LiveRoomState['adaptiveMode'];
 }) {
   const content =
     signal.kind === 'split_room'
@@ -2300,18 +2295,21 @@ function LivingRoomMoment({
           <p className="mt-1 text-sm font-bold leading-5 opacity-80">
             {content.detail}
           </p>
-          {role === 'host' && autoHost && (
-            <button
-              onClick={onHold}
-              disabled={busy}
-              className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full bg-white/80 px-4 text-sm font-extrabold shadow-sm transition hover:bg-white disabled:opacity-50"
-            >
-              <PauseCircle size={16} /> {content.action}
-            </button>
-          )}
-          {role === 'host' && !autoHost && (
+          {adaptiveMode === 'auto' && (
             <p className="mt-3 flex items-center gap-2 text-xs font-extrabold">
-              <Check size={15} /> Room held. Continue when the moment is ready.
+              <Sparkles size={15} /> Autopilot opened this moment and will
+              continue on time.
+            </p>
+          )}
+          {adaptiveMode === 'ask' && role === 'host' && !autoHost && (
+            <p className="mt-3 flex items-center gap-2 text-xs font-extrabold">
+              <PauseCircle size={15} /> Mimo held the room. Continue when
+              you&rsquo;re ready.
+            </p>
+          )}
+          {adaptiveMode === 'ask' && role === 'player' && !autoHost && (
+            <p className="mt-3 flex items-center gap-2 text-xs font-extrabold">
+              <PauseCircle size={15} /> The host is choosing the next moment.
             </p>
           )}
         </div>

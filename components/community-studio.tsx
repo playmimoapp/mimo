@@ -20,6 +20,13 @@ import {
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { MimoCharacter } from '@/components/mimo-host';
 import { MimoNimiq } from '@/lib/nimiq';
 import { MimoProfileAvatar } from '@/components/mimo-host';
@@ -198,7 +205,6 @@ export function CommunityStudio({
     setProfile(body.profile);
     setNotifications(body.notifications ?? []);
     setFollowed(body.followed ?? []);
-    if (!body.profile.displayName) setShowProfile(true);
   }
 
   async function loadDashboard(token: string) {
@@ -413,6 +419,31 @@ export function CommunityStudio({
     );
   }
 
+  if (profile && !profile.displayName) {
+    return (
+      <StudioShell>
+        <div className="mx-auto max-w-2xl py-2 sm:py-8">
+          <span className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
+            Your Mimo identity
+          </span>
+          <h1 className="font-display mt-2 text-4xl font-extrabold leading-[.96] tracking-[-.05em] sm:text-5xl">
+            Pick how the room knows you.
+          </h1>
+          <p className="mt-4 max-w-xl text-base leading-7 text-[#607486]">
+            One quick profile works across your communities and events.
+          </p>
+          <ProfileEditor
+            profile={profile}
+            session={session}
+            standalone
+            onboarding
+            onSaved={(saved) => setProfile(saved)}
+          />
+        </div>
+      </StudioShell>
+    );
+  }
+
   return (
     <StudioShell>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -438,10 +469,10 @@ export function CommunityStudio({
             )}
           </button>
           <Button
-            onClick={() => setShowCreate((value) => !value)}
+            onClick={() => setShowCreate(true)}
             className="h-11 rounded-full bg-[#2577de] px-5 font-extrabold text-white"
           >
-            <Plus size={17} /> {showCreate ? 'Close' : 'New community'}
+            <Plus size={17} /> New community
           </Button>
         </div>
       </div>
@@ -483,16 +514,29 @@ export function CommunityStudio({
           {inviteMessage}
         </p>
       )}
-      {showProfile && profile && (
-        <ProfileEditor
-          profile={profile}
-          session={session}
-          onSaved={(saved) => {
-            setProfile(saved);
-            setShowProfile(false);
-          }}
-        />
-      )}
+      <Dialog open={showProfile} onOpenChange={setShowProfile}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-[26px] bg-[#f8f6f1] p-6 sm:max-w-2xl sm:p-8">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl font-extrabold tracking-[-.04em]">
+              Edit your profile
+            </DialogTitle>
+            <DialogDescription>
+              This identity follows you across Mimo.
+            </DialogDescription>
+          </DialogHeader>
+          {profile && (
+            <ProfileEditor
+              profile={profile}
+              session={session}
+              standalone
+              onSaved={(saved) => {
+                setProfile(saved);
+                setShowProfile(false);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
       {showNotifications && (
         <NotificationInbox
           items={notifications}
@@ -551,104 +595,111 @@ export function CommunityStudio({
             </div>
           </section>
         )}
-        <section
-          className={`${showCreate || communities.length === 0 ? 'block' : 'hidden'} mt-8 max-w-2xl border-t border-[#d9e1e6] pt-7`}
-        >
-          <h2 className="text-xl font-extrabold">New community</h2>
-          <p className="mt-5 block text-sm font-extrabold">Profile picture</p>
-          <label className="mt-2 flex cursor-pointer items-center gap-4 rounded-2xl border border-[#d6dee5] p-3 hover:bg-[#f7fafc]">
-            <span
-              className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl text-white"
-              style={{ background: accentColor }}
-            >
-              {avatar ? (
-                <Image
-                  src={URL.createObjectURL(avatar)}
-                  alt="Selected community"
-                  width={56}
-                  height={56}
-                  className="h-full w-full object-cover"
-                  unoptimized
-                />
-              ) : (
-                <Camera size={22} />
-              )}
-            </span>
-            <span>
-              <b className="block">Choose image</b>
-              <small className="text-[#718295]">
-                PNG, JPEG or WebP · 2 MB max
-              </small>
-            </span>
-            <input
-              className="sr-only"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={(e) => setAvatar(e.target.files?.[0] ?? null)}
+        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+          <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-[26px] bg-[#f8f6f1] p-6 sm:max-w-2xl sm:p-8">
+            <DialogHeader>
+              <DialogTitle className="font-display text-3xl font-extrabold tracking-[-.04em]">
+                Create a community
+              </DialogTitle>
+              <DialogDescription>
+                A permanent home for events, followers and seasons.
+              </DialogDescription>
+            </DialogHeader>
+            <p className="mt-5 block text-sm font-extrabold">Profile picture</p>
+            <label className="mt-2 flex cursor-pointer items-center gap-4 rounded-2xl border border-[#d6dee5] p-3 hover:bg-[#f7fafc]">
+              <span
+                className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl text-white"
+                style={{ background: accentColor }}
+              >
+                {avatar ? (
+                  <Image
+                    src={URL.createObjectURL(avatar)}
+                    alt="Selected community"
+                    width={56}
+                    height={56}
+                    className="h-full w-full object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <Camera size={22} />
+                )}
+              </span>
+              <span>
+                <b className="block">Choose image</b>
+                <small className="text-[#718295]">
+                  PNG, JPEG or WebP · 2 MB max
+                </small>
+              </span>
+              <input
+                className="sr-only"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setAvatar(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <Field
+              label="Community name"
+              value={name}
+              setValue={(value) => {
+                setName(value);
+                if (!slug)
+                  setSlug(
+                    value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '-')
+                      .replace(/^-|-$/g, ''),
+                  );
+              }}
+              placeholder="Nimiq Africa"
             />
-          </label>
-          <Field
-            label="Community name"
-            value={name}
-            setValue={(value) => {
-              setName(value);
-              if (!slug)
-                setSlug(
-                  value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/^-|-$/g, ''),
-                );
-            }}
-            placeholder="Nimiq Africa"
-          />
-          <Field
-            label="Public handle"
-            value={slug}
-            setValue={(value) =>
-              setSlug(value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
-            }
-            placeholder="nimiq-africa"
-            prefix="playmimo.app/c/"
-          />
-          <label className="mt-4 block text-sm font-extrabold">
-            Short description
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={180}
-              rows={3}
-              placeholder="What brings this community together?"
-              className="mt-2 w-full resize-none rounded-xl border border-[#cad4dd] bg-[#fbfcfd] px-4 py-3 font-medium outline-none focus:border-[#2577de]"
+            <Field
+              label="Public handle"
+              value={slug}
+              setValue={(value) =>
+                setSlug(value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
+              }
+              placeholder="nimiq-africa"
+              prefix="playmimo.app/c/"
             />
-          </label>
-          <div className="mt-4">
-            <span className="text-sm font-extrabold">Accent</span>
-            <div className="mt-2 flex gap-2">
-              {ACCENTS.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setAccentColor(color)}
-                  aria-label={`Use ${color}`}
-                  className={`h-9 w-9 rounded-full border-4 ${accentColor === color ? 'border-[#172f49]' : 'border-white'}`}
-                  style={{ background: color }}
-                />
-              ))}
+            <label className="mt-4 block text-sm font-extrabold">
+              Short description
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={180}
+                rows={3}
+                placeholder="What brings this community together?"
+                className="mt-2 w-full resize-none rounded-xl border border-[#cad4dd] bg-[#fbfcfd] px-4 py-3 font-medium outline-none focus:border-[#2577de]"
+              />
+            </label>
+            <div className="mt-4">
+              <span className="text-sm font-extrabold">Accent</span>
+              <div className="mt-2 flex gap-2">
+                {ACCENTS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setAccentColor(color)}
+                    aria-label={`Use ${color}`}
+                    className={`h-9 w-9 rounded-full border-4 ${accentColor === color ? 'border-[#172f49]' : 'border-white'}`}
+                    style={{ background: color }}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <Button
-            onClick={() => void createCommunity()}
-            disabled={working || name.trim().length < 2 || slug.length < 2}
-            className="mt-6 h-12 w-full rounded-xl bg-[#2577de] text-base font-extrabold text-white"
-          >
-            {working ? 'Creating…' : 'Create community'} <ArrowRight />
-          </Button>
-          {error && (
-            <p role="alert" className="mt-3 text-sm font-bold text-[#b53636]">
-              {error}
-            </p>
-          )}
-        </section>
+            <Button
+              onClick={() => void createCommunity()}
+              disabled={working || name.trim().length < 2 || slug.length < 2}
+              className="mt-6 h-12 w-full rounded-xl bg-[#2577de] text-base font-extrabold text-white"
+            >
+              {working ? 'Creating…' : 'Create community'} <ArrowRight />
+            </Button>
+            {error && (
+              <p role="alert" className="mt-3 text-sm font-bold text-[#b53636]">
+                {error}
+              </p>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </StudioShell>
   );
@@ -666,10 +717,14 @@ function ProfileEditor({
   profile,
   session,
   onSaved,
+  standalone = false,
+  onboarding = false,
 }: {
   profile: PersonalProfile;
   session: string;
   onSaved: (profile: PersonalProfile) => void;
+  standalone?: boolean;
+  onboarding?: boolean;
 }) {
   const [draft, setDraft] = useState(profile);
   const [saving, setSaving] = useState(false);
@@ -704,47 +759,63 @@ function ProfileEditor({
     }
   }
   return (
-    <section className="border-b border-[#d9e1e6] py-6">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <section className={standalone ? 'pt-5' : 'border-b border-[#d9e1e6] py-6'}>
+      <div className={onboarding ? '' : 'grid gap-4 sm:grid-cols-2'}>
         <Field
           label="Display name"
           value={draft.displayName}
           setValue={(displayName) => setDraft({ ...draft, displayName })}
           placeholder="Your name"
         />
-        <Field
-          label="Mimo handle"
-          value={draft.handle ?? ''}
-          setValue={(handle) =>
-            setDraft({
-              ...draft,
-              handle: handle.toLowerCase().replace(/[^a-z0-9_]/g, ''),
-            })
-          }
-          placeholder="mimo_player"
-          prefix="@"
-        />
+        {!onboarding && (
+          <Field
+            label="Mimo handle"
+            value={draft.handle ?? ''}
+            setValue={(handle) =>
+              setDraft({
+                ...draft,
+                handle: handle.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+              })
+            }
+            placeholder="mimo_player"
+            prefix="@"
+          />
+        )}
       </div>
-      <label className="mt-4 block text-sm font-extrabold">
-        Short bio
-        <input
-          value={draft.bio}
-          onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
-          maxLength={120}
-          placeholder="What are you here to play?"
-          className="mt-2 h-12 w-full rounded-xl border border-[#cad4dd] bg-white px-4 font-medium outline-none focus:border-[#2577de]"
-        />
-      </label>
+      {!onboarding && (
+        <label className="mt-4 block text-sm font-extrabold">
+          Short bio
+          <input
+            value={draft.bio}
+            onChange={(event) =>
+              setDraft({ ...draft, bio: event.target.value })
+            }
+            maxLength={120}
+            placeholder="What are you here to play?"
+            className="mt-2 h-12 w-full rounded-xl border border-[#cad4dd] bg-white px-4 font-medium outline-none focus:border-[#2577de]"
+          />
+        </label>
+      )}
       <div className="mt-5">
         <p className="text-sm font-extrabold">Choose your Mimo</p>
-        <div className="mt-3 flex flex-wrap gap-3">
+        <div
+          className={
+            onboarding
+              ? 'mt-3 grid grid-cols-4 gap-2'
+              : 'mt-3 flex flex-wrap gap-3'
+          }
+        >
           {MIMO_PROFILES.map((choice) => (
             <button
               key={choice.id}
               onClick={() => setDraft({ ...draft, profileStyle: choice.id })}
-              className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-extrabold ${draft.profileStyle === choice.id ? 'border-[#2577de] bg-[#edf6ff] text-[#1f72d2]' : 'border-[#d3dde4] bg-white'}`}
+              className={`${onboarding ? 'flex min-w-0 flex-col justify-center rounded-2xl px-1 py-3 text-xs' : 'flex items-center gap-2 rounded-full px-3 py-2 text-sm'} border font-extrabold ${draft.profileStyle === choice.id ? 'border-[#2577de] bg-[#edf6ff] text-[#1f72d2]' : 'border-[#d3dde4] bg-white'}`}
             >
-              <MimoProfileAvatar profile={choice.id} nickname={choice.label} />
+              <MimoProfileAvatar
+                profile={choice.id}
+                nickname={choice.label}
+                className={onboarding ? 'mb-1 h-12 w-12' : undefined}
+              />
               {choice.label}
             </button>
           ))}
@@ -752,10 +823,10 @@ function ProfileEditor({
       </div>
       <Button
         onClick={() => void save()}
-        disabled={saving}
+        disabled={saving || draft.displayName.trim().length < 2}
         className="mt-5 h-11 rounded-full bg-[#172f49] px-6 font-extrabold text-white"
       >
-        {saving ? 'Saving…' : 'Save profile'}
+        {saving ? 'Saving…' : onboarding ? 'Enter Studio' : 'Save profile'}
       </Button>
       {error && (
         <p className="mt-2 text-sm font-bold text-[#b53636]">{error}</p>

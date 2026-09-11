@@ -55,6 +55,7 @@ export type LiveRoomState = {
   refundTxHash: string | null;
   accessMode: 'public' | 'private';
   autoHostEnabled: boolean;
+  adaptiveMode: 'auto' | 'ask' | 'off';
   serverNow: number;
   deadline: number | null;
   activeRoundId: string;

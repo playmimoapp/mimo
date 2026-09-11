@@ -213,6 +213,7 @@ export async function GET(
     refundTxHash: rewardRow?.refundTxHash ?? null,
     accessMode: reward.accessMode,
     autoHostEnabled: Boolean(room.autoHostEnabled),
+    adaptiveMode: reward.adaptiveMode,
     serverNow,
     deadline,
     activeRoundId: room.activeRoundId,

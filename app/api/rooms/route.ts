@@ -222,6 +222,11 @@ export async function POST(request: Request) {
     rewardRule,
     eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,
+    adaptiveMode: ['auto', 'ask', 'off'].includes(String(body.adaptiveMode))
+      ? body.adaptiveMode
+      : body.adaptiveMoments === false
+        ? 'off'
+        : 'auto',
     recurrence,
   });
 

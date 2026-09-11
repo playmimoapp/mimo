@@ -559,6 +559,33 @@ export function MimoApp() {
         setScreen('studio');
         return;
       }
+      if (query.get('create') === '1' && query.get('source') === 'discord') {
+        const requestedKind = query.get('kind') as EventKind | null;
+        const eventKind = EVENT_FORMATS.some(
+          (format) => format.id === requestedKind,
+        )
+          ? requestedKind!
+          : 'game_night';
+        const topic = (query.get('topic') ?? '').trim().slice(0, 300);
+        setEvent((current) => ({
+          ...current,
+          eventKind,
+          community: '',
+          communitySlug: '',
+          startsAt: null,
+          recurrence: 'none',
+        }));
+        setAssistantBrief((current) => ({
+          ...current,
+          eventKind,
+          hostingMode: 'one_time',
+          recurrence: 'none',
+          community: '',
+          topic,
+        }));
+        setScreen('create_assisted');
+        return;
+      }
       const linkedCommunity =
         query
           .get('community')

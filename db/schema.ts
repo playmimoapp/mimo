@@ -81,6 +81,15 @@ export const accountSessions = sqliteTable(
   ],
 );
 
+export const discordInteractions = sqliteTable(
+  'discord_interactions',
+  {
+    interactionHash: text('interaction_hash').primaryKey(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_discord_interactions_created').on(t.createdAt)],
+);
+
 export const events = sqliteTable(
   'events',
   {

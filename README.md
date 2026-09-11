@@ -100,6 +100,29 @@ node scripts/test-real-testnet-reward.mjs https://mimo-flax.vercel.app
 
 The local automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. The production testnet check performs real TestAlbatross funding and automatic payout transactions. Native Nimiq Pay dialogs must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
 
+## Discord app
+
+Mimo accepts Discord HTTP interactions at:
+
+```text
+https://mimo-flax.vercel.app/api/discord/interactions
+```
+
+Create the app in the Discord Developer Portal, set that Interactions Endpoint
+URL, and configure `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, and the
+sensitive `DISCORD_BOT_TOKEN` in Vercel. `MIMO_PUBLIC_URL` should be the public
+Mimo origin. Register `/mimo` in a test server first:
+
+```bash
+DISCORD_TEST_GUILD_ID=... npm run discord:register
+```
+
+Remove `DISCORD_TEST_GUILD_ID` to register globally. Discord requests are
+signature-checked and time-bounded. Only a hash of the interaction ID is kept
+for replay protection; Mimo does not store the Discord message or member ID.
+The command creates a private handoff to Mimo's editable creator and cannot
+publish an event or authorize NIM.
+
 ## Product direction
 
 Mimo is being built as recurring community programming, not as a single quiz. Planned platform layers include reusable community libraries, seasons and standings, additional objective round types, privacy-respecting reminders, creator access rules, transaction confirmation monitoring and richer event recaps.

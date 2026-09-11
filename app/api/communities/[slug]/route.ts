@@ -1,9 +1,13 @@
 import { getD1 } from '@/db';
 import { json, readJson } from '@/lib/live-room';
-import { cleanCommunitySlug, getAccountBySession } from '@/lib/mimo-account';
+import {
+  cleanCommunitySlug,
+  getAccountBySession,
+  getCommunityRole,
+} from '@/lib/mimo-account';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ slug: string }> },
 ) {
   const { slug: rawSlug } = await context.params;
@@ -12,7 +16,9 @@ export async function GET(
     .prepare(`SELECT id, slug, name, description, accent_color AS accentColor,
       avatar_key IS NOT NULL AS hasAvatar, recurrence,
       next_event_at AS nextEventAt, season_name AS seasonName,
-      season_started_at AS seasonStartedAt
+      season_started_at AS seasonStartedAt, x_url AS xUrl,
+      discord_url AS discordUrl, telegram_url AS telegramUrl,
+      (SELECT COUNT(*) FROM community_follows f WHERE f.community_id = communities.id) AS followerCount
       FROM communities WHERE slug = ? LIMIT 1`)
     .bind(slug)
     .first<{
@@ -26,6 +32,10 @@ export async function GET(
       nextEventAt: number | null;
       seasonName: string;
       seasonStartedAt: number;
+      xUrl: string | null;
+      discordUrl: string | null;
+      telegramUrl: string | null;
+      followerCount: number;
     }>();
   if (!community) return json({ error: 'That community does not exist.' }, 404);
   const events = await getD1()
@@ -85,8 +95,29 @@ export async function GET(
       eventsPlayed: number;
       wins: number;
     }>();
+  const team = await getD1()
+    .prepare(`SELECT a.display_name AS displayName, a.handle,
+      a.profile_style AS profileStyle, cm.role
+      FROM community_members cm JOIN accounts a ON a.id = cm.account_id
+      WHERE cm.community_id = ? ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+      cm.created_at ASC`)
+    .bind(community.id)
+    .all();
+  const account = await getAccountBySession(request);
+  const follow = account
+    ? await getD1()
+        .prepare(
+          'SELECT 1 AS found FROM community_follows WHERE community_id = ? AND account_id = ?',
+        )
+        .bind(community.id, account.id)
+        .first()
+    : null;
   return json({
-    community: { ...community, hasAvatar: Boolean(community.hasAvatar) },
+    community: {
+      ...community,
+      hasAvatar: Boolean(community.hasAvatar),
+      following: Boolean(follow),
+    },
     events: events.results.map((event) => ({
       title: event.title,
       status: event.status,
@@ -101,6 +132,7 @@ export async function GET(
       scores: scoresByEvent.get(event.id) ?? [],
     })),
     standings: standings.results,
+    team: team.results,
   });
 }
 
@@ -114,6 +146,59 @@ export async function PATCH(
   const { slug: rawSlug } = await context.params;
   const slug = cleanCommunitySlug(rawSlug);
   const body = await readJson(request);
+  const membership = await getCommunityRole(slug, account);
+  if (!membership || membership.role === 'host') {
+    return json(
+      { error: 'Only an owner or admin can change this community.' },
+      403,
+    );
+  }
+  if (body?.action === 'socials') {
+    const cleanSocial = (
+      value: unknown,
+      service: 'x' | 'discord' | 'telegram',
+    ) => {
+      const text = (typeof value === 'string' ? value : '')
+        .trim()
+        .slice(0, 160);
+      if (!text) return null;
+      try {
+        const url = new URL(text);
+        const allowed =
+          service === 'x'
+            ? ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com']
+            : service === 'discord'
+              ? ['discord.gg', 'discord.com', 'www.discord.com']
+              : ['t.me', 'telegram.me'];
+        return url.protocol === 'https:' &&
+          allowed.includes(url.hostname.toLowerCase())
+          ? url.toString()
+          : null;
+      } catch {
+        return null;
+      }
+    };
+    const xUrl = cleanSocial(body.xUrl, 'x');
+    const discordUrl = cleanSocial(body.discordUrl, 'discord');
+    const telegramUrl = cleanSocial(body.telegramUrl, 'telegram');
+    if (
+      (body.xUrl && !xUrl) ||
+      (body.discordUrl && !discordUrl) ||
+      (body.telegramUrl && !telegramUrl)
+    ) {
+      return json(
+        { error: 'Use official HTTPS links for X, Discord or Telegram.' },
+        400,
+      );
+    }
+    await getD1()
+      .prepare(
+        `UPDATE communities SET x_url = ?, discord_url = ?, telegram_url = ?, updated_at = ? WHERE id = ?`,
+      )
+      .bind(xUrl, discordUrl, telegramUrl, Date.now(), membership.communityId)
+      .run();
+    return json({ xUrl, discordUrl, telegramUrl });
+  }
   if (body?.action === 'new_season') {
     const seasonName = (
       typeof body.seasonName === 'string' ? body.seasonName : ''
@@ -125,8 +210,8 @@ export async function PATCH(
     const now = Date.now();
     const updated = await getD1()
       .prepare(`UPDATE communities SET season_name = ?, season_started_at = ?, updated_at = ?
-        WHERE slug = ? AND owner_wallet_hash = ?`)
-      .bind(seasonName, now, now, slug, account.walletHash)
+        WHERE id = ?`)
+      .bind(seasonName, now, now, membership.communityId)
       .run();
     if (!updated.meta.changes)
       return json(
@@ -152,17 +237,36 @@ export async function PATCH(
   }
   const updated = await getD1()
     .prepare(`UPDATE communities SET recurrence = ?, next_event_at = ?, updated_at = ?
-      WHERE slug = ? AND owner_wallet_hash = ?`)
+      WHERE id = ?`)
     .bind(
       recurrence,
       recurrence === 'none' ? null : nextEventAt,
       now,
-      slug,
-      account.walletHash,
+      membership.communityId,
     )
     .run();
   if (!updated.meta.changes)
     return json({ error: 'That community is not owned by this wallet.' }, 403);
+  if (recurrence !== 'none') {
+    const community = await getD1()
+      .prepare('SELECT name FROM communities WHERE id = ?')
+      .bind(membership.communityId)
+      .first<{ name: string }>();
+    await getD1()
+      .prepare(`INSERT INTO notifications
+        (id, account_id, community_id, kind, title, body, href, read_at, created_at)
+        SELECT lower(hex(randomblob(16))), f.account_id, ?, 'schedule_updated', ?, ?, ?, NULL, ?
+        FROM community_follows f WHERE f.community_id = ?`)
+      .bind(
+        membership.communityId,
+        `${community?.name ?? 'A community'} scheduled its next Mimo`,
+        new Date(nextEventAt).toISOString(),
+        `/?community=${slug}`,
+        now,
+        membership.communityId,
+      )
+      .run();
+  }
   return json({
     recurrence,
     nextEventAt: recurrence === 'none' ? null : nextEventAt,

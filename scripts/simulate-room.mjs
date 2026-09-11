@@ -1,9 +1,22 @@
-import { Address, KeyPair, Transaction, TransactionBuilder } from '@nimiq/core';
+import {
+  Address,
+  Hash,
+  KeyPair,
+  Transaction,
+  TransactionBuilder,
+} from '@nimiq/core';
 import { createServer } from 'node:http';
 
 const base = (process.argv[2] || 'http://127.0.0.1:8787').replace(/\/$/, '');
 const fakeChain = new Map();
 const fakeHead = 900_000;
+
+function signMessage(keyPair, message) {
+  const data = new TextEncoder().encode(
+    `\x16Nimiq Signed Message:\n${message.length}${message}`,
+  );
+  return keyPair.sign(Hash.computeSha256(data));
+}
 
 function transactionRecord(transaction) {
   return {
@@ -379,9 +392,7 @@ for (const nickname of ['Sol', 'Nova']) {
       body: JSON.stringify({ participantToken: joined.participantToken }),
     },
   );
-  const walletSignature = keyPair.sign(
-    new TextEncoder().encode(walletChallenge.message),
-  );
+  const walletSignature = signMessage(keyPair, walletChallenge.message);
   const walletProof = await request(
     `/api/rooms/${unlockRoom.code}/wallet/verify`,
     {
@@ -793,7 +804,7 @@ const challenge = await request(
 );
 const keyPair = KeyPair.generate();
 const account = keyPair.toAddress().toUserFriendlyAddress();
-const signature = keyPair.sign(new TextEncoder().encode(challenge.message));
+const signature = signMessage(keyPair, challenge.message);
 const walletProof = await request(
   `/api/rooms/${walletRoom.code}/wallet/verify`,
   {

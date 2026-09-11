@@ -7,7 +7,11 @@ import {
   readJson,
 } from '@/lib/live-room';
 import { getVaultConfig } from '@/lib/reward-vault';
-import { cleanCommunitySlug, getAccountBySession } from '@/lib/mimo-account';
+import {
+  cleanCommunitySlug,
+  getAccountBySession,
+  getCommunityRole,
+} from '@/lib/mimo-account';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -190,18 +194,16 @@ export async function POST(request: Request) {
     if (!account) {
       return json({ error: 'Sign in again to host for this community.' }, 401);
     }
-    const owned = await getD1()
-      .prepare(`SELECT id FROM communities
-        WHERE slug = ? AND owner_wallet_hash = ? LIMIT 1`)
-      .bind(requestedCommunitySlug, account.walletHash)
-      .first<{ id: string }>();
-    if (!owned) {
+    const membership = await getCommunityRole(requestedCommunitySlug, account);
+    if (!membership) {
       return json(
-        { error: 'That community is not owned by this wallet.' },
+        {
+          error: 'This wallet does not have hosting access for that community.',
+        },
         403,
       );
     }
-    communityId = owned.id;
+    communityId = membership.communityId;
     permanentCommunity = true;
   }
   const eventId = crypto.randomUUID();
@@ -304,6 +306,25 @@ export async function POST(request: Request) {
                   custody: rewardCustody,
                 }),
                 now,
+              ),
+          ]
+        : []),
+      ...(permanentCommunity
+        ? [
+            db
+              .prepare(`INSERT INTO notifications
+                (id, account_id, community_id, kind, title, body, href, read_at, created_at)
+                SELECT lower(hex(randomblob(16))), f.account_id, ?, 'event_published', ?, ?, ?, NULL, ?
+                FROM community_follows f WHERE f.community_id = ?`)
+              .bind(
+                communityId,
+                `${community} has a new Mimo`,
+                startsAt
+                  ? `Scheduled for ${new Date(startsAt).toISOString()}`
+                  : 'The room is open now.',
+                `/?community=${requestedCommunitySlug}`,
+                now,
+                communityId,
               ),
           ]
         : []),

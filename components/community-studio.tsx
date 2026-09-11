@@ -8,10 +8,12 @@ import {
   Bell,
   CalendarDays,
   Camera,
-  Check,
   Clock3,
   Copy,
+  ExternalLink,
+  Plus,
   Repeat2,
+  Search,
   ShieldCheck,
   Trophy,
   Users,
@@ -19,6 +21,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { MimoCharacter } from '@/components/mimo-host';
 import { MimoNimiq } from '@/lib/nimiq';
+import { MimoProfileAvatar } from '@/components/mimo-host';
+import { MIMO_PROFILES, type MimoProfileStyle } from '@/lib/mimo-profile';
 
 type Community = {
   slug: string;
@@ -31,6 +35,28 @@ type Community = {
   nextEventAt: number | null;
   seasonName: string;
   seasonStartedAt: number;
+  role?: 'owner' | 'admin' | 'host';
+  xUrl?: string | null;
+  discordUrl?: string | null;
+  telegramUrl?: string | null;
+  followerCount?: number;
+  following?: boolean;
+};
+
+type PersonalProfile = {
+  displayName: string;
+  handle: string | null;
+  bio: string;
+  profileStyle: MimoProfileStyle;
+};
+
+type MimoNotification = {
+  id: string;
+  title: string;
+  body: string;
+  href: string;
+  readAt: number | null;
+  createdAt: number;
 };
 
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
@@ -48,6 +74,9 @@ export function CommunityStudio({
   const nimiq = useRef(new MimoNimiq());
   const [session, setSession] = useState('');
   const [communities, setCommunities] = useState<Community[]>([]);
+  const [profile, setProfile] = useState<PersonalProfile | null>(null);
+  const [notifications, setNotifications] = useState<MimoNotification[]>([]);
+  const [followed, setFollowed] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +85,10 @@ export function CommunityStudio({
   const [description, setDescription] = useState('');
   const [accentColor, setAccentColor] = useState(ACCENTS[0]);
   const [avatar, setAvatar] = useState<File | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState('');
 
   async function loadCommunities(token: string) {
     const response = await fetch('/api/communities', {
@@ -77,6 +110,29 @@ export function CommunityStudio({
     setCommunities(body.communities);
   }
 
+  async function loadProfile(token: string) {
+    const response = await fetch('/api/account/profile', {
+      headers: { 'x-mimo-account': token },
+      cache: 'no-store',
+    });
+    const body = (await response.json()) as {
+      profile?: PersonalProfile;
+      notifications?: MimoNotification[];
+      followed?: Community[];
+      error?: string;
+    };
+    if (!response.ok || !body.profile)
+      throw new Error(body.error || 'Your profile could not load.');
+    setProfile(body.profile);
+    setNotifications(body.notifications ?? []);
+    setFollowed(body.followed ?? []);
+    if (!body.profile.displayName) setShowProfile(true);
+  }
+
+  async function loadDashboard(token: string) {
+    await Promise.all([loadCommunities(token), loadProfile(token)]);
+  }
+
   useEffect(() => {
     const token = window.localStorage.getItem('mimo:studio:session') ?? '';
     void Promise.resolve().then(async () => {
@@ -85,7 +141,7 @@ export function CommunityStudio({
         return;
       }
       setSession(token);
-      await loadCommunities(token).catch((cause) =>
+      await loadDashboard(token).catch((cause) =>
         setError(
           cause instanceof Error ? cause.message : 'Studio could not load.',
         ),
@@ -93,6 +149,35 @@ export function CommunityStudio({
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    const token = new URLSearchParams(window.location.search).get(
+      'communityInvite',
+    );
+    if (!token) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    void fetch(`/api/community-invites/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+      headers: { 'x-mimo-account': session },
+    }).then(async (response) => {
+      const body = (await response.json()) as {
+        community?: { name: string };
+        role?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        setError(
+          body.error || 'The community invitation could not be accepted.',
+        );
+        return;
+      }
+      setInviteMessage(
+        `You joined ${body.community?.name ?? 'the community'} as ${body.role}.`,
+      );
+      await loadCommunities(session);
+    });
+  }, [session]);
 
   async function signIn() {
     if (working) return;
@@ -141,7 +226,7 @@ export function CommunityStudio({
         throw new Error(verified.error || 'Mimo could not verify the wallet.');
       window.localStorage.setItem('mimo:studio:session', verified.sessionToken);
       setSession(verified.sessionToken);
-      await loadCommunities(verified.sessionToken);
+      await loadDashboard(verified.sessionToken);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : 'Sign-in did not finish.',
@@ -192,6 +277,7 @@ export function CommunityStudio({
       setSlug('');
       setDescription('');
       setAvatar(null);
+      setShowCreate(false);
       await loadCommunities(session);
     } catch (cause) {
       setError(
@@ -282,7 +368,7 @@ export function CommunityStudio({
 
   return (
     <StudioShell>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <span className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
             Community Studio
@@ -291,11 +377,82 @@ export function CommunityStudio({
             Your rooms start here.
           </h1>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm font-bold text-[#19805b]">
-          <Check size={16} /> Wallet verified
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowNotifications((value) => !value)}
+            className="relative grid h-11 w-11 place-items-center rounded-full border border-[#cbd6de] bg-white"
+            aria-label="Open notifications"
+          >
+            <Bell size={18} />
+            {notifications.some((item) => !item.readAt) && (
+              <span className="absolute right-0 top-0 grid h-5 min-w-5 place-items-center rounded-full bg-[#d45f4a] px-1 text-[10px] font-black text-white">
+                {notifications.filter((item) => !item.readAt).length}
+              </span>
+            )}
+          </button>
+          <Button
+            onClick={() => setShowCreate((value) => !value)}
+            className="h-11 rounded-full bg-[#2577de] px-5 font-extrabold text-white"
+          >
+            <Plus size={17} /> {showCreate ? 'Close' : 'New community'}
+          </Button>
+        </div>
       </div>
-      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,.95fr)]">
+      {profile && (
+        <section className="mt-7 flex items-center gap-4 border-y border-[#d9e1e6] py-5">
+          <MimoProfileAvatar
+            profile={profile.profileStyle}
+            nickname={profile.displayName || 'Your Mimo'}
+            className="h-14 w-14"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-extrabold">
+              {profile.displayName || 'Create your Mimo profile'}
+            </p>
+            <p className="truncate text-sm font-bold text-[#718295]">
+              {profile.handle
+                ? `@${profile.handle}`
+                : 'Your identity across Mimo'}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowProfile((value) => !value)}
+            className="shrink-0 text-sm font-extrabold text-[#2577de]"
+          >
+            {showProfile ? 'Done' : 'Edit profile'}
+          </button>
+        </section>
+      )}
+      {inviteMessage && (
+        <p className="mt-4 border-l-4 border-[#19805b] py-2 pl-4 text-sm font-extrabold text-[#19805b]">
+          {inviteMessage}
+        </p>
+      )}
+      {showProfile && profile && (
+        <ProfileEditor
+          profile={profile}
+          session={session}
+          onSaved={(saved) => {
+            setProfile(saved);
+            setShowProfile(false);
+          }}
+        />
+      )}
+      {showNotifications && (
+        <NotificationInbox
+          items={notifications}
+          session={session}
+          onRead={() =>
+            setNotifications((items) =>
+              items.map((item) => ({
+                ...item,
+                readAt: item.readAt ?? Date.now(),
+              })),
+            )
+          }
+        />
+      )}
+      <div className="mt-8">
         <section className="space-y-4">
           {communities.length ? (
             communities.map((community) => (
@@ -320,7 +477,28 @@ export function CommunityStudio({
             </div>
           )}
         </section>
-        <section className="rounded-[26px] border border-[#d9dee3] bg-white p-5 shadow-[0_18px_50px_rgba(26,47,80,.07)] sm:p-6">
+        {followed.length > 0 && (
+          <section className="mt-10 border-t border-[#d9e1e6] pt-7">
+            <p className="text-xs font-black uppercase tracking-[.13em] text-[#19805b]">
+              Following
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {followed.map((community) => (
+                <a
+                  key={community.slug}
+                  href={`/?community=${community.slug}`}
+                  className="inline-flex items-center gap-3 rounded-full border border-[#d5dfe6] bg-white py-2 pl-2 pr-4 font-extrabold"
+                >
+                  <CommunityAvatar community={community} size="small" />
+                  {community.name}
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+        <section
+          className={`${showCreate || communities.length === 0 ? 'block' : 'hidden'} mt-8 max-w-2xl border-t border-[#d9e1e6] pt-7`}
+        >
           <h2 className="text-xl font-extrabold">New community</h2>
           <p className="mt-5 block text-sm font-extrabold">Profile picture</p>
           <label className="mt-2 flex cursor-pointer items-center gap-4 rounded-2xl border border-[#d6dee5] p-3 hover:bg-[#f7fafc]">
@@ -423,8 +601,162 @@ export function CommunityStudio({
 
 function StudioShell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="app-frame min-h-[calc(100dvh-72px)] pb-16 pt-8 sm:pt-12">
+    <section className="app-frame pb-12 pt-8 sm:pb-16 sm:pt-12">
       {children}
+    </section>
+  );
+}
+
+function ProfileEditor({
+  profile,
+  session,
+  onSaved,
+}: {
+  profile: PersonalProfile;
+  session: string;
+  onSaved: (profile: PersonalProfile) => void;
+}) {
+  const [draft, setDraft] = useState(profile);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/account/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mimo-account': session,
+        },
+        body: JSON.stringify(draft),
+      });
+      const body = (await response.json()) as {
+        profile?: PersonalProfile;
+        error?: string;
+      };
+      if (!response.ok || !body.profile)
+        throw new Error(body.error || 'Your profile could not be saved.');
+      onSaved(body.profile);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Your profile could not be saved.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <section className="border-b border-[#d9e1e6] py-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Display name"
+          value={draft.displayName}
+          setValue={(displayName) => setDraft({ ...draft, displayName })}
+          placeholder="Your name"
+        />
+        <Field
+          label="Mimo handle"
+          value={draft.handle ?? ''}
+          setValue={(handle) =>
+            setDraft({
+              ...draft,
+              handle: handle.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            })
+          }
+          placeholder="mimo_player"
+          prefix="@"
+        />
+      </div>
+      <label className="mt-4 block text-sm font-extrabold">
+        Short bio
+        <input
+          value={draft.bio}
+          onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
+          maxLength={120}
+          placeholder="What are you here to play?"
+          className="mt-2 h-12 w-full rounded-xl border border-[#cad4dd] bg-white px-4 font-medium outline-none focus:border-[#2577de]"
+        />
+      </label>
+      <div className="mt-5">
+        <p className="text-sm font-extrabold">Choose your Mimo</p>
+        <div className="mt-3 flex flex-wrap gap-3">
+          {MIMO_PROFILES.map((choice) => (
+            <button
+              key={choice.id}
+              onClick={() => setDraft({ ...draft, profileStyle: choice.id })}
+              className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-extrabold ${draft.profileStyle === choice.id ? 'border-[#2577de] bg-[#edf6ff] text-[#1f72d2]' : 'border-[#d3dde4] bg-white'}`}
+            >
+              <MimoProfileAvatar profile={choice.id} nickname={choice.label} />
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Button
+        onClick={() => void save()}
+        disabled={saving}
+        className="mt-5 h-11 rounded-full bg-[#172f49] px-6 font-extrabold text-white"
+      >
+        {saving ? 'Saving…' : 'Save profile'}
+      </Button>
+      {error && (
+        <p className="mt-2 text-sm font-bold text-[#b53636]">{error}</p>
+      )}
+    </section>
+  );
+}
+
+function NotificationInbox({
+  items,
+  session,
+  onRead,
+}: {
+  items: MimoNotification[];
+  session: string;
+  onRead: () => void;
+}) {
+  useEffect(() => {
+    if (!items.some((item) => !item.readAt)) return;
+    const timer = window.setTimeout(() => {
+      void fetch('/api/account/notifications', {
+        method: 'PATCH',
+        headers: { 'x-mimo-account': session },
+      }).then((response) => response.ok && onRead());
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [items, onRead, session]);
+  return (
+    <section className="border-b border-[#d9e1e6] py-6">
+      <h2 className="text-xl font-extrabold">Notifications</h2>
+      {items.length ? (
+        <div className="mt-3 divide-y divide-[#e1e7eb]">
+          {items.map((item) => (
+            <a
+              key={item.id}
+              href={item.href}
+              aria-label={`${item.title}: ${item.body}`}
+              className="flex gap-3 py-4"
+            >
+              <span
+                className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.readAt ? 'bg-[#c4cdd4]' : 'bg-[#2577de]'}`}
+              />
+              <span>
+                <strong className="block">{item.title}</strong>
+                <span className="mt-1 block text-sm text-[#60758a]">
+                  {item.body}
+                </span>
+              </span>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm font-bold text-[#718295]">
+          Quiet for now. Follow a community and Mimo will keep this useful.
+        </p>
+      )}
     </section>
   );
 }
@@ -485,6 +817,14 @@ function CommunityCard({
   const [scheduleError, setScheduleError] = useState('');
   const [editingSeason, setEditingSeason] = useState(false);
   const [seasonName, setSeasonName] = useState(community.seasonName);
+  const [managing, setManaging] = useState(false);
+  const [xUrl, setXUrl] = useState(community.xUrl ?? '');
+  const [discordUrl, setDiscordUrl] = useState(community.discordUrl ?? '');
+  const [telegramUrl, setTelegramUrl] = useState(community.telegramUrl ?? '');
+  const [inviteRole, setInviteRole] = useState<'owner' | 'admin' | 'host'>(
+    'host',
+  );
+  const [managerLink, setManagerLink] = useState('');
   const [recurrence, setRecurrence] = useState<Community['recurrence']>(
     community.recurrence,
   );
@@ -553,6 +893,68 @@ function CommunityCard({
         cause instanceof Error
           ? cause.message
           : 'The season could not be started.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+  async function saveSocials() {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(`/api/communities/${community.slug}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mimo-account': session,
+        },
+        body: JSON.stringify({
+          action: 'socials',
+          xUrl,
+          discordUrl,
+          telegramUrl,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'Social links could not be saved.');
+      onSaved();
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'Social links could not be saved.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+  async function makeRoleInvite() {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(`/api/communities/${community.slug}/roles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mimo-account': session,
+        },
+        body: JSON.stringify({ role: inviteRole }),
+      });
+      const body = (await response.json()) as {
+        inviteToken?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.inviteToken)
+        throw new Error(body.error || 'The invitation could not be created.');
+      setManagerLink(
+        `${window.location.origin}/?communityInvite=${body.inviteToken}`,
+      );
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'The invitation could not be created.',
       );
     } finally {
       setSavingSchedule(false);
@@ -706,7 +1108,96 @@ function CommunityCard({
           >
             View page <ArrowRight size={16} />
           </a>
+          <button
+            onClick={() => setManaging((value) => !value)}
+            className="inline-flex h-11 items-center px-3 text-sm font-extrabold text-[#53687c]"
+          >
+            {managing ? 'Close settings' : 'Community settings'}
+          </button>
         </div>
+        {managing && (
+          <div className="mt-5 border-t border-[#dfe5e9] pt-5">
+            <p className="text-xs font-black uppercase tracking-[.12em] text-[#718295]">
+              Public social links
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <input
+                value={xUrl}
+                onChange={(event) => setXUrl(event.target.value)}
+                placeholder="https://x.com/…"
+                className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 text-sm"
+              />
+              <input
+                value={discordUrl}
+                onChange={(event) => setDiscordUrl(event.target.value)}
+                placeholder="https://discord.gg/…"
+                className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 text-sm"
+              />
+              <input
+                value={telegramUrl}
+                onChange={(event) => setTelegramUrl(event.target.value)}
+                placeholder="https://t.me/…"
+                className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 text-sm"
+              />
+            </div>
+            <Button
+              onClick={() => void saveSocials()}
+              disabled={savingSchedule}
+              variant="outline"
+              className="mt-3 h-10 rounded-full px-4 font-extrabold"
+            >
+              Save links
+            </Button>
+            {community.role === 'owner' && (
+              <div className="mt-5 border-t border-[#e3e7ea] pt-5">
+                <p className="text-sm font-extrabold">
+                  Invite a community manager
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[#718295]">
+                  The invited person must sign in with their own wallet.
+                  Ownership transfer only finishes after they accept.
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <select
+                    value={inviteRole}
+                    onChange={(event) =>
+                      setInviteRole(
+                        event.target.value as 'owner' | 'admin' | 'host',
+                      )
+                    }
+                    className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 font-bold"
+                  >
+                    <option value="host">Host events</option>
+                    <option value="admin">Admin</option>
+                    <option value="owner">Transfer ownership</option>
+                  </select>
+                  <Button
+                    onClick={() => void makeRoleInvite()}
+                    disabled={savingSchedule}
+                    className="h-11 rounded-xl bg-[#203752] px-4 font-extrabold text-white"
+                  >
+                    Create secure invite
+                  </Button>
+                </div>
+                {managerLink && (
+                  <button
+                    onClick={() =>
+                      void navigator.clipboard.writeText(managerLink)
+                    }
+                    className="mt-3 w-full truncate rounded-xl bg-[#edf5fb] px-3 py-3 text-left text-xs font-bold text-[#2577de]"
+                  >
+                    {managerLink} · tap to copy
+                  </button>
+                )}
+              </div>
+            )}
+            {scheduleError && (
+              <p className="mt-3 text-xs font-bold text-[#b53636]">
+                {scheduleError}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </motion.article>
   );
@@ -734,10 +1225,14 @@ export function CommunityAvatar({
   size = 'large',
 }: {
   community: Pick<Community, 'slug' | 'name' | 'accentColor' | 'hasAvatar'>;
-  size?: 'large' | 'hero';
+  size?: 'small' | 'large' | 'hero';
 }) {
   const dimensions =
-    size === 'hero' ? 'h-24 w-24 rounded-[28px]' : 'h-16 w-16 rounded-[20px]';
+    size === 'hero'
+      ? 'h-24 w-24 rounded-[28px]'
+      : size === 'small'
+        ? 'h-9 w-9 rounded-full text-sm'
+        : 'h-16 w-16 rounded-[20px]';
   return (
     <span
       className={`${dimensions} grid shrink-0 place-items-center overflow-hidden text-2xl font-black text-white shadow-sm`}
@@ -785,12 +1280,22 @@ export function PublicCommunity({
       eventsPlayed: number;
       wins: number;
     }>;
+    team: Array<{
+      displayName: string;
+      handle: string | null;
+      profileStyle: MimoProfileStyle;
+      role: 'owner' | 'admin' | 'host';
+    }>;
   } | null>(null);
   const [error, setError] = useState('');
   const [following, setFollowing] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
   useEffect(() => {
-    void fetch(`/api/communities/${slug}`, { cache: 'no-store' })
+    const session = window.localStorage.getItem('mimo:studio:session') ?? '';
+    void fetch(`/api/communities/${slug}`, {
+      cache: 'no-store',
+      headers: session ? { 'x-mimo-account': session } : undefined,
+    })
       .then(async (response) => {
         const body = (await response.json()) as {
           community?: Community;
@@ -811,17 +1316,25 @@ export function PublicCommunity({
             eventsPlayed: number;
             wins: number;
           }>;
+          team?: Array<{
+            displayName: string;
+            handle: string | null;
+            profileStyle: MimoProfileStyle;
+            role: 'owner' | 'admin' | 'host';
+          }>;
           error?: string;
         };
         if (!response.ok)
           throw new Error(body.error || 'Community could not load.');
-        if (!body.community || !body.events || !body.standings)
+        if (!body.community || !body.events || !body.standings || !body.team)
           throw new Error('Community could not load.');
         setData({
           community: body.community,
           events: body.events,
           standings: body.standings,
+          team: body.team,
         });
+        setFollowing(Boolean(body.community.following));
       })
       .catch((cause) =>
         setError(
@@ -832,7 +1345,9 @@ export function PublicCommunity({
   useEffect(() => {
     const frame = window.requestAnimationFrame(() =>
       setFollowing(
-        window.localStorage.getItem(`mimo:follow:${slug}`) === 'yes',
+        (current) =>
+          current ||
+          window.localStorage.getItem(`mimo:follow:${slug}`) === 'yes',
       ),
     );
     return () => window.cancelAnimationFrame(frame);
@@ -859,10 +1374,17 @@ export function PublicCommunity({
   const toggleFollow = () => {
     setFollowing((current) => {
       const nextValue = !current;
+      const session = window.localStorage.getItem('mimo:studio:session') ?? '';
       window.localStorage.setItem(
         `mimo:follow:${slug}`,
         nextValue ? 'yes' : 'no',
       );
+      if (session) {
+        void fetch(`/api/communities/${slug}/follow`, {
+          method: nextValue ? 'POST' : 'DELETE',
+          headers: { 'x-mimo-account': session },
+        }).catch(() => undefined);
+      }
       return nextValue;
     });
   };
@@ -938,6 +1460,23 @@ export function PublicCommunity({
                   <CalendarDays size={16} /> Add to calendar
                 </Button>
               )}
+              {[
+                ['X', data.community.xUrl],
+                ['Discord', data.community.discordUrl],
+                ['Telegram', data.community.telegramUrl],
+              ].map(([label, url]) =>
+                url ? (
+                  <a
+                    key={label}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-11 items-center gap-2 rounded-full border border-[#d1dbe2] bg-white px-4 text-sm font-extrabold"
+                  >
+                    {label} <ExternalLink size={14} />
+                  </a>
+                ) : null,
+              )}
             </div>
           </div>
           <div className="rounded-[24px] bg-[#f3f7fa] p-5">
@@ -999,6 +1538,35 @@ export function PublicCommunity({
           </div>
         </div>
       </section>
+      {data.team.length > 0 && (
+        <section className="mt-6 border-y border-[#d7dfe4] py-6">
+          <p className="text-xs font-black uppercase tracking-[.13em] text-[#2577de]">
+            Community team
+          </p>
+          <div className="mt-4 flex flex-wrap gap-x-7 gap-y-4">
+            {data.team.map((member, index) => (
+              <div
+                key={`${member.handle ?? member.displayName}-${index}`}
+                className="flex items-center gap-3"
+              >
+                <MimoProfileAvatar
+                  profile={member.profileStyle}
+                  nickname={member.displayName || member.role}
+                />
+                <div>
+                  <strong className="block text-sm">
+                    {member.displayName || 'Mimo host'}
+                  </strong>
+                  <span className="text-xs font-bold capitalize text-[#718295]">
+                    {member.role}
+                    {member.handle ? ` · @${member.handle}` : ''}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {data.standings.length > 0 && (
         <section className="mt-6 overflow-hidden rounded-[26px] border border-[#d7dfe4] bg-white">
           <div className="flex items-end justify-between gap-4 border-b border-[#e0e5e8] px-5 py-4 sm:px-6">
@@ -1123,6 +1691,102 @@ export function PublicCommunity({
           Open Studio
         </Button>
       </div>
+    </StudioShell>
+  );
+}
+
+export function CommunityDirectory({
+  openCommunity,
+}: {
+  openCommunity: (slug: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(
+      () => {
+        void fetch(`/api/communities/discover?q=${encodeURIComponent(query)}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+          .then(async (response) => {
+            const body = (await response.json()) as {
+              communities?: Community[];
+            };
+            if (response.ok) setCommunities(body.communities ?? []);
+          })
+          .finally(() => setLoading(false));
+      },
+      query ? 220 : 0,
+    );
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+  return (
+    <StudioShell>
+      <p className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
+        Find your people
+      </p>
+      <div className="mt-2 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <h1 className="font-display max-w-2xl text-4xl font-extrabold tracking-[-.045em] sm:text-5xl">
+          Communities that play here.
+        </h1>
+        <label className="flex h-12 w-full items-center gap-3 border-b-2 border-[#9eb0be] sm:max-w-sm">
+          <Search size={19} className="text-[#60758a]" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search communities"
+            className="min-w-0 flex-1 bg-transparent font-bold outline-none"
+          />
+        </label>
+      </div>
+      <div className="mt-10 divide-y divide-[#dbe2e7] border-y border-[#dbe2e7]">
+        {communities.map((community) => (
+          <button
+            key={community.slug}
+            onClick={() => openCommunity(community.slug)}
+            className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 py-5 text-left sm:gap-6"
+          >
+            <CommunityAvatar community={community} />
+            <span className="min-w-0">
+              <strong className="block truncate text-lg">
+                {community.name}
+              </strong>
+              <span className="mt-1 line-clamp-2 block text-sm text-[#60758a]">
+                {community.description || `@${community.slug}`}
+              </span>
+              <span className="mt-2 block text-xs font-extrabold text-[#718295]">
+                {community.followerCount ?? 0} following ·{' '}
+                {community.recurrence === 'none'
+                  ? 'Live events'
+                  : `${recurrenceLabel(community.recurrence)} series`}
+              </span>
+            </span>
+            <span className="flex items-center gap-2 text-sm font-extrabold text-[#2577de]">
+              <span className="hidden sm:inline">View</span>{' '}
+              <ArrowRight size={18} />
+            </span>
+          </button>
+        ))}
+      </div>
+      {!loading && communities.length === 0 && (
+        <div className="py-16 text-center">
+          <div className="mx-auto w-28">
+            <MimoCharacter mood="thinking" />
+          </div>
+          <h2 className="mt-3 text-xl font-extrabold">
+            No community found yet.
+          </h2>
+          <p className="mt-1 text-sm text-[#60758a]">
+            Try another name or start the first one.
+          </p>
+        </div>
+      )}
     </StudioShell>
   );
 }

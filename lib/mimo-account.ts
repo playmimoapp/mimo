@@ -5,6 +5,9 @@ export type MimoAccount = {
   id: string;
   walletHash: string;
   displayName: string;
+  handle: string | null;
+  bio: string;
+  profileStyle: string;
 };
 
 export async function getAccountBySession(request: Request) {
@@ -13,7 +16,8 @@ export async function getAccountBySession(request: Request) {
   const tokenHash = await hashToken(token);
   const account = await getD1()
     .prepare(`SELECT a.id, a.wallet_hash AS walletHash,
-      a.display_name AS displayName
+      a.display_name AS displayName, a.handle, a.bio,
+      a.profile_style AS profileStyle
       FROM account_sessions s
       JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ? AND s.expires_at > ? LIMIT 1`)
@@ -27,6 +31,19 @@ export async function getAccountBySession(request: Request) {
     .bind(Date.now(), tokenHash)
     .run();
   return account;
+}
+
+export async function getCommunityRole(
+  communitySlug: string,
+  account: MimoAccount,
+) {
+  return getD1()
+    .prepare(`SELECT c.id AS communityId, cm.role
+      FROM communities c
+      JOIN community_members cm ON cm.community_id = c.id
+      WHERE c.slug = ? AND cm.account_id = ? LIMIT 1`)
+    .bind(cleanCommunitySlug(communitySlug), account.id)
+    .first<{ communityId: string; role: 'owner' | 'admin' | 'host' }>();
 }
 
 export function cleanCommunitySlug(value: unknown) {

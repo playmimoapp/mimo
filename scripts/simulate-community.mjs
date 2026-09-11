@@ -1,6 +1,12 @@
-import { KeyPair } from '@nimiq/core';
+import { Hash, KeyPair } from '@nimiq/core';
 
 const base = (process.argv[2] || 'http://127.0.0.1:8787').replace(/\/$/, '');
+function signMessage(keyPair, message) {
+  const data = new TextEncoder().encode(
+    `\x16Nimiq Signed Message:\n${message.length}${message}`,
+  );
+  return keyPair.sign(Hash.computeSha256(data));
+}
 async function request(path, options = {}) {
   const response = await fetch(`${base}${path}`, {
     ...options,
@@ -16,7 +22,7 @@ function assert(value, message) {
 
 const challenge = await request('/api/account/challenge', { method: 'POST' });
 const keyPair = KeyPair.generate();
-const signature = keyPair.sign(new TextEncoder().encode(challenge.message));
+const signature = signMessage(keyPair, challenge.message);
 const account = await request('/api/account/verify', {
   method: 'POST',
   body: JSON.stringify({

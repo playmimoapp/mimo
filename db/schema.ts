@@ -24,6 +24,9 @@ export const communities = sqliteTable(
     nextEventAt: integer('next_event_at', { mode: 'timestamp_ms' }),
     seasonName: text('season_name').notNull().default('Season 1'),
     seasonStartedAt: integer('season_started_at').notNull().default(0),
+    xUrl: text('x_url'),
+    discordUrl: text('discord_url'),
+    telegramUrl: text('telegram_url'),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -36,10 +39,16 @@ export const accounts = sqliteTable(
     id: text('id').primaryKey(),
     walletHash: text('wallet_hash').notNull(),
     displayName: text('display_name').notNull().default(''),
+    handle: text('handle'),
+    bio: text('bio').notNull().default(''),
+    profileStyle: text('profile_style').notNull().default('hype'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [uniqueIndex('idx_accounts_wallet_hash').on(t.walletHash)],
+  (t) => [
+    uniqueIndex('idx_accounts_wallet_hash').on(t.walletHash),
+    uniqueIndex('idx_accounts_handle').on(t.handle),
+  ],
 );
 
 export const accountChallenges = sqliteTable(

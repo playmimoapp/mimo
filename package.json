@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "test:room": "node scripts/simulate-room.mjs",
     "test:community": "node scripts/simulate-community.mjs",
+    "test:identity": "node scripts/simulate-identity.mjs",
     "vault:create:test": "node scripts/create-test-vault.mjs"
   },
   "dependencies": {

@@ -1,7 +1,11 @@
 import { getD1 } from '@/db';
 import { json } from '@/lib/live-room';
 import { del, put } from '@vercel/blob';
-import { cleanCommunitySlug, getAccountBySession } from '@/lib/mimo-account';
+import {
+  cleanCommunitySlug,
+  getAccountBySession,
+  getCommunityRole,
+} from '@/lib/mimo-account';
 
 const TYPES = new Map([
   ['image/png', { ext: 'png', magic: [0x89, 0x50, 0x4e, 0x47] }],
@@ -36,9 +40,10 @@ export async function POST(
   const slug = cleanCommunitySlug((await context.params).slug);
   const community = await findCommunity(slug);
   if (!community) return json({ error: 'That community does not exist.' }, 404);
-  if (community.ownerWalletHash !== account.walletHash)
+  const membership = await getCommunityRole(slug, account);
+  if (!membership || membership.role === 'host')
     return json(
-      { error: 'Only this community owner can change its picture.' },
+      { error: 'Only an owner or admin can change this picture.' },
       403,
     );
   const form = await request.formData();

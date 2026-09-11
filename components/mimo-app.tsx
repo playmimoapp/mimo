@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
@@ -18,16 +19,13 @@ import {
   PenLine,
   Plus,
   Radio,
+  Search,
   ShieldCheck,
   Sparkles,
   Trash2,
   Trophy,
   Users,
 } from 'lucide-react';
-import {
-  CommunityStudio,
-  PublicCommunity,
-} from '@/components/community-studio';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { LiveRoom } from '@/components/live-room';
@@ -38,6 +36,22 @@ import {
 } from '@/components/mimo-host';
 import { MIMO_PROFILES, type MimoProfileStyle } from '@/lib/mimo-profile';
 
+const CommunityStudio = dynamic(() =>
+  import('@/components/community-studio').then(
+    (module) => module.CommunityStudio,
+  ),
+);
+const PublicCommunity = dynamic(() =>
+  import('@/components/community-studio').then(
+    (module) => module.PublicCommunity,
+  ),
+);
+const CommunityDirectory = dynamic(() =>
+  import('@/components/community-studio').then(
+    (module) => module.CommunityDirectory,
+  ),
+);
+
 type Screen =
   | 'home'
   | 'create_choice'
@@ -45,6 +59,7 @@ type Screen =
   | 'create'
   | 'preview'
   | 'studio'
+  | 'directory'
   | 'community'
   | 'join'
   | 'live_host'
@@ -215,11 +230,13 @@ function Header({
   back,
   host,
   studio,
+  discover,
   context,
 }: {
   back?: () => void;
   host?: () => void;
   studio?: () => void;
+  discover?: () => void;
   context?: string;
 }) {
   return (
@@ -242,6 +259,16 @@ function Header({
         )}
       </div>
       <div className="flex items-center gap-2">
+        {discover && (
+          <button
+            onClick={discover}
+            aria-label="Discover communities"
+            className="grid h-10 w-10 place-items-center rounded-full text-[#29445f] hover:bg-white sm:flex sm:w-auto sm:gap-2 sm:px-3 sm:text-sm sm:font-extrabold"
+          >
+            <Search size={17} />{' '}
+            <span className="hidden sm:inline">Discover</span>
+          </button>
+        )}
         {studio && (
           <button
             onClick={studio}
@@ -433,8 +460,41 @@ export function MimoApp() {
   }, []);
 
   useEffect(() => {
+    const session = window.localStorage.getItem('mimo:studio:session') ?? '';
+    if (!session) return;
+    const controller = new AbortController();
+    void fetch('/api/account/profile', {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: { 'x-mimo-account': session },
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as {
+          profile?: { displayName?: string; profileStyle?: MimoProfileStyle };
+        };
+        if (body.profile?.displayName) setName(body.profile.displayName);
+        if (
+          body.profile?.profileStyle &&
+          MIMO_PROFILES.some(({ id }) => id === body.profile?.profileStyle)
+        )
+          setProfileStyle(body.profile.profileStyle);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     const initial = window.setTimeout(() => {
       const query = new URLSearchParams(window.location.search);
+      if (query.get('discover') === '1') {
+        setScreen('directory');
+        return;
+      }
+      if (query.get('communityInvite')) {
+        setScreen('studio');
+        return;
+      }
       const linkedCommunity =
         query
           .get('community')
@@ -702,6 +762,7 @@ export function MimoApp() {
           screen === 'create' ||
           screen === 'preview' ||
           screen === 'studio' ||
+          screen === 'directory' ||
           screen === 'community' ||
           screen === 'join'
             ? goBack
@@ -709,6 +770,14 @@ export function MimoApp() {
         }
         host={screen === 'home' ? () => setScreen('create_choice') : undefined}
         studio={screen === 'home' ? () => setScreen('studio') : undefined}
+        discover={
+          screen === 'home'
+            ? () => {
+                window.history.replaceState({}, '', '/?discover=1');
+                setScreen('directory');
+              }
+            : undefined
+        }
         context={
           ['create_choice', 'create_assisted', 'create', 'preview'].includes(
             screen,
@@ -716,11 +785,13 @@ export function MimoApp() {
             ? 'Create an event'
             : screen === 'studio'
               ? 'Community Studio'
-              : screen === 'community'
-                ? 'Community home'
-                : screen === 'join'
-                  ? `Join ${roomCode}`
-                  : undefined
+              : screen === 'directory'
+                ? 'Discover'
+                : screen === 'community'
+                  ? 'Community home'
+                  : screen === 'join'
+                    ? `Join ${roomCode}`
+                    : undefined
         }
       />
       {['create_choice', 'create_assisted', 'create', 'preview'].includes(
@@ -805,6 +876,15 @@ export function MimoApp() {
               }}
             />
           )}
+          {screen === 'directory' && (
+            <CommunityDirectory
+              openCommunity={(slug) => {
+                setCommunitySlug(slug);
+                window.history.replaceState({}, '', `/?community=${slug}`);
+                setScreen('community');
+              }}
+            />
+          )}
           {screen === 'community' && communitySlug && (
             <PublicCommunity
               slug={communitySlug}
@@ -883,7 +963,7 @@ function ProductHome({
     return () => window.clearInterval(timer);
   }, []);
   return (
-    <section className="mobile-page mx-auto grid min-h-[calc(100dvh-60px)] max-w-[1240px] gap-6 px-5 pb-10 pt-2 sm:min-h-[calc(100dvh-72px)] sm:px-8 lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:items-center lg:gap-12 lg:py-8 xl:gap-16">
+    <section className="mobile-page mx-auto grid max-w-[1240px] gap-6 px-5 pb-8 pt-2 sm:px-8 lg:min-h-[calc(100dvh-72px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:items-center lg:gap-12 lg:py-8 xl:gap-16">
       <div className="order-2 pb-3 lg:order-1">
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
           Live inside Nimiq Pay

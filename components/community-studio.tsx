@@ -11,6 +11,7 @@ import {
   Clock3,
   Copy,
   ExternalLink,
+  LogOut,
   Plus,
   Repeat2,
   Search,
@@ -470,9 +471,9 @@ export function CommunityStudio({
             </button>
             <button
               onClick={() => void signOut()}
-              className="text-xs font-bold text-[#718295] underline-offset-4 hover:underline"
+              className="inline-flex h-10 items-center gap-1.5 px-2 text-sm font-extrabold text-[#607486] transition hover:text-[#b24434]"
             >
-              Sign out
+              <LogOut size={15} /> Sign out
             </button>
           </div>
         </section>
@@ -1628,6 +1629,12 @@ export function PublicCommunity({
               <Button
                 onClick={() => void toggleFollow()}
                 disabled={followWorking}
+                aria-label={
+                  following
+                    ? `Unfollow ${data.community.name}`
+                    : `Follow ${data.community.name}`
+                }
+                title={following ? 'Tap to unfollow' : undefined}
                 variant="outline"
                 className={`h-11 rounded-full px-4 font-extrabold ${following ? 'border-[#8fc9aa] bg-[#edf9f1] text-[#237044]' : 'bg-white'}`}
               >

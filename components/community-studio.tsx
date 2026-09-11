@@ -102,7 +102,7 @@ export function CommunityStudio({
       }
       throw new Error(
         response.status === 401
-          ? 'Sign in to open your communities.'
+          ? 'Sign again to continue. Your profile and communities are safe.'
           : 'Studio could not load.',
       );
     }
@@ -126,7 +126,11 @@ export function CommunityStudio({
         window.localStorage.removeItem('mimo:studio:session');
         setSession('');
       }
-      throw new Error(body.error || 'Your profile could not load.');
+      throw new Error(
+        response.status === 401
+          ? 'Sign again to continue. Your profile and communities are safe.'
+          : body.error || 'Your profile could not load.',
+      );
     }
     setProfile(body.profile);
     setNotifications(body.notifications ?? []);
@@ -363,8 +367,7 @@ export function CommunityStudio({
               />
               <span>
                 Nimiq Pay confirms this Studio belongs to you. Signing in cannot
-                move NIM. Access expires after 7 days; sign again with the same
-                wallet and everything returns.
+                move NIM.
               </span>
             </div>
             <Button

@@ -115,8 +115,21 @@ function cleanLine(value: unknown) {
     .slice(0, 120);
 }
 
-function extractText(payload: { output_text?: unknown }) {
-  return typeof payload.output_text === 'string' ? payload.output_text : '';
+function extractText(payload: {
+  output_text?: unknown;
+  steps?: Array<{
+    type?: unknown;
+    content?: Array<{ type?: unknown; text?: unknown }>;
+  }>;
+}) {
+  if (typeof payload.output_text === 'string') return payload.output_text;
+  const modelStep = [...(payload.steps ?? [])]
+    .reverse()
+    .find((step) => step.type === 'model_output');
+  return (modelStep?.content ?? [])
+    .filter((item) => item.type === 'text' && typeof item.text === 'string')
+    .map((item) => String(item.text))
+    .join('');
 }
 
 export async function POST(
@@ -305,7 +318,9 @@ quotes, emojis or crypto hype. Return only the requested JSON.`;
       },
     );
     if (!response.ok) throw new Error(`gemini_${response.status}`);
-    const payload = (await response.json()) as { output_text?: unknown };
+    const payload = (await response.json()) as Parameters<
+      typeof extractText
+    >[0];
     const generated = JSON.parse(extractText(payload)) as {
       line?: unknown;
       mood?: unknown;

@@ -69,9 +69,21 @@ function clean(value: unknown, max: number) {
   return (typeof value === 'string' ? value : '').trim().slice(0, max);
 }
 
-function extractText(payload: { output_text?: unknown }) {
+function extractText(payload: {
+  output_text?: unknown;
+  steps?: Array<{
+    type?: unknown;
+    content?: Array<{ type?: unknown; text?: unknown }>;
+  }>;
+}) {
   if (typeof payload.output_text === 'string') return payload.output_text;
-  return '';
+  const modelStep = [...(payload.steps ?? [])]
+    .reverse()
+    .find((step) => step.type === 'model_output');
+  return (modelStep?.content ?? [])
+    .filter((item) => item.type === 'text' && typeof item.text === 'string')
+    .map((item) => String(item.text))
+    .join('');
 }
 
 function validDraft(value: unknown): value is GeneratedDraft {
@@ -221,7 +233,9 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
       );
     }
 
-    const payload = (await response.json()) as { output_text?: unknown };
+    const payload = (await response.json()) as Parameters<
+      typeof extractText
+    >[0];
     const draft = JSON.parse(extractText(payload)) as unknown;
     if (!validDraft(draft)) throw new Error('invalid_draft');
 

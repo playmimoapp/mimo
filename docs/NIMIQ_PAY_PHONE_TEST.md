@@ -1,24 +1,42 @@
-# Mimo real-phone check
+# Nimiq Pay real-phone release check
 
-This is the final human check before calling the Nimiq Pay experience verified.
+Use the production Mini App URL: `https://mimo-flax.vercel.app`.
 
-## Two-minute happy path
+Run this once on an iPhone-sized device and once on an Android-sized device inside Nimiq Pay. Use two additional phones or browsers as participants.
 
-1. Open the production Mimo link inside Nimiq Pay on Phone A.
-2. Host a three-round event with a small NIM reward.
-3. Open its invite on Phone B, join with a nickname, and tap **Verify wallet**.
-4. Confirm that Nimiq Pay asks to expose an account and then asks to sign the one-time room message. No transaction dialog should appear.
-5. Play all rounds. Confirm that reactions appear on both phones, the timer stays aligned, answers lock once, and scores reveal together.
-6. Finish the event. On the winner’s phone, copy the payout address. On the host phone, paste it into the payout card.
-7. Confirm the host sees the exact amount and shortened recipient before Nimiq Pay asks for payment approval.
-8. Approve the small payment. Mimo must say **submitted**, not **confirmed**, until network confirmation is independently observed.
+## Creator journey
 
-## Failure checks
+- Open Studio and sign the one-time ownership challenge.
+- Create a community with a profile picture.
+- Set a recurring schedule and open its permanent public page.
+- Create an event, add two rounds and rehearse them.
+- Check that the QR code fits without horizontal scrolling.
+- Open the lobby and confirm that arrivals appear without refreshing.
+- Start, pause, extend and resume the event.
 
-- Close the account/signature prompt. Mimo should say nothing changed and let the participant retry.
-- Turn off the network during a round, restore it, and confirm the same participant and locked answer return.
-- Enter a different payout address. The server must reject it because it does not match the winner’s verified wallet fingerprint.
-- Close the payment prompt. Mimo should say no NIM moved and let the host retry.
-- Open a private room without its invite link. Entry must be rejected.
+## Participant journey
 
-Record the phone model, OS, Nimiq Pay version, date, result, and any screen recording. Do not mark this check complete from a desktop simulation.
+- Join from the community page, direct link and QR code.
+- Choose a Mimo profile and nickname.
+- Confirm that free play never requires a wallet.
+- Lock an answer and confirm the visual, vibration and optional sound feedback.
+- Leave during a round, reopen the link and confirm session recovery.
+- Cancel a wallet signature and confirm that the room remains usable.
+
+## NIM journey
+
+- Only run this section when the production capability screen reports genuine TestAlbatross funding as available.
+- Fund the declared reward in Nimiq Pay and record the transaction hash.
+- Confirm that the room cannot start before funding is verified.
+- Complete the event with a wallet-verified eligible participant.
+- Confirm automatic payout submission, network confirmation and transaction proof.
+- Cancel a funded lobby before play and confirm the refund transaction.
+- Never record a submitted transaction as confirmed until the network verifies it.
+
+## Visual and performance evidence
+
+- Capture welcome, Studio, community, lobby, question, reveal, results and payment states.
+- Check 320 px, 390 px and a large phone width with no clipping or zooming.
+- Confirm buttons remain reachable above the device safe area and keyboard.
+- Record cold launch time, warm launch time and any request taking longer than one second.
+- Record device, operating system, Nimiq Pay version, room code and outcome for every failure.

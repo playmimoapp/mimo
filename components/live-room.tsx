@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import QRCode from 'qrcode';
@@ -21,6 +21,8 @@ import {
   Users,
   WalletCards,
   TimerReset,
+  Volume2,
+  VolumeX,
   XCircle,
   Zap,
 } from 'lucide-react';
@@ -51,6 +53,7 @@ import {
 } from '@/components/mimo-host';
 import type { LiveRoomState, MimoHostCue } from '@/lib/live-room-types';
 import { MimoNimiq } from '@/lib/nimiq';
+import { useMimoSound } from '@/lib/use-mimo-sound';
 
 type LiveRoomProps = {
   code: string;
@@ -147,6 +150,17 @@ export function LiveRoom({
   const reduceMotion = useReducedMotion();
   const [reactionBusy, setReactionBusy] = useState(false);
   const [aiCue, setAiCue] = useState<MimoHostCue | null>(null);
+  const {
+    enabled: soundEnabled,
+    play: playSound,
+    toggle: toggleSound,
+  } = useMimoSound();
+  const previousRoom = useRef<{
+    status: LiveRoomState['status'];
+    players: number;
+    rewardState: LiveRoomState['rewardState'];
+  } | null>(null);
+  const previousSecond = useRef<number | null>(null);
 
   const inviteUrl = useCallback(
     () =>
@@ -236,6 +250,43 @@ export function LiveRoom({
   const seconds = room?.deadline
     ? Math.max(0, Math.ceil((room.deadline - now) / 1000))
     : null;
+
+  useEffect(() => {
+    if (!room) return;
+    const previous = previousRoom.current;
+    if (previous) {
+      if (room.players.length > previous.players) playSound('arrival');
+      if (previous.status === 'lobby' && room.status === 'live')
+        playSound('start');
+      if (previous.status === 'live' && room.status === 'verifying')
+        playSound('reveal');
+      if (previous.status !== 'complete' && room.status === 'complete')
+        playSound('complete');
+      if (
+        previous.rewardState !== 'payout_confirmed' &&
+        room.rewardState === 'payout_confirmed'
+      )
+        playSound('reward');
+    }
+    previousRoom.current = {
+      status: room.status,
+      players: room.players.length,
+      rewardState: room.rewardState,
+    };
+  }, [playSound, room]);
+
+  useEffect(() => {
+    if (
+      room?.status === 'live' &&
+      seconds !== null &&
+      seconds > 0 &&
+      seconds <= 3 &&
+      previousSecond.current !== seconds
+    ) {
+      playSound('tick');
+    }
+    previousSecond.current = seconds;
+  }, [playSound, room?.status, seconds]);
   const answeredCount =
     room?.players.filter((player) => player.answerLocked).length ?? 0;
   const autoHost = room?.autoHostEnabled ?? true;
@@ -369,6 +420,7 @@ export function LiveRoom({
       });
       if (!response.ok) throw new Error(await getError(response));
       setLocked(true);
+      playSound('lock');
       window.sessionStorage.setItem(
         `mimo:${code}:${room?.activeRoundId}:choice`,
         String(choice),
@@ -623,6 +675,16 @@ export function LiveRoom({
           </strong>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleSound}
+            aria-label={
+              soundEnabled ? 'Mute Mimo sounds' : 'Turn on Mimo sounds'
+            }
+            aria-pressed={soundEnabled}
+            className="grid h-10 w-10 place-items-center rounded-full border border-[#bdc8cf] bg-white text-[#29445f]"
+          >
+            {soundEnabled ? <Volume2 size={17} /> : <VolumeX size={17} />}
+          </button>
           {mode === 'host' &&
             !['lobby', 'complete', 'cancelled'].includes(room.status) && (
               <button

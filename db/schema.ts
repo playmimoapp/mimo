@@ -22,6 +22,8 @@ export const communities = sqliteTable(
       .notNull()
       .default('none'),
     nextEventAt: integer('next_event_at', { mode: 'timestamp_ms' }),
+    seasonName: text('season_name').notNull().default('Season 1'),
+    seasonStartedAt: integer('season_started_at').notNull().default(0),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },

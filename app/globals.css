@@ -126,6 +126,28 @@ button {
   line-height: 1.35;
   box-shadow: 0 8px 24px rgba(35, 63, 89, 0.08);
 }
+.mimo-cue-message::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  bottom: 12px;
+  width: 14px;
+  height: 14px;
+  border-left: 1px solid #cedae4;
+  border-bottom: 1px solid #cedae4;
+  background: inherit;
+  transform: rotate(45deg);
+}
+.mimo-cue[data-mood='happy'] .mimo-cue-message {
+  border-color: #9bc9ae;
+  border-radius: 20px 20px 20px 6px;
+  background: #f2fbf5;
+}
+.mimo-cue[data-mood='thinking'] .mimo-cue-message {
+  border-color: #d7c276;
+  border-radius: 22px 22px 7px 22px;
+  background: #fff9df;
+}
 .mimo-cue-dark .mimo-cue-character {
   background: #2b4663;
 }
@@ -134,6 +156,9 @@ button {
   background: #29445f;
   color: #fff;
   box-shadow: none;
+}
+.mimo-cue-dark .mimo-cue-message::before {
+  border-color: rgba(255, 255, 255, 0.14);
 }
 .mobile-only {
   display: none;
@@ -417,6 +442,13 @@ button {
   .creator-form-shell {
     margin-top: 22px !important;
     gap: 22px !important;
+  }
+  .creator-mobile-hidden,
+  .creator-round-mobile-hidden {
+    display: none !important;
+  }
+  .creator-editor-nav {
+    display: grid;
   }
   .creator-segments {
     gap: 20px !important;

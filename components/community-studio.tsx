@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowRight,
+  Bell,
   CalendarDays,
   Camera,
   Check,
@@ -12,6 +13,7 @@ import {
   Copy,
   Repeat2,
   ShieldCheck,
+  Trophy,
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,8 @@ type Community = {
   createdAt: number;
   recurrence: 'none' | 'weekly' | 'fortnightly' | 'monthly';
   nextEventAt: number | null;
+  seasonName: string;
+  seasonStartedAt: number;
 };
 
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
@@ -479,6 +483,8 @@ function CommunityCard({
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
+  const [editingSeason, setEditingSeason] = useState(false);
+  const [seasonName, setSeasonName] = useState(community.seasonName);
   const [recurrence, setRecurrence] = useState<Community['recurrence']>(
     community.recurrence,
   );
@@ -520,6 +526,33 @@ function CommunityCard({
         cause instanceof Error
           ? cause.message
           : 'The schedule could not be saved.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+  async function startSeason() {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(`/api/communities/${community.slug}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mimo-account': session,
+        },
+        body: JSON.stringify({ action: 'new_season', seasonName }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'The season could not be started.');
+      setEditingSeason(false);
+      onSaved();
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'The season could not be started.',
       );
     } finally {
       setSavingSchedule(false);
@@ -608,6 +641,42 @@ function CommunityCard({
                 {scheduleError}
               </p>
             )}
+          </div>
+        )}
+        <div className="mt-3 flex items-center justify-between gap-4 rounded-[16px] bg-[#f8f5ea] px-4 py-3">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-extrabold">
+              <Trophy size={15} className="text-[#a97800]" />{' '}
+              {community.seasonName}
+            </p>
+            <p className="mt-1 text-xs font-bold text-[#718295]">
+              Scores from completed events build this standing.
+            </p>
+          </div>
+          <button
+            onClick={() => setEditingSeason((value) => !value)}
+            className="shrink-0 text-xs font-extrabold text-[#8a6700]"
+          >
+            New season
+          </button>
+        </div>
+        {editingSeason && (
+          <div className="mt-2 flex flex-col gap-2 rounded-[16px] border border-[#dfcf91] bg-[#fffaf0] p-3 sm:flex-row">
+            <input
+              value={seasonName}
+              onChange={(event) => setSeasonName(event.target.value)}
+              maxLength={40}
+              aria-label="New season name"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-[#d7c57d] bg-white px-3 font-bold"
+              placeholder="October League"
+            />
+            <Button
+              onClick={() => void startSeason()}
+              disabled={savingSchedule || seasonName.trim().length < 2}
+              className="h-11 rounded-xl bg-[#203752] px-4 font-extrabold text-white"
+            >
+              Start fresh
+            </Button>
           </div>
         )}
         <div className="mt-5 flex flex-wrap gap-2">
@@ -710,8 +779,16 @@ export function PublicCommunity({
       rewardAmount: number | null;
       scores: Array<{ nickname: string; score: number }>;
     }>;
+    standings: Array<{
+      nickname: string;
+      points: number;
+      eventsPlayed: number;
+      wins: number;
+    }>;
   } | null>(null);
   const [error, setError] = useState('');
+  const [following, setFollowing] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   useEffect(() => {
     void fetch(`/api/communities/${slug}`, { cache: 'no-store' })
       .then(async (response) => {
@@ -728,19 +805,37 @@ export function PublicCommunity({
             rewardAmount: number | null;
             scores: Array<{ nickname: string; score: number }>;
           }>;
+          standings?: Array<{
+            nickname: string;
+            points: number;
+            eventsPlayed: number;
+            wins: number;
+          }>;
           error?: string;
         };
         if (!response.ok)
           throw new Error(body.error || 'Community could not load.');
-        if (!body.community || !body.events)
+        if (!body.community || !body.events || !body.standings)
           throw new Error('Community could not load.');
-        setData({ community: body.community, events: body.events });
+        setData({
+          community: body.community,
+          events: body.events,
+          standings: body.standings,
+        });
       })
       .catch((cause) =>
         setError(
           cause instanceof Error ? cause.message : 'Community could not load.',
         ),
       );
+  }, [slug]);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() =>
+      setFollowing(
+        window.localStorage.getItem(`mimo:follow:${slug}`) === 'yes',
+      ),
+    );
+    return () => window.cancelAnimationFrame(frame);
   }, [slug]);
   if (!data)
     return (
@@ -761,6 +856,47 @@ export function PublicCommunity({
   const completed = data.events
     .filter((event) => event.status === 'complete')
     .sort((a, b) => b.createdAt - a.createdAt);
+  const toggleFollow = () => {
+    setFollowing((current) => {
+      const nextValue = !current;
+      window.localStorage.setItem(
+        `mimo:follow:${slug}`,
+        nextValue ? 'yes' : 'no',
+      );
+      return nextValue;
+    });
+  };
+  const addToCalendar = () => {
+    if (!nextTime) return;
+    const start = new Date(nextTime);
+    const end = new Date(nextTime + 60 * 60_000);
+    const stamp = (date: Date) =>
+      date
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\.\d{3}Z$/, 'Z');
+    const calendar = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Mimo//Community Event//EN',
+      'BEGIN:VEVENT',
+      `UID:${slug}-${nextTime}@playmimo.app`,
+      `DTSTART:${stamp(start)}`,
+      `DTEND:${stamp(end)}`,
+      `SUMMARY:${(next?.title ?? `${data.community.name} Mimo`).replace(/[,;]/g, '')}`,
+      `URL:${window.location.href}`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    const url = URL.createObjectURL(
+      new Blob([calendar], { type: 'text/calendar' }),
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${slug}-next-mimo.ics`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   return (
     <StudioShell>
       <section className="overflow-hidden rounded-[32px] border border-[#d9dee3] bg-white shadow-[0_24px_70px_rgba(26,47,80,.09)]">
@@ -784,6 +920,25 @@ export function PublicCommunity({
               {data.community.description ||
                 'A community that plays together on Mimo.'}
             </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Button
+                onClick={toggleFollow}
+                variant="outline"
+                className={`h-11 rounded-full px-4 font-extrabold ${following ? 'border-[#8fc9aa] bg-[#edf9f1] text-[#237044]' : 'bg-white'}`}
+              >
+                <Bell size={16} />{' '}
+                {following ? 'Following' : 'Follow community'}
+              </Button>
+              {nextTime && (
+                <Button
+                  onClick={addToCalendar}
+                  variant="outline"
+                  className="h-11 rounded-full bg-white px-4 font-extrabold"
+                >
+                  <CalendarDays size={16} /> Add to calendar
+                </Button>
+              )}
+            </div>
           </div>
           <div className="rounded-[24px] bg-[#f3f7fa] p-5">
             <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#c94f3b]">
@@ -844,6 +999,50 @@ export function PublicCommunity({
           </div>
         </div>
       </section>
+      {data.standings.length > 0 && (
+        <section className="mt-6 overflow-hidden rounded-[26px] border border-[#d7dfe4] bg-white">
+          <div className="flex items-end justify-between gap-4 border-b border-[#e0e5e8] px-5 py-4 sm:px-6">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.13em] text-[#a97800]">
+                {data.community.seasonName}
+              </p>
+              <h2 className="font-display mt-1 text-2xl font-extrabold">
+                Community standings
+              </h2>
+            </div>
+            <span className="text-xs font-bold text-[#718295]">
+              Verified by results
+            </span>
+          </div>
+          <ol>
+            {data.standings.slice(0, 10).map((standing, index) => (
+              <li
+                key={`${standing.nickname}-${index}`}
+                className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-[#edf0f2] px-5 py-3 last:border-0 sm:px-6"
+              >
+                <span
+                  className={`font-display text-lg font-extrabold ${index < 3 ? 'text-[#a97800]' : 'text-[#8b98a3]'}`}
+                >
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <strong className="block truncate">
+                    {standing.nickname}
+                  </strong>
+                  <span className="text-xs font-bold text-[#718295]">
+                    {standing.eventsPlayed}{' '}
+                    {standing.eventsPlayed === 1 ? 'event' : 'events'} ·{' '}
+                    {standing.wins} {standing.wins === 1 ? 'win' : 'wins'}
+                  </span>
+                </div>
+                <strong className="font-display text-lg">
+                  {standing.points.toLocaleString()}
+                </strong>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
       {completed.length > 0 && (
         <section className="mt-6 border-t border-[#d7dde1] pt-6">
           <div className="flex items-end justify-between gap-4">
@@ -860,43 +1059,56 @@ export function PublicCommunity({
             </span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {completed.slice(0, 3).map((event) => (
-              <article
-                key={`${event.title}-${event.startsAt ?? event.roomCode}`}
-                className="rounded-[20px] border border-[#d8dfe4] bg-white p-4"
-              >
-                <span className="text-xs font-extrabold uppercase tracking-[.1em] text-[#19805b]">
-                  Complete
-                </span>
-                <h3 className="mt-2 font-extrabold">{event.title}</h3>
-                <p className="mt-1 text-xs font-bold text-[#718295]">
-                  {event.playerCount}{' '}
-                  {event.playerCount === 1 ? 'player' : 'players'}
-                  {event.rewardAmount ? ` · ${event.rewardAmount} NIM` : ''}
-                </p>
-                {event.scores.length > 0 && (
-                  <ol className="mt-4 border-t border-[#e1e6e9] pt-2">
-                    {event.scores.map((score, index) => (
-                      <li
-                        key={`${score.nickname}-${index}`}
-                        className="flex items-center gap-3 py-1.5 text-sm"
-                      >
-                        <span className="w-4 font-display font-extrabold text-[#8a98a4]">
-                          {index + 1}
-                        </span>
-                        <strong className="min-w-0 flex-1 truncate">
-                          {score.nickname}
-                        </strong>
-                        <span className="font-display font-extrabold">
-                          {score.score.toLocaleString()}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </article>
-            ))}
+            {(showAllHistory ? completed : completed.slice(0, 3)).map(
+              (event) => (
+                <article
+                  key={`${event.title}-${event.startsAt ?? event.roomCode}`}
+                  className="rounded-[20px] border border-[#d8dfe4] bg-white p-4"
+                >
+                  <span className="text-xs font-extrabold uppercase tracking-[.1em] text-[#19805b]">
+                    Complete
+                  </span>
+                  <h3 className="mt-2 font-extrabold">{event.title}</h3>
+                  <p className="mt-1 text-xs font-bold text-[#718295]">
+                    {event.playerCount}{' '}
+                    {event.playerCount === 1 ? 'player' : 'players'}
+                    {event.rewardAmount ? ` · ${event.rewardAmount} NIM` : ''}
+                  </p>
+                  {event.scores.length > 0 && (
+                    <ol className="mt-4 border-t border-[#e1e6e9] pt-2">
+                      {event.scores.map((score, index) => (
+                        <li
+                          key={`${score.nickname}-${index}`}
+                          className="flex items-center gap-3 py-1.5 text-sm"
+                        >
+                          <span className="w-4 font-display font-extrabold text-[#8a98a4]">
+                            {index + 1}
+                          </span>
+                          <strong className="min-w-0 flex-1 truncate">
+                            {score.nickname}
+                          </strong>
+                          <span className="font-display font-extrabold">
+                            {score.score.toLocaleString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </article>
+              ),
+            )}
           </div>
+          {completed.length > 3 && (
+            <Button
+              onClick={() => setShowAllHistory((value) => !value)}
+              variant="outline"
+              className="mt-4 h-11 rounded-full bg-white px-5 font-extrabold"
+            >
+              {showAllHistory
+                ? 'Show less'
+                : `See all ${completed.length} events`}
+            </Button>
+          )}
         </section>
       )}
       <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-[#dae2e8] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">

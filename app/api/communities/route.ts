@@ -10,7 +10,8 @@ export async function GET(request: Request) {
   const communities = await getD1()
     .prepare(`SELECT slug, name, description, accent_color AS accentColor,
       avatar_key IS NOT NULL AS hasAvatar, recurrence,
-      next_event_at AS nextEventAt, created_at AS createdAt
+      next_event_at AS nextEventAt, season_name AS seasonName,
+      season_started_at AS seasonStartedAt, created_at AS createdAt
       FROM communities WHERE owner_wallet_hash = ? ORDER BY created_at DESC`)
     .bind(account.walletHash)
     .all();
@@ -47,8 +48,9 @@ export async function POST(request: Request) {
   const now = Date.now();
   await getD1()
     .prepare(`INSERT INTO communities
-      (id, slug, name, description, owner_wallet_hash, avatar_key, accent_color, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`)
+      (id, slug, name, description, owner_wallet_hash, avatar_key, accent_color,
+        season_started_at, updated_at, created_at)
+      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
     .bind(
       id,
       slug,
@@ -56,6 +58,7 @@ export async function POST(request: Request) {
       description,
       account.walletHash,
       accentColor,
+      now,
       now,
       now,
     )
@@ -70,6 +73,8 @@ export async function POST(request: Request) {
         hasAvatar: false,
         recurrence: 'none',
         nextEventAt: null,
+        seasonName: 'Season 1',
+        seasonStartedAt: now,
         createdAt: now,
       },
     },

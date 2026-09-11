@@ -307,8 +307,8 @@ function CreationRail({ screen }: { screen: Screen }) {
 
 function ProductFooter() {
   return (
-    <footer className="app-frame mt-10 border-t border-[#d7dcdf] py-8 sm:mt-16">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+    <footer className="mt-10 border-t border-[#d7e0e6] bg-[#eef5fa] sm:mt-16">
+      <div className="app-frame flex flex-col gap-6 py-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <Image
             src="/mimo-logo.svg"
@@ -321,41 +321,48 @@ function ProductFooter() {
             Live community play, powered by Nimiq.
           </p>
         </div>
-        <nav
-          aria-label="Mimo links"
-          className="flex flex-wrap items-center gap-x-5 gap-y-3"
-        >
+        <nav aria-label="Mimo links" className="flex items-center gap-2">
           <a
             href="https://x.com/playmimoapp"
             target="_blank"
             rel="noreferrer"
-            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+            aria-label="Follow Mimo on X"
+            title="@playmimoapp on X"
+            className="grid h-11 w-11 place-items-center rounded-full border border-[#cbd7df] bg-white text-[#203752] transition hover:-translate-y-0.5 hover:border-[#8ba9c3]"
           >
-            @playmimoapp
+            <svg
+              viewBox="0 0 24 24"
+              className="h-[17px] w-[17px]"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+              />
+            </svg>
           </a>
           <a
             href="https://github.com/playmimoapp/mimo"
             target="_blank"
             rel="noreferrer"
-            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+            aria-label="View Mimo on GitHub"
+            title="Mimo on GitHub"
+            className="grid h-11 w-11 place-items-center rounded-full border border-[#cbd7df] bg-white text-[#203752] transition hover:-translate-y-0.5 hover:border-[#8ba9c3]"
           >
-            GitHub
-          </a>
-          <a
-            href="https://github.com/playmimoapp/mimo/blob/main/LICENSE"
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
-          >
-            MIT License
+            <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 .7C5.65.7.5 5.85.5 12.2c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.23c-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.16 1.18a10.96 10.96 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.27 5.68.42.36.78 1.06.78 2.14v3.17c0 .31.21.67.79.56 4.57-1.52 7.85-5.83 7.85-10.91C23.5 5.85 18.35.7 12 .7Z"
+              />
+            </svg>
           </a>
           <a
             href="https://nimiq.com"
             target="_blank"
             rel="noreferrer"
-            className="text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
+            className="ml-2 text-sm font-extrabold text-[#29445f] hover:text-[#1f72d2]"
           >
-            Nimiq
+            Powered by Nimiq
           </a>
         </nav>
       </div>
@@ -1379,6 +1386,12 @@ function CreateEvent({
   mimoFundingAvailable: boolean;
   vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
 }) {
+  const [mobileSection, setMobileSection] = useState<
+    'basics' | 'rounds' | 'access' | 'reward'
+  >('basics');
+  const [activeRound, setActiveRound] = useState(0);
+  const sectionClass = (section: typeof mobileSection) =>
+    mobileSection === section ? '' : 'creator-mobile-hidden';
   const update = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
     setEvent({ ...event, [key]: value });
   const updateRound = (roundIndex: number, patch: Partial<RoundDraft>) => {
@@ -1418,12 +1431,16 @@ function CreateEvent({
   const addRound = (type: RoundType) => {
     if (event.rounds.length >= 8) return;
     update('rounds', [...event.rounds, blankRound(type)]);
+    setActiveRound(event.rounds.length);
   };
   const removeRound = (roundIndex: number) => {
     if (event.rounds.length === 1) return;
     update(
       'rounds',
       event.rounds.filter((_, index) => index !== roundIndex),
+    );
+    setActiveRound((current) =>
+      Math.max(0, Math.min(current, event.rounds.length - 2)),
     );
   };
   const ready = Boolean(
@@ -1456,82 +1473,110 @@ function CreateEvent({
           className="mobile-only mt-5"
           message={`${event.rounds.length} ${event.rounds.length === 1 ? 'round' : 'rounds'} ready. I’ll keep everyone moving together.`}
         />
+        <nav
+          aria-label="Event editor sections"
+          className="mobile-only creator-editor-nav sticky top-0 z-30 -mx-[18px] mt-5 grid-cols-4 gap-1 border-y border-[#d5dade] bg-[#f6f4ef]/95 px-[18px] py-2 backdrop-blur"
+        >
+          {(
+            [
+              ['basics', 'Basics'],
+              ['rounds', 'Rounds'],
+              ['access', 'Guests'],
+              ['reward', 'Reward'],
+            ] as const
+          ).map(([section, label]) => (
+            <button
+              key={section}
+              type="button"
+              onClick={() => setMobileSection(section)}
+              className={`min-h-10 rounded-full px-2 text-xs font-extrabold ${mobileSection === section ? 'bg-[#203752] text-white' : 'text-[#607486]'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
         <div className="creator-form-shell mt-8 grid gap-7">
-          <label className="grid gap-2 text-sm font-extrabold">
-            Community
-            <input
-              value={event.community}
-              onChange={(e) =>
-                setEvent({
-                  ...event,
-                  community: e.target.value,
-                  communitySlug: '',
-                })
-              }
-              disabled={Boolean(event.communitySlug)}
-              maxLength={60}
-              placeholder="e.g. Nimiq Lagos"
-              className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2] disabled:cursor-not-allowed disabled:text-[#53687c]"
-            />
-            {event.communitySlug && (
-              <span className="text-xs font-bold text-[#19805b]">
-                Connected to @{event.communitySlug}
-              </span>
-            )}
-          </label>
-          <label className="grid gap-2 text-sm font-extrabold">
-            Event name
-            <input
-              value={event.title}
-              onChange={(e) => update('title', e.target.value)}
-              maxLength={80}
-              placeholder="e.g. Friday Game Night"
-              className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
-            />
-          </label>
-          <fieldset className="border-y border-[#cfd5d8] py-5">
-            <legend className="px-2 text-sm font-extrabold">When is it?</legend>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => update('startsAt', null)}
-                className={`min-h-20 border-2 p-4 text-left ${event.startsAt === null ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
-              >
-                <Radio size={18} className="text-[#1f72d2]" />
-                <strong className="mt-2 block">Open the room now</strong>
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  update('startsAt', Date.now() + 24 * 60 * 60_000)
+          <div className={`grid gap-7 ${sectionClass('basics')}`}>
+            <label className="grid gap-2 text-sm font-extrabold">
+              Community
+              <input
+                value={event.community}
+                onChange={(e) =>
+                  setEvent({
+                    ...event,
+                    community: e.target.value,
+                    communitySlug: '',
+                  })
                 }
-                className={`min-h-20 border-2 p-4 text-left ${event.startsAt !== null ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
-              >
-                <CalendarDays size={18} className="text-[#203752]" />
-                <strong className="mt-2 block">Schedule it</strong>
-              </button>
-            </div>
-            {event.startsAt !== null && (
-              <label className="mt-4 block text-sm font-extrabold">
-                Guests see this time on the community page
-                <input
-                  type="datetime-local"
-                  value={toLocalDateTime(event.startsAt)}
-                  onChange={(input) =>
-                    update('startsAt', new Date(input.target.value).getTime())
+                disabled={Boolean(event.communitySlug)}
+                maxLength={60}
+                placeholder="e.g. Nimiq Lagos"
+                className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2] disabled:cursor-not-allowed disabled:text-[#53687c]"
+              />
+              {event.communitySlug && (
+                <span className="text-xs font-bold text-[#19805b]">
+                  Connected to @{event.communitySlug}
+                </span>
+              )}
+            </label>
+            <label className="grid gap-2 text-sm font-extrabold">
+              Event name
+              <input
+                value={event.title}
+                onChange={(e) => update('title', e.target.value)}
+                maxLength={80}
+                placeholder="e.g. Friday Game Night"
+                className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
+              />
+            </label>
+            <fieldset className="border-y border-[#cfd5d8] py-5">
+              <legend className="px-2 text-sm font-extrabold">
+                When is it?
+              </legend>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => update('startsAt', null)}
+                  className={`min-h-20 border-2 p-4 text-left ${event.startsAt === null ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
+                >
+                  <Radio size={18} className="text-[#1f72d2]" />
+                  <strong className="mt-2 block">Open the room now</strong>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    update('startsAt', Date.now() + 24 * 60 * 60_000)
                   }
-                  className="mt-2 h-12 w-full rounded-xl border border-[#bdc9d1] bg-white px-4 font-bold sm:max-w-[340px]"
-                />
-              </label>
-            )}
-            {event.communitySlug && event.recurrence !== 'none' && (
-              <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#19805b]">
-                <CalendarDays size={16} /> Part of this community’s{' '}
-                {event.recurrence} schedule
-              </p>
-            )}
-          </fieldset>
-          <div className="border-y border-[#cfd5d8] py-6">
+                  className={`min-h-20 border-2 p-4 text-left ${event.startsAt !== null ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
+                >
+                  <CalendarDays size={18} className="text-[#203752]" />
+                  <strong className="mt-2 block">Schedule it</strong>
+                </button>
+              </div>
+              {event.startsAt !== null && (
+                <label className="mt-4 block text-sm font-extrabold">
+                  Guests see this time on the community page
+                  <input
+                    type="datetime-local"
+                    value={toLocalDateTime(event.startsAt)}
+                    onChange={(input) =>
+                      update('startsAt', new Date(input.target.value).getTime())
+                    }
+                    className="mt-2 h-12 w-full rounded-xl border border-[#bdc9d1] bg-white px-4 font-bold sm:max-w-[340px]"
+                  />
+                </label>
+              )}
+              {event.communitySlug && event.recurrence !== 'none' && (
+                <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#19805b]">
+                  <CalendarDays size={16} /> Part of this community’s{' '}
+                  {event.recurrence} schedule
+                </p>
+              )}
+            </fieldset>
+          </div>
+          <div
+            className={`border-y border-[#cfd5d8] py-6 ${sectionClass('rounds')}`}
+          >
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-extrabold">Room flow</p>
@@ -1545,10 +1590,22 @@ function CreateEvent({
             </div>
 
             <div className="mt-5 grid gap-4">
+              <div className="mobile-only gap-2 overflow-x-auto pb-1">
+                {event.rounds.map((round, index) => (
+                  <button
+                    key={round.id}
+                    type="button"
+                    onClick={() => setActiveRound(index)}
+                    className={`h-10 shrink-0 rounded-full px-4 text-sm font-extrabold ${activeRound === index ? 'bg-[#203752] text-white' : 'border border-[#c8d1d7] bg-white text-[#607486]'}`}
+                  >
+                    Round {index + 1}
+                  </button>
+                ))}
+              </div>
               {event.rounds.map((round, roundIndex) => (
                 <fieldset
                   key={round.id}
-                  className="creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5"
+                  className={`creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5 ${activeRound === roundIndex ? '' : 'creator-round-mobile-hidden'}`}
                 >
                   <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
                     Round {roundIndex + 1}
@@ -1810,233 +1867,237 @@ function CreateEvent({
               One round is enough. Mix formats only when your event needs them.
             </p>
           </div>
-          <div className="flex items-start justify-between gap-5 border-y border-[#cfd5d8] py-5">
-            <div>
-              <p className="flex items-center gap-2 text-sm font-extrabold">
-                <Sparkles size={17} className="text-[#1f72d2]" /> Living Room
-                moments
-              </p>
-              <p className="mt-1 max-w-[560px] text-sm font-medium leading-5 text-[#617486]">
-                Let Mimo hold close poll reveals for a quick room face-off. This
-                never changes your scoring or reward rules.
-              </p>
+          <div className={`grid gap-7 ${sectionClass('access')}`}>
+            <div className="flex items-start justify-between gap-5 border-y border-[#cfd5d8] py-5">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-extrabold">
+                  <Sparkles size={17} className="text-[#1f72d2]" /> Living Room
+                  moments
+                </p>
+                <p className="mt-1 max-w-[560px] text-sm font-medium leading-5 text-[#617486]">
+                  Let Mimo hold close poll reveals for a quick room face-off.
+                  This never changes your scoring or reward rules.
+                </p>
+              </div>
+              <Switch
+                checked={event.adaptiveMoments}
+                onCheckedChange={(checked) =>
+                  update('adaptiveMoments', Boolean(checked))
+                }
+                aria-label="Enable Living Room moments"
+                className="mt-1 data-checked:bg-[#1f72d2]"
+              />
             </div>
-            <Switch
-              checked={event.adaptiveMoments}
-              onCheckedChange={(checked) =>
-                update('adaptiveMoments', Boolean(checked))
-              }
-              aria-label="Enable Living Room moments"
-              className="mt-1 data-checked:bg-[#1f72d2]"
-            />
+            <fieldset>
+              <legend className="text-sm font-extrabold">Who can join?</legend>
+              <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.985 }}
+                  onClick={() => update('accessMode', 'public')}
+                  className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'public' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
+                >
+                  <Globe2 className="text-[#1f72d2]" />
+                  <strong className="mt-3 block text-lg">Public room</strong>
+                  <span className="mt-1 block text-sm text-[#617486]">
+                    Anyone with the room code can join.
+                  </span>
+                </motion.button>
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.985 }}
+                  onClick={() => update('accessMode', 'private')}
+                  className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'private' ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
+                >
+                  <LockKeyhole className="text-[#203752]" />
+                  <strong className="mt-3 block text-lg">Private invite</strong>
+                  <span className="mt-1 block text-sm text-[#617486]">
+                    Only people with the secure link can enter.
+                  </span>
+                </motion.button>
+              </div>
+            </fieldset>
           </div>
-          <fieldset>
-            <legend className="text-sm font-extrabold">Who can join?</legend>
-            <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.985 }}
-                onClick={() => update('accessMode', 'public')}
-                className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'public' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
-              >
-                <Globe2 className="text-[#1f72d2]" />
-                <strong className="mt-3 block text-lg">Public room</strong>
-                <span className="mt-1 block text-sm text-[#617486]">
-                  Anyone with the room code can join.
-                </span>
-              </motion.button>
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.985 }}
-                onClick={() => update('accessMode', 'private')}
-                className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'private' ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
-              >
-                <LockKeyhole className="text-[#203752]" />
-                <strong className="mt-3 block text-lg">Private invite</strong>
-                <span className="mt-1 block text-sm text-[#617486]">
-                  Only people with the secure link can enter.
-                </span>
-              </motion.button>
-            </div>
-          </fieldset>
-          <fieldset>
-            <legend className="text-sm font-extrabold">Reward setup</legend>
-            <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
-              <motion.button
-                whileTap={{ scale: 0.985 }}
-                onClick={() =>
-                  setEvent({
-                    ...event,
-                    rewardMode: 'free',
-                    custodyMode: 'host_wallet',
-                    rewardRule: 'skill',
-                  })
-                }
-                className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'free' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
-              >
-                <Gamepad2 className="text-[#1f72d2]" />
-                <strong className="mt-3 block text-lg">Free game</strong>
-                <span className="mt-1 block text-sm text-[#617486]">
-                  No wallet required.
-                </span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.985 }}
-                onClick={() =>
-                  setEvent({
-                    ...event,
-                    rewardMode: 'nim',
-                    rewardRule: 'skill',
-                    custodyMode: mimoFundingAvailable
-                      ? 'mimo_vault'
-                      : 'host_wallet',
-                  })
-                }
-                className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
-              >
-                <Gift className="text-[#a87600]" />
-                <strong className="mt-3 block text-lg">NIM reward</strong>
-                <span className="mt-1 block text-sm text-[#617486]">
-                  Reward verified skill or participation.
-                </span>
-              </motion.button>
-            </div>
-          </fieldset>
-          {event.rewardMode === 'nim' && (
-            <div className="grid gap-6">
-              <fieldset>
-                <legend className="text-sm font-extrabold">
-                  How is the NIM earned?
-                </legend>
-                <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.985 }}
-                    onClick={() => update('rewardRule', 'skill')}
-                    className={`min-h-28 border-2 p-5 text-left transition ${event.rewardRule === 'skill' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
-                  >
-                    <Trophy className="text-[#a87600]" />
-                    <strong className="mt-3 block text-lg">Skill Drop</strong>
-                    <span className="mt-1 block text-sm text-[#617486]">
-                      The verified first-place player earns the pool.
-                    </span>
-                  </motion.button>
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.985 }}
-                    disabled={!mimoFundingAvailable}
-                    onClick={() => {
-                      if (!mimoFundingAvailable) return;
-                      setEvent({
-                        ...event,
-                        rewardRule: 'community_unlock',
-                        custodyMode: 'mimo_vault',
-                      });
-                    }}
-                    className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${event.rewardRule === 'community_unlock' ? 'border-[#3b9a62] bg-[#edf9f1]' : 'border-[#d5dade] bg-white'}`}
-                  >
-                    <Users className="text-[#2d8a55]" />
-                    <strong className="mt-3 block text-lg">
-                      Community Unlock
-                    </strong>
-                    <span className="mt-1 block text-sm text-[#617486]">
-                      Clear the finale target and verified finishers share the
-                      pool.
-                    </span>
-                  </motion.button>
-                </div>
-                {!mimoFundingAvailable && (
-                  <p className="mt-2 text-xs font-bold text-[#71808c]">
-                    Community Unlock activates with verified Mimo Funded
-                    settlement. It is never offered as a payment promise.
-                  </p>
-                )}
-              </fieldset>
-              <fieldset>
-                <legend className="text-sm font-extrabold">
-                  Where is the reward held?
-                </legend>
-                {mimoFundingAvailable ? (
+          <div className={`grid gap-7 ${sectionClass('reward')}`}>
+            <fieldset>
+              <legend className="text-sm font-extrabold">Reward setup</legend>
+              <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
+                <motion.button
+                  whileTap={{ scale: 0.985 }}
+                  onClick={() =>
+                    setEvent({
+                      ...event,
+                      rewardMode: 'free',
+                      custodyMode: 'host_wallet',
+                      rewardRule: 'skill',
+                    })
+                  }
+                  className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'free' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
+                >
+                  <Gamepad2 className="text-[#1f72d2]" />
+                  <strong className="mt-3 block text-lg">Free game</strong>
+                  <span className="mt-1 block text-sm text-[#617486]">
+                    No wallet required.
+                  </span>
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.985 }}
+                  onClick={() =>
+                    setEvent({
+                      ...event,
+                      rewardMode: 'nim',
+                      rewardRule: 'skill',
+                      custodyMode: mimoFundingAvailable
+                        ? 'mimo_vault'
+                        : 'host_wallet',
+                    })
+                  }
+                  className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                >
+                  <Gift className="text-[#a87600]" />
+                  <strong className="mt-3 block text-lg">NIM reward</strong>
+                  <span className="mt-1 block text-sm text-[#617486]">
+                    Reward verified skill or participation.
+                  </span>
+                </motion.button>
+              </div>
+            </fieldset>
+            {event.rewardMode === 'nim' && (
+              <div className="grid gap-6">
+                <fieldset>
+                  <legend className="text-sm font-extrabold">
+                    How is the NIM earned?
+                  </legend>
                   <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.985 }}
-                      onClick={() => update('custodyMode', 'mimo_vault')}
-                      className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'mimo_vault' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                      onClick={() => update('rewardRule', 'skill')}
+                      className={`min-h-28 border-2 p-5 text-left transition ${event.rewardRule === 'skill' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
                     >
-                      <span className="inline-flex rounded-full bg-[#f7c933] px-2.5 py-1 text-xs font-extrabold text-[#624a00]">
-                        Recommended
-                      </span>
-                      <strong className="mt-3 block text-lg">
-                        Mimo Funded
-                      </strong>
-                      <span className="mt-1 block text-sm leading-5 text-[#617486]">
-                        Deposit before play. Nimiq confirms the reward before
-                        the room opens.
+                      <Trophy className="text-[#a87600]" />
+                      <strong className="mt-3 block text-lg">Skill Drop</strong>
+                      <span className="mt-1 block text-sm text-[#617486]">
+                        The verified first-place player earns the pool.
                       </span>
                     </motion.button>
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.985 }}
-                      onClick={() =>
+                      disabled={!mimoFundingAvailable}
+                      onClick={() => {
+                        if (!mimoFundingAvailable) return;
                         setEvent({
                           ...event,
-                          custodyMode: 'host_wallet',
-                          rewardRule: 'skill',
-                        })
-                      }
-                      className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
+                          rewardRule: 'community_unlock',
+                          custodyMode: 'mimo_vault',
+                        });
+                      }}
+                      className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${event.rewardRule === 'community_unlock' ? 'border-[#3b9a62] bg-[#edf9f1]' : 'border-[#d5dade] bg-white'}`}
                     >
-                      <strong className="block text-lg">Host promise</strong>
-                      <span className="mt-1 block text-sm leading-5 text-[#617486]">
-                        Keep the NIM in your wallet and approve payment after
-                        Mimo verifies the result.
+                      <Users className="text-[#2d8a55]" />
+                      <strong className="mt-3 block text-lg">
+                        Community Unlock
+                      </strong>
+                      <span className="mt-1 block text-sm text-[#617486]">
+                        Clear the finale target and verified finishers share the
+                        pool.
                       </span>
                     </motion.button>
                   </div>
-                ) : (
-                  <div className="mt-3 border-l-4 border-[#d7b13f] bg-[#fff8dc] px-4 py-3">
-                    <strong className="block">Host promise</strong>
-                    <span className="mt-1 block text-sm leading-5 text-[#675e3e]">
-                      The NIM stays in your wallet. You approve payment in Nimiq
-                      Pay after Mimo verifies the result.
-                    </span>
-                  </div>
-                )}
-                {mimoFundingAvailable && vaultNetwork && (
-                  <p className="mt-2 text-xs font-bold text-[#71808c]">
-                    Mimo Funded uses the{' '}
-                    {vaultNetwork === 'TestAlbatross'
-                      ? 'Nimiq test network'
-                      : 'Nimiq network'}
-                    .
-                  </p>
-                )}
-              </fieldset>
-              <label className="grid gap-2 text-sm font-extrabold">
-                {event.custodyMode === 'mimo_vault'
-                  ? 'Total reward to fund'
-                  : 'Reward promised by host'}
-                <input
-                  inputMode="numeric"
-                  maxLength={8}
-                  value={event.rewardAmount}
-                  onChange={(e) =>
-                    update(
-                      'rewardAmount',
-                      e.target.value.replace(/[^0-9]/g, ''),
-                    )
-                  }
-                  className="h-14 max-w-[260px] border-0 border-b-2 border-[#d0a62d] bg-transparent text-2xl font-extrabold outline-none"
-                />
-                <span className="text-sm font-medium text-[#6f7e8b]">
+                  {!mimoFundingAvailable && (
+                    <p className="mt-2 text-xs font-bold text-[#71808c]">
+                      Community Unlock activates with verified Mimo Funded
+                      settlement. It is never offered as a payment promise.
+                    </p>
+                  )}
+                </fieldset>
+                <fieldset>
+                  <legend className="text-sm font-extrabold">
+                    Where is the reward held?
+                  </legend>
+                  {mimoFundingAvailable ? (
+                    <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.985 }}
+                        onClick={() => update('custodyMode', 'mimo_vault')}
+                        className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'mimo_vault' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                      >
+                        <span className="inline-flex rounded-full bg-[#f7c933] px-2.5 py-1 text-xs font-extrabold text-[#624a00]">
+                          Recommended
+                        </span>
+                        <strong className="mt-3 block text-lg">
+                          Mimo Funded
+                        </strong>
+                        <span className="mt-1 block text-sm leading-5 text-[#617486]">
+                          Deposit before play. Nimiq confirms the reward before
+                          the room opens.
+                        </span>
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.985 }}
+                        onClick={() =>
+                          setEvent({
+                            ...event,
+                            custodyMode: 'host_wallet',
+                            rewardRule: 'skill',
+                          })
+                        }
+                        className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
+                      >
+                        <strong className="block text-lg">Host promise</strong>
+                        <span className="mt-1 block text-sm leading-5 text-[#617486]">
+                          Keep the NIM in your wallet and approve payment after
+                          Mimo verifies the result.
+                        </span>
+                      </motion.button>
+                    </div>
+                  ) : (
+                    <div className="mt-3 border-l-4 border-[#d7b13f] bg-[#fff8dc] px-4 py-3">
+                      <strong className="block">Host promise</strong>
+                      <span className="mt-1 block text-sm leading-5 text-[#675e3e]">
+                        The NIM stays in your wallet. You approve payment in
+                        Nimiq Pay after Mimo verifies the result.
+                      </span>
+                    </div>
+                  )}
+                  {mimoFundingAvailable && vaultNetwork && (
+                    <p className="mt-2 text-xs font-bold text-[#71808c]">
+                      Mimo Funded uses the{' '}
+                      {vaultNetwork === 'TestAlbatross'
+                        ? 'Nimiq test network'
+                        : 'Nimiq network'}
+                      .
+                    </p>
+                  )}
+                </fieldset>
+                <label className="grid gap-2 text-sm font-extrabold">
                   {event.custodyMode === 'mimo_vault'
-                    ? 'NIM · confirmed on the Nimiq network before play'
-                    : 'NIM · paid from your wallet after the verified result'}
-                </span>
-              </label>
-            </div>
-          )}
+                    ? 'Total reward to fund'
+                    : 'Reward promised by host'}
+                  <input
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={event.rewardAmount}
+                    onChange={(e) =>
+                      update(
+                        'rewardAmount',
+                        e.target.value.replace(/[^0-9]/g, ''),
+                      )
+                    }
+                    className="h-14 max-w-[260px] border-0 border-b-2 border-[#d0a62d] bg-transparent text-2xl font-extrabold outline-none"
+                  />
+                  <span className="text-sm font-medium text-[#6f7e8b]">
+                    {event.custodyMode === 'mimo_vault'
+                      ? 'NIM · confirmed on the Nimiq network before play'
+                      : 'NIM · paid from your wallet after the verified result'}
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
         </div>
         {error && (
           <p

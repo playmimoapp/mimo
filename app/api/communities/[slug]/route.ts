@@ -11,7 +11,8 @@ export async function GET(
   const community = await getD1()
     .prepare(`SELECT id, slug, name, description, accent_color AS accentColor,
       avatar_key IS NOT NULL AS hasAvatar, recurrence,
-      next_event_at AS nextEventAt
+      next_event_at AS nextEventAt, season_name AS seasonName,
+      season_started_at AS seasonStartedAt
       FROM communities WHERE slug = ? LIMIT 1`)
     .bind(slug)
     .first<{
@@ -23,6 +24,8 @@ export async function GET(
       hasAvatar: number;
       recurrence: 'none' | 'weekly' | 'fortnightly' | 'monthly';
       nextEventAt: number | null;
+      seasonName: string;
+      seasonStartedAt: number;
     }>();
   if (!community) return json({ error: 'That community does not exist.' }, 404);
   const events = await getD1()
@@ -35,7 +38,7 @@ export async function GET(
       ORDER BY CASE WHEN e.status IN ('live', 'lobby', 'scheduled') THEN 0 ELSE 1 END,
       CASE WHEN e.status IN ('live', 'lobby', 'scheduled')
         THEN COALESCE(e.starts_at, e.created_at) END ASC,
-      e.created_at DESC LIMIT 8`)
+      e.created_at DESC LIMIT 30`)
     .bind(community.id)
     .all<{
       id: string;
@@ -65,6 +68,23 @@ export async function GET(
       scores.push({ nickname: row.nickname, score: row.score });
     scoresByEvent.set(row.eventId, scores);
   }
+  const standings = await getD1()
+    .prepare(`SELECT p.nickname, SUM(p.score) AS points,
+      COUNT(DISTINCT p.event_id) AS eventsPlayed,
+      SUM(CASE WHEN p.score = (
+        SELECT MAX(p2.score) FROM participants p2 WHERE p2.event_id = p.event_id
+      ) THEN 1 ELSE 0 END) AS wins
+      FROM participants p JOIN events e ON e.id = p.event_id
+      WHERE e.community_id = ? AND e.status = 'complete' AND e.created_at >= ?
+      GROUP BY COALESCE(p.wallet_hash, 'guest:' || LOWER(p.nickname))
+      ORDER BY points DESC, wins DESC, eventsPlayed DESC LIMIT 10`)
+    .bind(community.id, community.seasonStartedAt)
+    .all<{
+      nickname: string;
+      points: number;
+      eventsPlayed: number;
+      wins: number;
+    }>();
   return json({
     community: { ...community, hasAvatar: Boolean(community.hasAvatar) },
     events: events.results.map((event) => ({
@@ -80,6 +100,7 @@ export async function GET(
         : null,
       scores: scoresByEvent.get(event.id) ?? [],
     })),
+    standings: standings.results,
   });
 }
 
@@ -93,6 +114,27 @@ export async function PATCH(
   const { slug: rawSlug } = await context.params;
   const slug = cleanCommunitySlug(rawSlug);
   const body = await readJson(request);
+  if (body?.action === 'new_season') {
+    const seasonName = (
+      typeof body.seasonName === 'string' ? body.seasonName : ''
+    )
+      .trim()
+      .slice(0, 40);
+    if (seasonName.length < 2)
+      return json({ error: 'Give the new season a clear name.' }, 400);
+    const now = Date.now();
+    const updated = await getD1()
+      .prepare(`UPDATE communities SET season_name = ?, season_started_at = ?, updated_at = ?
+        WHERE slug = ? AND owner_wallet_hash = ?`)
+      .bind(seasonName, now, now, slug, account.walletHash)
+      .run();
+    if (!updated.meta.changes)
+      return json(
+        { error: 'That community is not owned by this wallet.' },
+        403,
+      );
+    return json({ seasonName, seasonStartedAt: now });
+  }
   const recurrence = ['none', 'weekly', 'fortnightly', 'monthly'].includes(
     String(body?.recurrence),
   )

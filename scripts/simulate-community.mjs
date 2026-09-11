@@ -57,6 +57,17 @@ await request(`/api/communities/${slug}`, {
   body: JSON.stringify({ recurrence: 'weekly', nextEventAt: scheduledAt }),
 });
 
+await request(`/api/communities/${slug}`, {
+  method: 'PATCH',
+  headers: { 'x-mimo-account': account.sessionToken },
+  body: JSON.stringify({
+    action: 'socials',
+    discordUrl: 'https://discord.gg/nimiq',
+    xUrl: '',
+    telegramUrl: '',
+  }),
+});
+
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -128,6 +139,12 @@ assert(
   'Public profile must report its picture.',
 );
 assert(
+  publicPage.community.discordUrl === 'https://discord.gg/nimiq' &&
+    !publicPage.community.xUrl &&
+    !publicPage.community.telegramUrl,
+  'A community must expose only its chosen primary social home.',
+);
+assert(
   publicPage.events.some((event) => event.roomCode === room.code),
   'A Studio event must appear on its permanent community page.',
 );
@@ -155,5 +172,6 @@ console.log(
     realImageStorage: true,
     recurringSchedule: true,
     seasonStandings: true,
+    primarySocial: true,
   }),
 );

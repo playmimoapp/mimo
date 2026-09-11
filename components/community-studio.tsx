@@ -81,6 +81,44 @@ type CommunityEventSummary = {
   scores: Array<{ nickname: string; score: number }>;
 };
 
+type CommunitySocial = 'discord' | 'x' | 'telegram';
+
+const COMMUNITY_SOCIALS: Array<{
+  id: CommunitySocial;
+  label: string;
+  placeholder: string;
+}> = [
+  {
+    id: 'discord',
+    label: 'Discord',
+    placeholder: 'https://discord.gg/your-community',
+  },
+  { id: 'x', label: 'X', placeholder: 'https://x.com/your-community' },
+  {
+    id: 'telegram',
+    label: 'Telegram',
+    placeholder: 'https://t.me/your-community',
+  },
+];
+
+function communityPrimarySocial(community: Community) {
+  if (community.discordUrl)
+    return {
+      id: 'discord' as const,
+      label: 'Discord',
+      url: community.discordUrl,
+    };
+  if (community.xUrl)
+    return { id: 'x' as const, label: 'X', url: community.xUrl };
+  if (community.telegramUrl)
+    return {
+      id: 'telegram' as const,
+      label: 'Telegram',
+      url: community.telegramUrl,
+    };
+  return null;
+}
+
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
 
 async function signInWithNimiqPay(nimiq: MimoNimiq) {
@@ -952,9 +990,11 @@ function CommunityCard({
   const [editingSeason, setEditingSeason] = useState(false);
   const [seasonName, setSeasonName] = useState(community.seasonName);
   const [managing, setManaging] = useState(false);
-  const [xUrl, setXUrl] = useState(community.xUrl ?? '');
-  const [discordUrl, setDiscordUrl] = useState(community.discordUrl ?? '');
-  const [telegramUrl, setTelegramUrl] = useState(community.telegramUrl ?? '');
+  const existingSocial = communityPrimarySocial(community);
+  const [socialPlatform, setSocialPlatform] = useState<CommunitySocial>(
+    existingSocial?.id ?? 'discord',
+  );
+  const [socialUrl, setSocialUrl] = useState(existingSocial?.url ?? '');
   const [inviteRole, setInviteRole] = useState<'owner' | 'admin' | 'host'>(
     'host',
   );
@@ -1048,9 +1088,9 @@ function CommunityCard({
         },
         body: JSON.stringify({
           action: 'socials',
-          xUrl,
-          discordUrl,
-          telegramUrl,
+          xUrl: socialPlatform === 'x' ? socialUrl : '',
+          discordUrl: socialPlatform === 'discord' ? socialUrl : '',
+          telegramUrl: socialPlatform === 'telegram' ? socialUrl : '',
         }),
       });
       const body = (await response.json()) as { error?: string };
@@ -1320,26 +1360,51 @@ function CommunityCard({
         {managing && (
           <div className="mt-5 border-t border-[#dfe5e9] pt-5">
             <p className="text-xs font-black uppercase tracking-[.12em] text-[#718295]">
-              Public social links
+              Primary community home
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <p className="mt-1 text-sm text-[#53687c]">
+              Choose the one place members should continue the conversation.
+            </p>
+            <fieldset
+              className="mt-3 inline-flex rounded-full bg-[#eef3f6] p-1"
+              aria-label="Primary community social"
+            >
+              {COMMUNITY_SOCIALS.map((social) => (
+                <button
+                  key={social.id}
+                  type="button"
+                  onClick={() => {
+                    setSocialPlatform(social.id);
+                    setSocialUrl('');
+                  }}
+                  aria-pressed={socialPlatform === social.id}
+                  className={`h-9 rounded-full px-4 text-sm font-extrabold transition ${socialPlatform === social.id ? 'bg-white text-[#172f49] shadow-sm' : 'text-[#66798b]'}`}
+                >
+                  {social.label}
+                </button>
+              ))}
+            </fieldset>
+            <div className="mt-3">
               <input
-                value={xUrl}
-                onChange={(event) => setXUrl(event.target.value)}
+                value={socialUrl}
+                onChange={(event) => setSocialUrl(event.target.value)}
+                hidden={socialPlatform !== 'x'}
                 placeholder="https://x.com/…"
-                className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 text-sm"
+                className="h-11 w-full border-b border-[#bfcbd3] bg-transparent px-1 text-sm outline-none focus:border-[#2577de]"
               />
               <input
-                value={discordUrl}
-                onChange={(event) => setDiscordUrl(event.target.value)}
+                value={socialUrl}
+                onChange={(event) => setSocialUrl(event.target.value)}
+                hidden={socialPlatform !== 'discord'}
                 placeholder="https://discord.gg/…"
-                className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 text-sm"
+                className="h-11 w-full border-b border-[#bfcbd3] bg-transparent px-1 text-sm outline-none focus:border-[#2577de]"
               />
               <input
-                value={telegramUrl}
-                onChange={(event) => setTelegramUrl(event.target.value)}
+                value={socialUrl}
+                onChange={(event) => setSocialUrl(event.target.value)}
+                hidden={socialPlatform !== 'telegram'}
                 placeholder="https://t.me/…"
-                className="h-11 rounded-xl border border-[#cbd5dc] bg-white px-3 text-sm"
+                className="h-11 w-full border-b border-[#bfcbd3] bg-transparent px-1 text-sm outline-none focus:border-[#2577de]"
               />
             </div>
             <Button
@@ -1348,7 +1413,7 @@ function CommunityCard({
               variant="outline"
               className="mt-3 h-10 rounded-full px-4 font-extrabold"
             >
-              Save links
+              Save community link
             </Button>
             {community.role !== 'host' && historyLoaded && (
               <div className="mt-5 border-t border-[#e3e7ea] pt-5">
@@ -1532,6 +1597,9 @@ export function PublicCommunity({
   const [followWorking, setFollowWorking] = useState(false);
   const [followError, setFollowError] = useState('');
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const primarySocial = data
+    ? communityPrimarySocial(data.community)
+    : null;
   useEffect(() => {
     const session = window.localStorage.getItem('mimo:studio:session') ?? '';
     void fetch(`/api/communities/${slug}`, {
@@ -1733,22 +1801,16 @@ export function PublicCommunity({
                   <CalendarDays size={16} /> Add to calendar
                 </Button>
               )}
-              {[
-                ['X', data.community.xUrl],
-                ['Discord', data.community.discordUrl],
-                ['Telegram', data.community.telegramUrl],
-              ].map(([label, url]) =>
-                url ? (
-                  <a
-                    key={label}
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-11 items-center gap-2 rounded-full border border-[#d1dbe2] bg-white px-4 text-sm font-extrabold"
-                  >
-                    {label} <ExternalLink size={14} />
-                  </a>
-                ) : null,
+              {primarySocial && (
+                <a
+                  href={primarySocial.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Open ${data.community.name} on ${primarySocial.label}`}
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-[#d1dbe2] bg-white px-4 text-sm font-extrabold"
+                >
+                  {primarySocial.label} <ExternalLink size={14} />
+                </a>
               )}
             </div>
             <p className="mt-3 text-xs font-bold text-[#718295]">

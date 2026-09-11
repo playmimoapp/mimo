@@ -201,6 +201,9 @@ export async function PATCH(
         400,
       );
     }
+    if ([xUrl, discordUrl, telegramUrl].filter(Boolean).length > 1) {
+      return json({ error: 'Choose one primary community link.' }, 400);
+    }
     await getD1()
       .prepare(
         `UPDATE communities SET x_url = ?, discord_url = ?, telegram_url = ?, updated_at = ? WHERE id = ?`,

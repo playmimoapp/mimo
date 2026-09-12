@@ -574,20 +574,34 @@ export function MimoApp() {
           ? requestedKind!
           : 'game_night';
         const topic = (query.get('topic') ?? '').trim().slice(0, 300);
+        const linkedCommunitySlug =
+          query
+            .get('communitySlug')
+            ?.toLowerCase()
+            .replace(/[^a-z0-9-]/g, '') ?? '';
+        const linkedCommunityName = (query.get('communityName') ?? '')
+          .trim()
+          .slice(0, 60);
+        const linkedRecurrence = query.get('recurrence');
+        const recurrence = ['weekly', 'fortnightly', 'monthly'].includes(
+          linkedRecurrence ?? '',
+        )
+          ? (linkedRecurrence as 'weekly' | 'fortnightly' | 'monthly')
+          : 'none';
         setEvent((current) => ({
           ...current,
           eventKind,
-          community: '',
-          communitySlug: '',
+          community: linkedCommunityName,
+          communitySlug: linkedCommunitySlug,
           startsAt: null,
-          recurrence: 'none',
+          recurrence,
         }));
         setAssistantBrief((current) => ({
           ...current,
           eventKind,
-          hostingMode: 'one_time',
-          recurrence: 'none',
-          community: '',
+          hostingMode: linkedCommunitySlug ? 'community' : 'one_time',
+          recurrence,
+          community: linkedCommunityName,
           topic,
         }));
         setScreen('create_assisted');
@@ -875,8 +889,14 @@ export function MimoApp() {
           message?: string;
           error?: string;
         };
-        if (!challengeResponse.ok || !challenge.challengeId || !challenge.message) {
-          throw new Error(challenge.error || 'Wallet verification could not start.');
+        if (
+          !challengeResponse.ok ||
+          !challenge.challengeId ||
+          !challenge.message
+        ) {
+          throw new Error(
+            challenge.error || 'Wallet verification could not start.',
+          );
         }
         const signed = await nimiq.signChallenge(challenge.message);
         if ('status' in signed) {
@@ -985,12 +1005,9 @@ export function MimoApp() {
             : undefined
         }
         context={
-          [
-            'create_choice',
-            'create_assisted',
-            'create',
-            'preview',
-          ].includes(screen)
+          ['create_choice', 'create_assisted', 'create', 'preview'].includes(
+            screen,
+          )
             ? 'Create an event'
             : screen === 'host_entry'
               ? 'Host a Mimo'
@@ -1005,12 +1022,9 @@ export function MimoApp() {
                       : undefined
         }
       />
-      {[
-        'create_choice',
-        'create_assisted',
-        'create',
-        'preview',
-      ].includes(screen) && <CreationRail screen={screen} />}
+      {['create_choice', 'create_assisted', 'create', 'preview'].includes(
+        screen,
+      ) && <CreationRail screen={screen} />}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={screen}
@@ -1572,7 +1586,8 @@ function CreateChoice({
       </div>
       <div className="mobile-action-bar mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-semibold text-[#607486]">
-          Start your <strong className="text-[#203752]">{selected.label}</strong>
+          Start your{' '}
+          <strong className="text-[#203752]">{selected.label}</strong>
         </p>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex">
           <Button
@@ -2329,13 +2344,13 @@ function CreateEvent({
                 aria-label="Require a verified Nimiq wallet before joining"
                 aria-checked={event.walletRequired}
                 disabled={event.rewardRule === 'community_unlock'}
-                onClick={() =>
-                  update('walletRequired', !event.walletRequired)
-                }
+                onClick={() => update('walletRequired', !event.walletRequired)}
                 className="mt-4 flex w-full items-center justify-between gap-5 border-y border-[#d8e0e5] py-4 text-left"
               >
                 <span>
-                  <strong className="block">Require a verified Nimiq wallet</strong>
+                  <strong className="block">
+                    Require a verified Nimiq wallet
+                  </strong>
                   <span className="mt-1 block text-sm leading-5 text-[#617486]">
                     {event.rewardRule === 'community_unlock'
                       ? 'Required automatically for fair Community Unlock payouts.'
@@ -2761,7 +2776,9 @@ function Join({
           <div className="mt-5 flex items-start gap-3 border-y border-[#e1c66c] bg-[#fff9e6] px-1 py-4 text-sm leading-5 text-[#65541b]">
             <ShieldCheck className="mt-0.5 shrink-0" size={18} />
             <span>
-              <strong className="block text-[#443b1f]">Nimiq Pay required</strong>
+              <strong className="block text-[#443b1f]">
+                Nimiq Pay required
+              </strong>
               Sign once to verify your wallet. This does not move any NIM.
             </span>
           </div>
@@ -2822,7 +2839,8 @@ function Join({
         {walletUnavailable && (
           <div className="mt-4">
             <p className="text-sm font-bold text-[#53687c]">
-              Install Nimiq Pay, then open this same invitation from its Mini Apps browser.
+              Install Nimiq Pay, then open this same invitation from its Mini
+              Apps browser.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button

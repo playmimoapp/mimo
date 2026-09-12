@@ -50,9 +50,7 @@ function verifyDiscordSignature(
 }
 
 function optionValue(interaction: DiscordInteraction, name: string) {
-  const option = interaction.data?.options?.find(
-    (item) => item.name === name,
-  );
+  const option = interaction.data?.options?.find((item) => item.name === name);
   return typeof option?.value === 'string' ? option.value : '';
 }
 
@@ -119,6 +117,24 @@ export async function POST(request: Request) {
     });
   }
 
+  const connection = await getD1()
+    .prepare(`SELECT c.slug, c.name, c.recurrence
+      FROM discord_community_connections dc
+      JOIN communities c ON c.id = dc.community_id
+      WHERE dc.guild_id = ? LIMIT 1`)
+    .bind(guildId)
+    .first<{ slug: string; name: string; recurrence: string }>();
+  if (!connection) {
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        content:
+          'This server is not linked to a Mimo community yet. An owner or admin can connect it from Community settings in Mimo.',
+      },
+    });
+  }
+
   const configuredOrigin = process.env.MIMO_PUBLIC_URL?.trim();
   const origin = configuredOrigin || new URL(request.url).origin;
   const creatorUrl = new URL('/', origin);
@@ -126,13 +142,15 @@ export async function POST(request: Request) {
   creatorUrl.searchParams.set('source', 'discord');
   creatorUrl.searchParams.set('kind', kind);
   creatorUrl.searchParams.set('topic', topic);
+  creatorUrl.searchParams.set('communitySlug', connection.slug);
+  creatorUrl.searchParams.set('communityName', connection.name);
+  creatorUrl.searchParams.set('recurrence', connection.recurrence);
 
   return json({
     type: 4,
     data: {
       flags: 64,
-      content:
-        'Your Mimo setup is ready. Review every moment in Mimo before publishing or funding it.',
+      content: `Your ${connection.name} draft is ready. A Mimo community host must sign in, review every moment and approve any funding before it goes live.`,
       components: [
         {
           type: 1,

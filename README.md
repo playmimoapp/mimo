@@ -109,7 +109,8 @@ https://mimo-flax.vercel.app/api/discord/interactions
 ```
 
 Create the app in the Discord Developer Portal, set that Interactions Endpoint
-URL, and configure `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, and the
+URL, add `/api/discord/oauth/callback` as the OAuth redirect, and configure
+`DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and the
 sensitive `DISCORD_BOT_TOKEN` in Vercel. `MIMO_PUBLIC_URL` should be the public
 Mimo origin. Register `/mimo` in a test server first:
 
@@ -120,8 +121,11 @@ DISCORD_TEST_GUILD_ID=... npm run discord:register
 Remove `DISCORD_TEST_GUILD_ID` to register globally. Discord requests are
 signature-checked and time-bounded. Only a hash of the interaction ID is kept
 for replay protection; Mimo does not store the Discord message or member ID.
-The command creates a private handoff to Mimo's editable creator and cannot
-publish an event or authorize NIM.
+Community owners connect one server from Mimo Studio and select an announcement
+channel. Mimo requests only server discovery, View Channel, Send Messages and
+Embed Links; it does not request message history, member management, moderation
+or Administrator. The command creates a private, community-bound handoff to
+Mimo's editable creator and cannot publish an event or authorize NIM.
 
 ## Product direction
 

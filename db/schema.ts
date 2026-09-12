@@ -90,6 +90,45 @@ export const discordInteractions = sqliteTable(
   (t) => [index('idx_discord_interactions_created').on(t.createdAt)],
 );
 
+export const discordLinkSessions = sqliteTable(
+  'discord_link_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    communityId: text('community_id')
+      .notNull()
+      .references(() => communities.id),
+    kind: text('kind').notNull(),
+    payloadJson: text('payload_json').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    usedAt: integer('used_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_discord_link_expiry').on(t.expiresAt)],
+);
+
+export const discordCommunityConnections = sqliteTable(
+  'discord_community_connections',
+  {
+    communityId: text('community_id')
+      .primaryKey()
+      .references(() => communities.id),
+    guildId: text('guild_id').notNull(),
+    guildName: text('guild_name').notNull(),
+    guildIcon: text('guild_icon'),
+    announcementChannelId: text('announcement_channel_id'),
+    announcementChannelName: text('announcement_channel_name'),
+    connectedByAccountId: text('connected_by_account_id')
+      .notNull()
+      .references(() => accounts.id),
+    connectedAt: integer('connected_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('idx_discord_connections_guild').on(t.guildId)],
+);
+
 export const events = sqliteTable(
   'events',
   {

@@ -12,6 +12,7 @@ import {
   Copy,
   ExternalLink,
   LogOut,
+  MessagesSquare,
   Plus,
   Repeat2,
   Search,
@@ -47,6 +48,8 @@ type Community = {
   xUrl?: string | null;
   discordUrl?: string | null;
   telegramUrl?: string | null;
+  discordGuildName?: string | null;
+  discordChannelName?: string | null;
   followerCount?: number;
   following?: boolean;
 };
@@ -82,6 +85,15 @@ type CommunityEventSummary = {
 };
 
 type CommunitySocial = 'discord' | 'x' | 'telegram';
+
+type DiscordSetup = {
+  communityName: string;
+  stage: string;
+  guilds: Array<{ id: string; name: string; icon: string | null }>;
+  selectedGuild: { id: string; name: string; icon: string | null } | null;
+  channels?: Array<{ id: string; name: string }>;
+  installUrl?: string;
+};
 
 const COMMUNITY_SOCIALS: Array<{
   id: CommunitySocial;
@@ -120,6 +132,17 @@ function communityPrimarySocial(community: Community) {
 }
 
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
+
+function nimiqPayDestination() {
+  const agent = window.navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(agent)) {
+    return 'https://apps.apple.com/app/nimiq-pay/id6471844738';
+  }
+  if (/Android/i.test(agent)) {
+    return 'https://play.google.com/store/apps/details?id=com.nimiq.pay';
+  }
+  return 'https://www.nimiq.com/nimiq-pay/';
+}
 
 async function signInWithNimiqPay(nimiq: MimoNimiq) {
   const connected = await nimiq.connect();
@@ -197,6 +220,10 @@ export function CommunityStudio({
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [inviteMessage, setInviteMessage] = useState('');
+  const [discordSetupToken, setDiscordSetupToken] = useState('');
+  const [discordSetup, setDiscordSetup] = useState<DiscordSetup | null>(null);
+  const [discordWorking, setDiscordWorking] = useState(false);
+  const [discordError, setDiscordError] = useState('');
 
   async function loadCommunities(token: string) {
     const response = await fetch('/api/communities', {
@@ -294,6 +321,116 @@ export function CommunityStudio({
       await loadCommunities(session);
     });
   }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    const current = new URL(window.location.href);
+    const setupToken = current.searchParams.get('discordSetup') ?? '';
+    const setupError = current.searchParams.get('discordError') ?? '';
+    if (!setupToken && !setupError) return;
+    current.searchParams.delete('discordSetup');
+    current.searchParams.delete('discordError');
+    window.history.replaceState(
+      {},
+      '',
+      `${current.pathname}${current.search}${current.hash}`,
+    );
+    void Promise.resolve().then(() => {
+      if (setupError) {
+        setError(setupError);
+        return;
+      }
+      setDiscordSetupToken(setupToken);
+      setDiscordWorking(true);
+      void fetch(`/api/discord/setup?token=${encodeURIComponent(setupToken)}`, {
+        headers: { 'x-mimo-account': session },
+        cache: 'no-store',
+      })
+        .then(async (response) => {
+          const body = (await response.json()) as DiscordSetup & {
+            error?: string;
+          };
+          if (!response.ok)
+            throw new Error(body.error || 'Discord setup could not load.');
+          setDiscordSetup(body);
+        })
+        .catch((cause) =>
+          setDiscordError(
+            cause instanceof Error
+              ? cause.message
+              : 'Discord setup could not load.',
+          ),
+        )
+        .finally(() => setDiscordWorking(false));
+    });
+  }, [session]);
+
+  async function updateDiscordSetup(
+    action: string,
+    values: Record<string, string> = {},
+  ) {
+    if (!discordSetupToken || discordWorking) return;
+    setDiscordWorking(true);
+    setDiscordError('');
+    try {
+      const response = await fetch('/api/discord/setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mimo-account': session,
+        },
+        body: JSON.stringify({ token: discordSetupToken, action, ...values }),
+      });
+      const body = (await response.json()) as {
+        error?: string;
+        installUrl?: string;
+        guild?: { id: string; name: string; icon: string | null };
+        channels?: Array<{ id: string; name: string }>;
+        connected?: boolean;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Discord setup could not continue.');
+      if (body.installUrl && body.guild) {
+        const guild = body.guild;
+        const installUrl = body.installUrl;
+        setDiscordSetup((current) =>
+          current
+            ? {
+                ...current,
+                stage: 'install_pending',
+                selectedGuild: guild,
+                installUrl,
+              }
+            : current,
+        );
+      } else if (body.channels && body.guild) {
+        const guild = body.guild;
+        const channels = body.channels;
+        setDiscordSetup((current) =>
+          current
+            ? {
+                ...current,
+                stage: 'channel_picker',
+                selectedGuild: guild,
+                channels,
+              }
+            : current,
+        );
+      } else if (body.connected) {
+        await loadCommunities(session);
+        setDiscordSetupToken('');
+        setDiscordSetup(null);
+      }
+    } catch (cause) {
+      setDiscordError(
+        cause instanceof Error
+          ? cause.message
+          : 'Discord setup could not continue.',
+      );
+    } finally {
+      setDiscordWorking(false);
+    }
+  }
 
   async function signIn() {
     if (working) return;
@@ -447,9 +584,24 @@ export function CommunityStudio({
               <ArrowRight />
             </Button>
             {error && (
-              <p role="alert" className="mt-3 text-sm font-bold text-[#b53636]">
-                {error}
-              </p>
+              <div
+                role="alert"
+                className="mt-3 text-sm font-bold text-[#b53636]"
+              >
+                <p>{error}</p>
+                {error.includes('Nimiq Pay') && (
+                  <a
+                    href="https://www.nimiq.com/nimiq-pay/"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      window.location.assign(nimiqPayDestination());
+                    }}
+                    className="mt-2 inline-flex min-h-10 items-center gap-1 text-[#2577de] underline decoration-2 underline-offset-4"
+                  >
+                    Get Nimiq Pay <ExternalLink size={15} />
+                  </a>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -580,6 +732,123 @@ export function CommunityStudio({
                 setShowProfile(false);
               }}
             />
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(discordSetupToken)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDiscordSetupToken('');
+            setDiscordSetup(null);
+            setDiscordError('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-[26px] bg-[#f8f6f1] p-6 sm:max-w-lg sm:p-8">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl font-extrabold tracking-[-.04em]">
+              Bring Mimo into Discord
+            </DialogTitle>
+            <DialogDescription>
+              {discordSetup?.communityName
+                ? `Connect one server to ${discordSetup.communityName}.`
+                : 'Checking your Discord connection…'}
+            </DialogDescription>
+          </DialogHeader>
+          {discordSetup?.stage === 'guild_picker' && (
+            <div className="mt-5 divide-y divide-[#dbe2e7] border-y border-[#dbe2e7]">
+              {discordSetup.guilds.length ? (
+                discordSetup.guilds.map((guild) => (
+                  <button
+                    key={guild.id}
+                    onClick={() =>
+                      void updateDiscordSetup('select_guild', {
+                        guildId: guild.id,
+                      })
+                    }
+                    disabled={discordWorking}
+                    className="flex min-h-16 w-full items-center justify-between gap-4 py-3 text-left font-extrabold disabled:opacity-50"
+                  >
+                    <span className="truncate">{guild.name}</span>
+                    <span className="shrink-0 text-sm text-[#2577de]">
+                      Choose <ArrowRight className="inline" size={16} />
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <p className="py-5 text-sm leading-6 text-[#607486]">
+                  No server you manage was found. Discord requires server
+                  management permission to install Mimo.
+                </p>
+              )}
+            </div>
+          )}
+          {discordSetup?.stage === 'install_pending' &&
+            discordSetup.selectedGuild && (
+              <div className="mt-6">
+                <p className="text-sm font-extrabold text-[#172f49]">
+                  {discordSetup.selectedGuild.name}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[#607486]">
+                  Mimo asks only to view a channel, post messages and show
+                  links. It cannot read message history, manage members or
+                  moderate your server.
+                </p>
+                {discordSetup.installUrl && (
+                  <a
+                    href={discordSetup.installUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5865f2] px-5 font-extrabold text-white"
+                  >
+                    Install Mimo in Discord <ExternalLink size={16} />
+                  </a>
+                )}
+                <Button
+                  onClick={() => void updateDiscordSetup('verify_install')}
+                  disabled={discordWorking}
+                  variant="outline"
+                  className="mt-2 h-12 w-full rounded-xl font-extrabold"
+                >
+                  {discordWorking ? 'Checking…' : 'I installed Mimo'}
+                </Button>
+              </div>
+            )}
+          {discordSetup?.stage === 'channel_picker' && (
+            <div className="mt-5">
+              <p className="text-sm leading-6 text-[#607486]">
+                Choose where Mimo may post invitations, reminders and results.
+                Nothing is posted now.
+              </p>
+              <div className="mt-3 divide-y divide-[#dbe2e7] border-y border-[#dbe2e7]">
+                {discordSetup.channels?.map((channel) => (
+                  <button
+                    key={channel.id}
+                    onClick={() =>
+                      void updateDiscordSetup('choose_channel', {
+                        channelId: channel.id,
+                      })
+                    }
+                    disabled={discordWorking}
+                    className="flex min-h-14 w-full items-center justify-between py-3 text-left font-extrabold disabled:opacity-50"
+                  >
+                    <span># {channel.name}</span>
+                    <ArrowRight size={17} className="text-[#2577de]" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {discordWorking && !discordSetup && (
+            <p className="mt-6 text-sm font-bold text-[#607486]">
+              Opening your servers…
+            </p>
+          )}
+          {discordError && (
+            <p role="alert" className="mt-4 text-sm font-bold text-[#b53636]">
+              {discordError}
+            </p>
           )}
         </DialogContent>
       </Dialog>
@@ -1107,6 +1376,58 @@ function CommunityCard({
       setSavingSchedule(false);
     }
   }
+  async function connectDiscord() {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(
+        `/api/communities/${community.slug}/discord/start`,
+        {
+          method: 'POST',
+          headers: { 'x-mimo-account': session },
+        },
+      );
+      const body = (await response.json()) as {
+        authorizeUrl?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.authorizeUrl)
+        throw new Error(body.error || 'Discord could not start connecting.');
+      window.location.assign(body.authorizeUrl);
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'Discord could not start connecting.',
+      );
+      setSavingSchedule(false);
+    }
+  }
+  async function disconnectDiscord() {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(
+        `/api/communities/${community.slug}/discord`,
+        {
+          method: 'DELETE',
+          headers: { 'x-mimo-account': session },
+        },
+      );
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'Discord could not be disconnected.');
+      onSaved();
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error
+          ? cause.message
+          : 'Discord could not be disconnected.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
   async function makeRoleInvite() {
     setSavingSchedule(true);
     setScheduleError('');
@@ -1415,6 +1736,34 @@ function CommunityCard({
             >
               Save community link
             </Button>
+            {community.role !== 'host' && (
+              <div className="mt-5 flex items-center gap-3 border-t border-[#e3e7ea] pt-5">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef0ff] text-[#5865f2]">
+                  <MessagesSquare size={19} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-extrabold">
+                    {community.discordGuildName || 'Discord automation'}
+                  </p>
+                  <p className="truncate text-xs font-bold text-[#718295]">
+                    {community.discordGuildName
+                      ? `Announcements in #${community.discordChannelName}`
+                      : 'Create rooms from Discord and send event updates.'}
+                  </p>
+                </div>
+                <button
+                  onClick={() =>
+                    void (community.discordGuildName
+                      ? disconnectDiscord()
+                      : connectDiscord())
+                  }
+                  disabled={savingSchedule}
+                  className="shrink-0 text-sm font-extrabold text-[#2577de] disabled:opacity-50"
+                >
+                  {community.discordGuildName ? 'Disconnect' : 'Connect'}
+                </button>
+              </div>
+            )}
             {community.role !== 'host' && historyLoaded && (
               <div className="mt-5 border-t border-[#e3e7ea] pt-5">
                 <p className="text-sm font-extrabold">Public event history</p>
@@ -1597,9 +1946,7 @@ export function PublicCommunity({
   const [followWorking, setFollowWorking] = useState(false);
   const [followError, setFollowError] = useState('');
   const [showAllHistory, setShowAllHistory] = useState(false);
-  const primarySocial = data
-    ? communityPrimarySocial(data.community)
-    : null;
+  const primarySocial = data ? communityPrimarySocial(data.community) : null;
   useEffect(() => {
     const session = window.localStorage.getItem('mimo:studio:session') ?? '';
     void fetch(`/api/communities/${slug}`, {

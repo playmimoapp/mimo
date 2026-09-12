@@ -13,8 +13,11 @@ export async function GET(request: Request) {
       c.next_event_at AS nextEventAt, c.season_name AS seasonName,
       c.season_started_at AS seasonStartedAt, c.created_at AS createdAt,
       c.x_url AS xUrl, c.discord_url AS discordUrl,
-      c.telegram_url AS telegramUrl, cm.role
+      c.telegram_url AS telegramUrl, cm.role,
+      dc.guild_name AS discordGuildName,
+      dc.announcement_channel_name AS discordChannelName
       FROM community_members cm JOIN communities c ON c.id = cm.community_id
+      LEFT JOIN discord_community_connections dc ON dc.community_id = c.id
       WHERE cm.account_id = ? ORDER BY c.created_at DESC`)
     .bind(account.id)
     .all();
@@ -88,6 +91,8 @@ export async function POST(request: Request) {
         xUrl: null,
         discordUrl: null,
         telegramUrl: null,
+        discordGuildName: null,
+        discordChannelName: null,
       },
     },
     201,

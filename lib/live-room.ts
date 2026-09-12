@@ -361,9 +361,10 @@ export async function reconcileRoom(room: RoomRecord) {
       }
     } else {
       const changed = await db
-        .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
+        .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?,
+          completed_at = COALESCE(completed_at, ?)
           WHERE id = ? AND status = 'verifying' AND auto_host_enabled = 1`)
-        .bind(now, room.id)
+        .bind(now, now, room.id)
         .run();
       if ((changed.meta.changes ?? 0) > 0) {
         await advanceCommunitySchedule(room.communityId);

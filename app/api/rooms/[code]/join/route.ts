@@ -15,6 +15,7 @@ import {
   normalizeNimiqAccount,
   verifyNimiqSignedMessage,
 } from '@/lib/nimiq-signature';
+import { markVisitJoined, recordMetric } from '@/lib/usage-evidence';
 
 function cleanHex(value: unknown, length: number) {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -29,9 +30,20 @@ export async function POST(
   const room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
   const body = await readJson(request);
+  await recordMetric(room.id, 'join_attempt');
+  const reject = async (
+    reason: string,
+    error: string,
+    status: number,
+    extra?: Record<string, unknown>,
+  ) => {
+    await recordMetric(room.id, 'join_failure', reason);
+    return json({ error, ...extra }, status);
+  };
   if (!(await hasInviteAccess(room, body?.inviteToken))) {
-    return json(
-      { error: 'This private room needs its original invite link.' },
+    return reject(
+      'private_access',
+      'This private room needs its original invite link.',
       403,
     );
   }
@@ -52,12 +64,16 @@ export async function POST(
     room.status === 'cancelled' ||
     !hasAnotherRound
   ) {
-    return json({ error: 'This room is no longer accepting players.' }, 409);
+    return reject(
+      'room_closed',
+      'This room is no longer accepting players.',
+      409,
+    );
   }
 
   const nickname = cleanNickname(body?.nickname);
   if (nickname.length < 2)
-    return json({ error: 'Use at least two characters.' }, 400);
+    return reject('invalid_nickname', 'Use at least two characters.', 400);
   const profileStyle = isMimoProfileStyle(body?.profileStyle)
     ? body.profileStyle
     : 'hype';
@@ -82,13 +98,11 @@ export async function POST(
       !signatureHex ||
       !claimedAccount
     ) {
-      return json(
-        {
-          error:
-            'This event requires Nimiq wallet verification before you can join.',
-          walletRequired: true,
-        },
+      return reject(
+        'wallet_required',
+        'This event requires Nimiq wallet verification before you can join.',
         428,
+        { walletRequired: true },
       );
     }
     const challenge = await getD1()
@@ -123,7 +137,11 @@ export async function POST(
       challengeNickname !== nickname ||
       challengeProfile !== profileStyle
     ) {
-      return json({ error: 'That wallet entry request expired. Try again.' }, 409);
+      return reject(
+        'wallet_expired',
+        'That wallet entry request expired. Try again.',
+        409,
+      );
     }
     const verified = verifyNimiqSignedMessage({
       message,
@@ -132,13 +150,21 @@ export async function POST(
       claimedAccount,
     });
     if (!verified.valid) {
-      return json({ error: 'Nimiq Pay could not verify this wallet.' }, 403);
+      return reject(
+        'wallet_invalid',
+        'Nimiq Pay could not verify this wallet.',
+        403,
+      );
     }
     walletHash = await hashToken(verified.derivedAccount);
     if (roomConfig.mode === 'nim' && roomConfig.custody === 'mimo_vault') {
       const vault = await getVaultConfig();
       if (!vault?.ready) {
-        return json({ error: 'Secure reward registration is temporarily unavailable.' }, 503);
+        return reject(
+          'reward_registration_unavailable',
+          'Secure reward registration is temporarily unavailable.',
+          503,
+        );
       }
       encryptedPayout = await encryptVaultAddress(
         room.id,
@@ -154,7 +180,11 @@ export async function POST(
     .bind(room.id, nickname)
     .first<{ id: string }>();
   if (existing)
-    return json({ error: 'That name is already in this room.' }, 409);
+    return reject(
+      'nickname_taken',
+      'That name is already in this room.',
+      409,
+    );
   if (walletHash) {
     const existingWallet = await db
       .prepare(`SELECT id FROM participants
@@ -162,7 +192,11 @@ export async function POST(
       .bind(room.id, walletHash)
       .first<{ id: string }>();
     if (existingWallet) {
-      return json({ error: 'This wallet has already joined this room.' }, 409);
+      return reject(
+        'wallet_duplicate',
+        'This wallet has already joined this room.',
+        409,
+      );
     }
   }
 
@@ -171,7 +205,7 @@ export async function POST(
     .bind(room.id)
     .first<{ total: number }>();
   if ((count?.total ?? 0) >= 80)
-    return json({ error: 'This room is full.' }, 409);
+    return reject('room_full', 'This room is full.', 409);
 
   const participantToken = makeToken();
   const participantId = crypto.randomUUID();
@@ -226,13 +260,21 @@ export async function POST(
         .bind(room.id)
         .first<{ total: number }>();
       if ((latestCount?.total ?? 0) >= 80) {
-        return json({ error: 'This room is full.' }, 409);
+        return reject('room_full', 'This room is full.', 409);
       }
-      return json({ error: 'That name is already in this room.' }, 409);
+      return reject(
+        'nickname_taken',
+        'That name is already in this room.',
+        409,
+      );
     }
   } catch (error) {
     console.error('room_join_failed', error);
-    return json({ error: 'You could not join. Try once more.' }, 500);
+    return reject(
+      'storage_error',
+      'You could not join. Try once more.',
+      500,
+    );
   }
 
   const joined = await db
@@ -240,7 +282,11 @@ export async function POST(
     .bind(participantId)
     .first<{ teamId: 'signal' | 'spark' }>();
   if (!joined) {
-    return json({ error: 'Your room place could not be confirmed.' }, 500);
+    return reject(
+      'confirmation_error',
+      'Your room place could not be confirmed.',
+      500,
+    );
   }
 
   if (walletChallengeId) {
@@ -250,6 +296,11 @@ export async function POST(
       .bind(walletChallengeId)
       .run();
   }
+
+  await Promise.all([
+    recordMetric(room.id, 'join_success'),
+    markVisitJoined(room.id, body?.visitToken),
+  ]);
 
   return json(
     {

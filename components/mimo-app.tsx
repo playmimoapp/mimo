@@ -500,6 +500,26 @@ export function MimoApp() {
     rounds: [blankRound()],
   });
 
+  const getRoomVisitToken = (code: string) => {
+    const key = `mimo:${code}:visit`;
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const token = crypto.randomUUID() + crypto.randomUUID();
+    window.sessionStorage.setItem(key, token);
+    return token;
+  };
+
+  useEffect(() => {
+    if (!roomCode) return;
+    const visitToken = getRoomVisitToken(roomCode);
+    void fetch(`/api/rooms/${roomCode}/analytics/view`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visitToken }),
+      keepalive: true,
+    }).catch(() => undefined);
+  }, [roomCode]);
+
   useEffect(() => {
     const controller = new AbortController();
     void fetch('/api/rewards/capabilities', {
@@ -921,6 +941,7 @@ export function MimoApp() {
           profileStyle,
           inviteToken,
           walletProof,
+          visitToken: getRoomVisitToken(roomCode),
         }),
       });
       const body = (await response.json()) as {

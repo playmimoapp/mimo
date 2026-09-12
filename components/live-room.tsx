@@ -2214,6 +2214,9 @@ function ResultsState({
             participantToken={participantToken}
           />
         )}
+      {role === 'host' && room.status === 'complete' && hostKey && (
+        <HostEventRecap code={room.code} hostKey={hostKey} />
+      )}
       {role === 'host' &&
         (room.status === 'verifying' && room.hasNextRound ? (
           <Button
@@ -2263,6 +2266,92 @@ function ResultsState({
         </Button>
       )}
     </div>
+  );
+}
+
+type EventRecap = {
+  title: string;
+  code: string;
+  participants: number;
+  verifiedParticipants: number;
+  uniqueVisits: number;
+  visitToJoinRate: number;
+  completedParticipants: number;
+  completionRate: number;
+  teams: { signal: number; spark: number };
+  failures: Array<{ reason: string; count: number }>;
+  reward: null | {
+    state: string;
+    fundingTxHash: string | null;
+    refundTxHash: string | null;
+    payouts: Array<{ state: string; txHash: string | null }>;
+  };
+};
+
+function HostEventRecap({ code, hostKey }: { code: string; hostKey: string }) {
+  const [recap, setRecap] = useState<EventRecap | null>(null);
+  const [copyLabel, setCopyLabel] = useState('Copy recap');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/rooms/${code}/recap`, {
+      cache: 'no-store',
+      headers: { 'x-mimo-host': hostKey },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        setRecap((await response.json()) as EventRecap);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [code, hostKey]);
+
+  if (!recap) return null;
+  const confirmedPayouts =
+    recap.reward?.payouts.filter((payout) => payout.state === 'confirmed').length ?? 0;
+  const copyRecap = async () => {
+    const summary = `${recap.title} · ${recap.participants} played · ${recap.completedParticipants} completed · ${recap.verifiedParticipants} verified wallets${confirmedPayouts ? ` · ${confirmedPayouts} NIM payout${confirmedPayouts === 1 ? '' : 's'} confirmed` : ''}`;
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopyLabel('Copied');
+      window.setTimeout(() => setCopyLabel('Copy recap'), 1800);
+    } catch {
+      setCopyLabel('Copy unavailable');
+    }
+  };
+
+  return (
+    <section className="mt-9 border-y border-[#cdd5d9] py-7" aria-label="Host event recap">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#20805a]">Host recap</p>
+          <h3 className="font-display mt-2 text-3xl font-extrabold tracking-[-.035em]">The room, at a glance.</h3>
+        </div>
+        <Button onClick={() => void copyRecap()} variant="outline" className="h-11 shrink-0 rounded-full bg-white px-4 font-extrabold">
+          <Share2 size={16} /> <span className="hidden sm:inline">{copyLabel}</span>
+        </Button>
+      </div>
+      <div className="mt-6 grid grid-cols-2 gap-y-6 sm:grid-cols-4">
+        {[
+          [recap.participants, 'Players'],
+          [recap.verifiedParticipants, 'Verified'],
+          [`${recap.completionRate}%`, 'Completed'],
+          [`${recap.visitToJoinRate}%`, 'Visit to join'],
+        ].map(([value, label]) => (
+          <div key={String(label)} className="border-l border-[#d6dcdf] pl-4 first:border-0 first:pl-0">
+            <strong className="font-display block text-3xl font-extrabold">{value}</strong>
+            <span className="mt-1 block text-sm font-bold text-[#64788a]">{label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-bold text-[#5d7183]">
+        <span>Signal {recap.teams.signal.toLocaleString()}</span>
+        <span>Spark {recap.teams.spark.toLocaleString()}</span>
+        {confirmedPayouts > 0 && <span className="text-[#237044]">{confirmedPayouts} payout{confirmedPayouts === 1 ? '' : 's'} confirmed</span>}
+        {recap.failures.length > 0 && <span>{recap.failures.reduce((sum, item) => sum + Number(item.count), 0)} join issue{recap.failures.reduce((sum, item) => sum + Number(item.count), 0) === 1 ? '' : 's'}</span>}
+      </div>
+    </section>
   );
 }
 

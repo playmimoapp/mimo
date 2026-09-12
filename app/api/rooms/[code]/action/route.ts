@@ -243,9 +243,10 @@ export async function POST(
     }
   } else if (action === 'finish') {
     const changed = await db
-      .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?
+      .prepare(`UPDATE events SET status = 'complete', state_changed_at = ?,
+        completed_at = COALESCE(completed_at, ?)
         WHERE id = ? AND status = 'verifying' AND active_round_id = ?`)
-      .bind(now, room.id, room.activeRoundId)
+      .bind(now, now, room.id, room.activeRoundId)
       .run();
     applied = changed.meta.changes > 0;
     if (applied) {

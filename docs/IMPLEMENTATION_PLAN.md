@@ -26,27 +26,28 @@ The product loop is `Create -> Host -> Play -> Prove -> Drop -> Return`.
 - Encrypted payout-address registration and locked event-wallet identity
 - Creator-held reward preparation and a fail-closed TestAlbatross vault path
 - Automatic payout and refund state machines with exact reward arithmetic
+- Completed real TestAlbatross funding, automatic payout and refund proof
 - Wallet-owned personal profiles and community roles
 - Public community pages, discovery, following, notifications and event history controls
 - Recurring schedules, seasons and standings
 - Community pictures stored in managed object storage
 - Discord interaction signature verification and replay protection
 - Discord OAuth server selection, minimal-permission bot install, verified announcement-channel selection and community-bound `/mimo` drafts
+- Privacy-safe real/QA event classification, verified-user and return metrics
+- Protected competition report with transaction proof and host event recaps
 
 Discord connection code is implemented but is not considered live-proven until production credentials are configured and a real server installation passes the acceptance test.
 
 ## Next, in order
 
-1. Complete and record genuine TestAlbatross funding, multi-recipient payout and refund evidence.
-2. Strengthen realtime recovery for server restarts, host loss and network interruption.
-3. Finish recurring event automation, reusable content and fast creator workflows.
-4. Activate and test Discord OAuth, installation, `/mimo`, announcements and disconnect behavior in a real server.
-5. Add privacy-conscious proof of unique users, completed events, returning hosts and transactions.
-6. Perform accessibility, performance and visual QA across every screen and payment state.
-7. Test inside Nimiq Pay on multiple physical iOS and Android devices.
-8. Run several real events with at least two hosts and more than 25 wallet-connected users.
-9. Prepare the judging demo, builder story, Skool post, X launch material and transparent usage report.
-10. Add a limited X integration only after the core room, NIM settlement and Discord flow are reliable.
+1. Strengthen realtime recovery for server restarts, host loss and network interruption.
+2. Finish recurring event automation, reusable content and fast creator workflows.
+3. Activate and test Discord OAuth, installation, `/mimo`, announcements and disconnect behavior in a real server.
+4. Perform accessibility, performance and visual QA across every screen and payment state.
+5. Test inside Nimiq Pay on multiple physical iOS and Android devices.
+6. Run several real events with at least two hosts and more than 25 wallet-connected users; use the protected report to verify the target.
+7. Prepare the judging demo, builder story, Skool post, X launch material and a privacy-safe usage export.
+8. Add a limited X integration only after the core room, NIM settlement and Discord flow are reliable.
 
 ## Trust boundaries
 

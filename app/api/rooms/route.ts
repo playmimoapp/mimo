@@ -12,6 +12,7 @@ import {
   getAccountBySession,
   getCommunityRole,
 } from '@/lib/mimo-account';
+import { analyticsClassForRequest } from '@/lib/usage-evidence';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -184,6 +185,8 @@ export async function POST(request: Request) {
   }
 
   const db = getD1();
+  const creatorAccount = await getAccountBySession(request);
+  const analyticsClass = analyticsClassForRequest(request);
   const code = makeCode();
   const hostKey = makeToken();
   const hostKeyHash = await hashToken(hostKey);
@@ -192,11 +195,13 @@ export async function POST(request: Request) {
   let communityId = crypto.randomUUID();
   let permanentCommunity = false;
   if (requestedCommunitySlug) {
-    const account = await getAccountBySession(request);
-    if (!account) {
+    if (!creatorAccount) {
       return json({ error: 'Sign in again to host for this community.' }, 401);
     }
-    const membership = await getCommunityRole(requestedCommunitySlug, account);
+    const membership = await getCommunityRole(
+      requestedCommunitySlug,
+      creatorAccount,
+    );
     if (!membership) {
       return json(
         {
@@ -254,8 +259,9 @@ export async function POST(request: Request) {
         .prepare(`INSERT INTO events
         (id, community_id, title, status, launched_config_json, config_version,
           starts_at, room_code, host_key_hash, active_round_id, round_duration_seconds,
-          state_changed_at, auto_host_enabled, created_at)
-        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, ?, 1, ?)`)
+          state_changed_at, auto_host_enabled, analytics_class,
+          created_by_account_id, created_at)
+        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
         .bind(
           eventId,
           communityId,
@@ -267,6 +273,8 @@ export async function POST(request: Request) {
           roundIds[0],
           parsedRounds[0].durationSeconds,
           now,
+          analyticsClass,
+          creatorAccount?.id ?? null,
           now,
         ),
       ...parsedRounds.map((round, index) =>

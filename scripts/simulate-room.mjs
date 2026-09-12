@@ -8,6 +8,10 @@ import {
 import { createServer } from 'node:http';
 
 const base = (process.argv[2] || 'http://127.0.0.1:8787').replace(/\/$/, '');
+const qaToken = process.env.MIMO_QA_TOKEN?.trim() || '';
+if (!/localhost|127\.0\.0\.1/.test(base) && !qaToken) {
+  throw new Error('MIMO_QA_TOKEN is required when QA targets production.');
+}
 const fakeChain = new Map();
 const fakeHead = 900_000;
 
@@ -83,7 +87,11 @@ fakeRpc.unref();
 async function request(path, options = {}) {
   const response = await fetch(`${base}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(qaToken ? { 'x-mimo-qa-token': qaToken } : {}),
+      ...options.headers,
+    },
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`${response.status} ${body.error || path}`);

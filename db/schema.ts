@@ -168,11 +168,53 @@ export const events = sqliteTable(
     publicVisible: integer('public_visible', { mode: 'boolean' })
       .notNull()
       .default(true),
+    analyticsClass: text('analytics_class', { enum: ['real', 'qa'] })
+      .notNull()
+      .default('real'),
+    createdByAccountId: text('created_by_account_id').references(
+      () => accounts.id,
+    ),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
     index('idx_events_community_status').on(t.communityId, t.status),
     uniqueIndex('idx_events_room_code').on(t.roomCode),
+  ],
+);
+
+export const roomVisits = sqliteTable(
+  'room_visits',
+  {
+    id: text('id').primaryKey(),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    visitHash: text('visit_hash').notNull(),
+    firstSeenAt: integer('first_seen_at', { mode: 'timestamp_ms' }).notNull(),
+    joinedAt: integer('joined_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [uniqueIndex('idx_room_visits_event_hash').on(t.eventId, t.visitHash)],
+);
+
+export const eventMetricCounters = sqliteTable(
+  'event_metric_counters',
+  {
+    id: text('id').primaryKey(),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    metric: text('metric').notNull(),
+    reasonCode: text('reason_code').notNull().default(''),
+    count: integer('count').notNull().default(0),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_event_metric_key').on(
+      t.eventId,
+      t.metric,
+      t.reasonCode,
+    ),
   ],
 );
 

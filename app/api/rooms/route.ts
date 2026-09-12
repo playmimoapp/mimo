@@ -64,6 +64,8 @@ export async function POST(request: Request) {
     );
   }
   const accessMode = body.accessMode === 'private' ? 'private' : 'public';
+  const walletRequired =
+    body.walletRequired === true || rewardRule === 'community_unlock';
   const requestedStart = Number(body.startsAt);
   const startsAt =
     Number.isFinite(requestedStart) && requestedStart > Date.now() - 5 * 60_000
@@ -216,6 +218,7 @@ export async function POST(request: Request) {
     funded: false,
     roundCount: parsedRounds.length,
     accessMode,
+    walletRequired,
     inviteTokenHash,
     collectiveTargetPercent: 60,
     custody: rewardCustody,

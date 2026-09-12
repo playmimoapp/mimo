@@ -390,6 +390,7 @@ export function getRoomConfig(value: string | null) {
     mode: 'free' as const,
     amount: '0',
     accessMode: 'public' as RoomAccessMode,
+    walletRequired: false,
     inviteTokenHash: '',
     custody: 'host_wallet' as const,
     rewardRule: 'skill' as const,
@@ -408,6 +409,7 @@ export function getRoomConfig(value: string | null) {
         config.accessMode === 'private'
           ? ('private' as const)
           : ('public' as const),
+      walletRequired: config.walletRequired === true,
       inviteTokenHash:
         typeof config.inviteTokenHash === 'string'
           ? config.inviteTokenHash

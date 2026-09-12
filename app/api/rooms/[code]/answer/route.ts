@@ -39,8 +39,10 @@ export async function POST(
     .first<{ id: string; answerLocked: number; walletHash: string | null }>();
   if (!participant)
     return json({ error: 'Your room session could not be verified.' }, 403);
+  const roomConfig = getRoomConfig(room.launchedConfigJson);
   if (
-    getRoomConfig(room.launchedConfigJson).rewardRule === 'community_unlock' &&
+    (roomConfig.walletRequired ||
+      roomConfig.rewardRule === 'community_unlock') &&
     !participant.walletHash
   ) {
     return json(

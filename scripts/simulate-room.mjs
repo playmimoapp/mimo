@@ -398,64 +398,55 @@ await request(`/api/rooms/${unlockRoom.code}/reward/funding/status`, {
 
 const unlockPlayers = [];
 for (const nickname of ['Sol', 'Nova']) {
+  const keyPair = KeyPair.generate();
+  const entryChallenge = await request(
+    `/api/rooms/${unlockRoom.code}/wallet/entry`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ nickname, profileStyle: 'hype' }),
+    },
+  );
+  const entrySignature = signMessage(keyPair, entryChallenge.message);
   const joined = await request(`/api/rooms/${unlockRoom.code}/join`, {
     method: 'POST',
-    body: JSON.stringify({ nickname }),
-  });
-  const keyPair = KeyPair.generate();
-  const walletChallenge = await request(
-    `/api/rooms/${unlockRoom.code}/wallet/challenge`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ participantToken: joined.participantToken }),
-    },
-  );
-  const walletSignature = signMessage(keyPair, walletChallenge.message);
-  const walletProof = await request(
-    `/api/rooms/${unlockRoom.code}/wallet/verify`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        participantToken: joined.participantToken,
-        challengeId: walletChallenge.challengeId,
+    body: JSON.stringify({
+      nickname,
+      profileStyle: 'hype',
+      walletProof: {
+        challengeId: entryChallenge.challengeId,
         account: keyPair.toAddress().toUserFriendlyAddress(),
         publicKey: keyPair.publicKey.toHex(),
-        signature: walletSignature.toHex(),
-      }),
-    },
-  );
-  assert(
-    walletProof.payoutAddressRegistered === true,
-    'Community Unlock players must be payout-ready after one signature.',
-  );
+        signature: entrySignature.toHex(),
+      },
+    }),
+  });
   unlockPlayers.push({ ...joined, keyPair });
 }
-const unverifiedUnlockPlayer = await request(
-  `/api/rooms/${unlockRoom.code}/join`,
+const unverifiedUnlockJoin = await fetch(
+  `${base}/api/rooms/${unlockRoom.code}/join`,
   {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nickname: 'Echo' }),
   },
+);
+assert(
+  unverifiedUnlockJoin.status === 428,
+  'A wallet-required player must be stopped before entering the lobby.',
+);
+const unlockLobby = await request(`/api/rooms/${unlockRoom.code}`);
+assert(
+  unlockLobby.walletRequired === true &&
+    unlockLobby.players.length === 2 &&
+    unlockLobby.players.every(
+      (player) => player.walletVerified && player.payoutAddressRegistered,
+    ),
+  'Wallet-required entry must create only verified, payout-ready players.',
 );
 await request(`/api/rooms/${unlockRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'start', hostKey: unlockRoom.hostKey }),
 });
-const unverifiedUnlockAnswer = await fetch(
-  `${base}/api/rooms/${unlockRoom.code}/answer`,
-  {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      participantToken: unverifiedUnlockPlayer.participantToken,
-      choice: 0,
-    }),
-  },
-);
-assert(
-  unverifiedUnlockAnswer.status === 409,
-  'Community Unlock answers must require wallet proof before play.',
-);
 for (const player of unlockPlayers) {
   await request(`/api/rooms/${unlockRoom.code}/answer`, {
     method: 'POST',

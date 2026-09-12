@@ -222,6 +222,7 @@ export async function GET(
     refundState: rewardRow?.refundState ?? null,
     refundTxHash: rewardRow?.refundTxHash ?? null,
     accessMode: reward.accessMode,
+    walletRequired: reward.walletRequired,
     autoHostEnabled: Boolean(room.autoHostEnabled),
     adaptiveMode: reward.adaptiveMode,
     serverNow,

@@ -36,6 +36,7 @@ import {
   MimoProfileAvatar,
 } from '@/components/mimo-host';
 import { MIMO_PROFILES, type MimoProfileStyle } from '@/lib/mimo-profile';
+import { MimoNimiq } from '@/lib/nimiq';
 
 const CommunityStudio = dynamic(() =>
   import('@/components/community-studio').then(
@@ -170,6 +171,7 @@ type EventDraft = {
   community: string;
   communitySlug?: string;
   accessMode: 'public' | 'private';
+  walletRequired: boolean;
   rewardMode: RewardMode;
   custodyMode: RewardCustody;
   rewardAmount: string;
@@ -462,6 +464,10 @@ export function MimoApp() {
   const [inviteToken, setInviteToken] = useState('');
   const [working, setWorking] = useState(false);
   const [roomError, setRoomError] = useState('');
+  const [joinWalletRequired, setJoinWalletRequired] = useState(false);
+  const [joinRequirementsLoading, setJoinRequirementsLoading] = useState(false);
+  const [walletUnavailable, setWalletUnavailable] = useState(false);
+  const [nimiq] = useState(() => new MimoNimiq());
   const [rewardCapabilities, setRewardCapabilities] = useState<{
     mimoFundingAvailable: boolean;
     network: 'MainAlbatross' | 'TestAlbatross' | null;
@@ -482,6 +488,7 @@ export function MimoApp() {
     community: '',
     communitySlug: '',
     accessMode: 'public',
+    walletRequired: false,
     rewardMode: 'free',
     custodyMode: 'host_wallet',
     rewardAmount: '',
@@ -613,6 +620,19 @@ export function MimoApp() {
         setInviteToken(resolvedInvite);
         window.sessionStorage.setItem(`mimo:${code}:invite`, resolvedInvite);
       }
+      setJoinRequirementsLoading(true);
+      void fetch(`/api/rooms/${code}`, {
+        cache: 'no-store',
+        headers: resolvedInvite ? { 'x-mimo-invite': resolvedInvite } : {},
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const preview = (await response.json()) as {
+            walletRequired?: boolean;
+          };
+          setJoinWalletRequired(Boolean(preview.walletRequired));
+        })
+        .finally(() => setJoinRequirementsLoading(false));
       if (linkedInvite) {
         window.history.replaceState(
           {},
@@ -744,6 +764,7 @@ export function MimoApp() {
       }
       setEvent({
         ...body.draft,
+        walletRequired: body.draft.walletRequired ?? false,
         community: event.communitySlug ? event.community : body.draft.community,
         communitySlug: event.communitySlug ?? '',
         startsAt: event.startsAt,
@@ -821,11 +842,66 @@ export function MimoApp() {
     if (!roomCode || !name.trim() || working) return;
     setWorking(true);
     setRoomError('');
+    setWalletUnavailable(false);
     try {
+      let walletProof:
+        | {
+            challengeId: string;
+            account: string;
+            publicKey: string;
+            signature: string;
+          }
+        | undefined;
+      if (joinWalletRequired) {
+        const connection = await nimiq.connect();
+        if (connection.status !== 'ready') {
+          if (connection.status === 'unavailable') setWalletUnavailable(true);
+          throw new Error(
+            connection.status === 'cancelled'
+              ? 'You closed Nimiq Pay. Nothing changed.'
+              : 'This event requires wallet verification inside Nimiq Pay.',
+          );
+        }
+        const challengeResponse = await fetch(
+          `/api/rooms/${roomCode}/wallet/entry`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nickname: name, profileStyle, inviteToken }),
+          },
+        );
+        const challenge = (await challengeResponse.json()) as {
+          challengeId?: string;
+          message?: string;
+          error?: string;
+        };
+        if (!challengeResponse.ok || !challenge.challengeId || !challenge.message) {
+          throw new Error(challenge.error || 'Wallet verification could not start.');
+        }
+        const signed = await nimiq.signChallenge(challenge.message);
+        if ('status' in signed) {
+          throw new Error(
+            signed.status === 'cancelled'
+              ? 'Signature cancelled. You have not joined yet.'
+              : 'Nimiq Pay could not complete the signature.',
+          );
+        }
+        walletProof = {
+          challengeId: challenge.challengeId,
+          account: connection.account,
+          publicKey: signed.publicKey,
+          signature: signed.signature,
+        };
+      }
       const response = await fetch(`/api/rooms/${roomCode}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: name, profileStyle, inviteToken }),
+        body: JSON.stringify({
+          nickname: name,
+          profileStyle,
+          inviteToken,
+          walletProof,
+        }),
       });
       const body = (await response.json()) as {
         participantToken?: string;
@@ -860,10 +936,21 @@ export function MimoApp() {
       return;
     }
     setRoomError('');
+    setJoinRequirementsLoading(true);
     setRoomCode(code);
     setInviteToken(window.sessionStorage.getItem(`mimo:${code}:invite`) ?? '');
     window.history.replaceState({}, '', `/?room=${code}`);
     setScreen('join');
+    void fetch(`/api/rooms/${code}`, { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Room unavailable');
+        const preview = (await response.json()) as {
+          walletRequired?: boolean;
+        };
+        setJoinWalletRequired(Boolean(preview.walletRequired));
+      })
+      .catch(() => undefined)
+      .finally(() => setJoinRequirementsLoading(false));
   };
   const dockVisible = ['home', 'directory', 'studio', 'community'].includes(
     screen,
@@ -1045,6 +1132,9 @@ export function MimoApp() {
               working={working}
               error={roomError}
               privateInvite={Boolean(inviteToken)}
+              walletRequired={joinWalletRequired}
+              requirementsLoading={joinRequirementsLoading}
+              walletUnavailable={walletUnavailable}
             />
           )}
           {screen === 'live_host' && roomCode && (
@@ -2233,6 +2323,34 @@ function CreateEvent({
                   </span>
                 </motion.button>
               </div>
+              <button
+                type="button"
+                role="switch"
+                aria-label="Require a verified Nimiq wallet before joining"
+                aria-checked={event.walletRequired}
+                disabled={event.rewardRule === 'community_unlock'}
+                onClick={() =>
+                  update('walletRequired', !event.walletRequired)
+                }
+                className="mt-4 flex w-full items-center justify-between gap-5 border-y border-[#d8e0e5] py-4 text-left"
+              >
+                <span>
+                  <strong className="block">Require a verified Nimiq wallet</strong>
+                  <span className="mt-1 block text-sm leading-5 text-[#617486]">
+                    {event.rewardRule === 'community_unlock'
+                      ? 'Required automatically for fair Community Unlock payouts.'
+                      : 'Players verify before entering. Signing moves no NIM.'}
+                  </span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${event.walletRequired ? 'bg-[#2577de]' : 'bg-[#cbd4da]'}`}
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${event.walletRequired ? 'left-6' : 'left-1'}`}
+                  />
+                </span>
+              </button>
             </fieldset>
           </div>
           <div className={`grid gap-7 ${sectionClass('reward')}`}>
@@ -2254,7 +2372,7 @@ function CreateEvent({
                   <Gamepad2 className="text-[#1f72d2]" />
                   <strong className="mt-3 block text-lg">Free game</strong>
                   <span className="mt-1 block text-sm text-[#617486]">
-                    No wallet required.
+                    Play without a prize. Wallet access stays your choice.
                   </span>
                 </motion.button>
                 <motion.button
@@ -2308,6 +2426,7 @@ function CreateEvent({
                           ...event,
                           rewardRule: 'community_unlock',
                           custodyMode: 'mimo_vault',
+                          walletRequired: true,
                         });
                       }}
                       className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${event.rewardRule === 'community_unlock' ? 'border-[#3b9a62] bg-[#edf9f1]' : 'border-[#d5dade] bg-white'}`}
@@ -2602,6 +2721,9 @@ function Join({
   working,
   error,
   privateInvite,
+  walletRequired,
+  requirementsLoading,
+  walletUnavailable,
 }: {
   name: string;
   setName: (value: string) => void;
@@ -2612,6 +2734,9 @@ function Join({
   working: boolean;
   error: string;
   privateInvite: boolean;
+  walletRequired: boolean;
+  requirementsLoading: boolean;
+  walletUnavailable: boolean;
 }) {
   return (
     <section className="mobile-page app-frame grid max-w-[1060px] items-center gap-8 pb-12 pt-3 sm:pt-10 md:grid-cols-[290px_minmax(0,1fr)]">
@@ -2628,9 +2753,19 @@ function Join({
           What should everyone call you?
         </h1>
         <p className="mt-4 text-base leading-7 text-[#5b7082] sm:text-lg">
-          No account. No password. Joining never needs a wallet. Funded rewards
-          use Nimiq Pay later.
+          {walletRequired
+            ? 'This event requires a verified Nimiq wallet before anyone enters.'
+            : 'No account. No password. Join now; verify later only when a reward requires it.'}
         </p>
+        {walletRequired && (
+          <div className="mt-5 flex items-start gap-3 border-y border-[#e1c66c] bg-[#fff9e6] px-1 py-4 text-sm leading-5 text-[#65541b]">
+            <ShieldCheck className="mt-0.5 shrink-0" size={18} />
+            <span>
+              <strong className="block text-[#443b1f]">Nimiq Pay required</strong>
+              Sign once to verify your wallet. This does not move any NIM.
+            </span>
+          </div>
+        )}
         <label htmlFor="nickname" className="mt-8 block text-sm font-extrabold">
           Your room name
         </label>
@@ -2684,6 +2819,31 @@ function Join({
             {error}
           </p>
         )}
+        {walletUnavailable && (
+          <div className="mt-4">
+            <p className="text-sm font-bold text-[#53687c]">
+              Install Nimiq Pay, then open this same invitation from its Mini Apps browser.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const destination = /iphone|ipad|ipod/i.test(
+                    navigator.userAgent,
+                  )
+                    ? 'https://apps.apple.com/app/nimiq-pay/id6471844738'
+                    : /android/i.test(navigator.userAgent)
+                      ? 'https://play.google.com/store/apps/details?id=com.nimiq.pay'
+                      : 'https://www.nimiq.com/nimiq-pay/';
+                  window.open(destination, '_blank', 'noopener,noreferrer');
+                }}
+                className="inline-flex h-11 items-center rounded-full bg-[#172f49] px-5 text-sm font-extrabold text-white"
+              >
+                Get Nimiq Pay
+              </button>
+            </div>
+          </div>
+        )}
         <div className="mobile-action-bar mt-8 flex flex-col-reverse items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
           <span className="flex items-center gap-2 text-sm text-[#637688]">
             <ShieldCheck size={17} />
@@ -2691,10 +2851,19 @@ function Join({
           </span>
           <Button
             onClick={next}
-            disabled={!name.trim() || working}
+            disabled={!name.trim() || working || requirementsLoading}
             className="mobile-primary h-12 rounded-full bg-[#1f72d2] px-6 font-bold"
           >
-            {working ? 'Joining…' : 'Join the room'} <ChevronRight />
+            {requirementsLoading
+              ? 'Checking event…'
+              : working
+                ? walletRequired
+                  ? 'Waiting for Nimiq Pay…'
+                  : 'Joining…'
+                : walletRequired
+                  ? 'Verify wallet and join'
+                  : 'Join the room'}{' '}
+            <ChevronRight />
           </Button>
         </div>
       </div>

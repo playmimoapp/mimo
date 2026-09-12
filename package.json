@@ -17,6 +17,7 @@
     "test:room": "node scripts/simulate-room.mjs",
     "test:community": "node scripts/simulate-community.mjs",
     "test:identity": "node scripts/simulate-identity.mjs",
+    "test:wallet-entry": "node scripts/simulate-wallet-entry.mjs",
     "discord:register": "node scripts/register-discord-command.mjs",
     "vault:create:test": "node scripts/create-test-vault.mjs"
   },

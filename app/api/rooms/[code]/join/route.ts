@@ -79,6 +79,8 @@ export async function POST(
     : 'hype';
 
   const roomConfig = getRoomConfig(room.launchedConfigJson);
+  const usesTeams =
+    roomConfig.playMode === 'teams' || roomConfig.playMode === 'hybrid';
   let walletHash: string | null = null;
   let encryptedPayout: { ciphertext: string; iv: string } | null = null;
   let walletChallengeId = '';
@@ -221,6 +223,7 @@ export async function POST(
         joined_at, last_seen_at)
       SELECT ?, ?, ?, ?,
         CASE
+          WHEN ? = 0 THEN NULL
           WHEN (SELECT COUNT(*) FROM participants
             WHERE event_id = ? AND team_id = 'signal') <=
             (SELECT COUNT(*) FROM participants
@@ -239,6 +242,7 @@ export async function POST(
         room.id,
         nickname,
         profileStyle,
+        usesTeams ? 1 : 0,
         room.id,
         room.id,
         tokenHash,
@@ -280,7 +284,7 @@ export async function POST(
   const joined = await db
     .prepare(`SELECT team_id AS teamId FROM participants WHERE id = ? LIMIT 1`)
     .bind(participantId)
-    .first<{ teamId: 'signal' | 'spark' }>();
+    .first<{ teamId: 'signal' | 'spark' | null }>();
   if (!joined) {
     return reject(
       'confirmation_error',

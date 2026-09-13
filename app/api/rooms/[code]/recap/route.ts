@@ -1,5 +1,5 @@
 import { getD1 } from '@/db';
-import { getRoom, hashToken, json } from '@/lib/live-room';
+import { getRoom, getRoomConfig, hashToken, json } from '@/lib/live-room';
 
 export async function GET(
   request: Request,
@@ -14,6 +14,7 @@ export async function GET(
   }
 
   const db = getD1();
+  const playMode = getRoomConfig(room.launchedConfigJson).playMode;
   const [counts, visits, attempts, failures, players, reward, payouts] =
     await Promise.all([
       db.prepare(`SELECT COUNT(*) AS participants,
@@ -68,6 +69,7 @@ export async function GET(
     title: room.title,
     code: room.roomCode,
     status: room.status,
+    playMode,
     participants: participantCount,
     verifiedParticipants: Number(counts?.verified ?? 0),
     uniqueVisits: visitCount,

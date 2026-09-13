@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import {
   ArrowRight,
   Check,
+  CircleUserRound,
   Clock3,
   Link2,
   LockKeyhole,
@@ -658,6 +659,15 @@ export function LiveRoom({
   }
 
   const answered = answeredCount;
+  const usesTeams = room.playMode === 'teams' || room.playMode === 'hybrid';
+  const playModeLabel =
+    room.playMode === 'individual'
+      ? 'Individual play'
+      : room.playMode === 'teams'
+        ? 'Team play'
+        : room.playMode === 'together'
+          ? 'Play together'
+          : 'Hybrid play';
   const leaderboard = [...room.players].sort(
     (a, b) => b.score - a.score || a.nickname.localeCompare(b.nickname),
   );
@@ -709,7 +719,7 @@ export function LiveRoom({
     room.status === 'lobby'
       ? room.players.length === 0
         ? 'The room is ready. Bring your people in.'
-        : `${room.players.length} ${room.players.length === 1 ? 'player is' : 'players are'} here. I’m balancing the teams.`
+        : `${room.players.length} ${room.players.length === 1 ? 'player is' : 'players are'} here. ${usesTeams ? 'I’m balancing the teams.' : room.playMode === 'together' ? 'The shared challenge is taking shape.' : 'The room is ready to play.'}`
       : room.status === 'live'
         ? allAnswered
           ? 'Everyone is locked in. Let’s reveal it.'
@@ -848,6 +858,7 @@ export function LiveRoom({
                   {room.accessMode === 'private'
                     ? 'Private invite'
                     : 'Public room'}
+                  {` · ${playModeLabel}`}
                   {room.rewardMode === 'nim'
                     ? room.rewardCustody === 'host_wallet'
                       ? ` · ${room.rewardAmount} NIM host promise`
@@ -907,7 +918,7 @@ export function LiveRoom({
         </div>
       )}
 
-      {room.players.length > 0 && room.status !== 'live' && (
+      {usesTeams && room.players.length > 0 && room.status !== 'live' && (
         <TeamMomentum
           signal={signalEnergy}
           spark={sparkEnergy}
@@ -919,7 +930,7 @@ export function LiveRoom({
       <div className="mt-6 grid gap-7 lg:grid-cols-[1fr_340px]">
         <div>
           <p className="text-sm font-extrabold text-[#5b7082]">
-            {room.community}
+            {room.community} · {playModeLabel}
           </p>
           <h1 className="mobile-flow-title font-display mt-2 text-[clamp(2.6rem,7vw,5.7rem)] font-extrabold leading-[.9] tracking-[-.065em]">
             {room.title}
@@ -1069,7 +1080,11 @@ export function LiveRoom({
                 ? 'I reveal on time and move the show. You can step in anytime.'
                 : 'Auto-host is paused. You control every move.'
               : me
-                ? `You are on Team ${me.teamId === 'signal' ? 'Signal' : 'Spark'}.`
+                ? usesTeams
+                  ? `You are on Team ${me.teamId === 'signal' ? 'Signal' : 'Spark'}.`
+                  : room.playMode === 'together'
+                    ? 'Your answers move the shared room result.'
+                    : 'Your answers build your personal score.'
                 : 'Your place is saved in this room.'}
           </p>
           <div className="mt-5 grid grid-cols-3 gap-2 border-y border-white/10 py-4 text-center">
@@ -1612,6 +1627,7 @@ function LobbyState({
   const verifiedWallets = room.players.filter(
     (player) => player.walletVerified,
   ).length;
+  const usesTeams = room.playMode === 'teams' || room.playMode === 'hybrid';
   const arrivalLabel =
     room.players.length === 0
       ? 'No one here yet'
@@ -1654,6 +1670,8 @@ function LobbyState({
           <span>{arrivalLabel}</span>
         </div>
       </div>
+      {usesTeams ? (
+        <>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         <div className="border-l-4 border-[#1f72d2] bg-[#eaf4ff] px-4 py-3">
           <div className="flex items-center justify-between gap-3">
@@ -1693,6 +1711,28 @@ function LobbyState({
         scores. An optional Beat Mimo challenge gives the whole room one final
         target.
       </p>
+        </>
+      ) : (
+        <div className="mt-4 flex items-start gap-3 border-y border-[#d1d8dc] py-4">
+          {room.playMode === 'together' ? (
+            <Trophy size={20} className="mt-0.5 shrink-0 text-[#a97800]" />
+          ) : (
+            <CircleUserRound size={20} className="mt-0.5 shrink-0 text-[#1f72d2]" />
+          )}
+          <span>
+            <strong className="block font-display text-lg">
+              {room.playMode === 'together'
+                ? 'One room. One shared result.'
+                : 'Everyone plays for their own score.'}
+            </strong>
+            <span className="mt-1 block text-sm font-medium text-[#607486]">
+              {room.playMode === 'together'
+                ? 'There are no opposing teams. Every answer contributes to the same objective.'
+                : 'There are no teams in this room. The final ranking is individual.'}
+            </span>
+          </span>
+        </div>
+      )}
       {room.rewardMode === 'nim' && (
         <RewardFundingPanel
           room={room}
@@ -1703,7 +1743,7 @@ function LobbyState({
         />
       )}
       <EventPromise room={room} />
-      {!isHost && currentPlayer && (
+      {!isHost && currentPlayer && usesTeams && (
         <div
           className={`mt-4 flex items-center gap-3 border px-4 py-3 ${
             currentPlayer.teamId === 'signal'
@@ -1739,9 +1779,11 @@ function LobbyState({
                 profile={player.profileStyle}
                 nickname={player.nickname}
                 className={`h-10 w-10 ${
-                  player.teamId === 'signal'
+                  usesTeams && player.teamId === 'signal'
                     ? 'ring-2 ring-[#1f72d2]/25'
-                    : 'ring-2 ring-[#d56552]/25'
+                    : usesTeams
+                      ? 'ring-2 ring-[#d56552]/25'
+                      : ''
                 }`}
               />
               <strong>{player.nickname}</strong>
@@ -2050,6 +2092,9 @@ function ResultsState({
   participantToken?: string;
   onOpenCommunity?: (slug: string) => void;
 }) {
+  const usesTeams = room.playMode === 'teams' || room.playMode === 'hybrid';
+  const showsPersonalRanking =
+    room.playMode === 'individual' || room.playMode === 'hybrid';
   const finaleCorrect =
     room.roundType === 'finale' && room.correctChoice !== null
       ? (room.choiceCounts[room.correctChoice] ?? 0)
@@ -2197,7 +2242,7 @@ function ResultsState({
           </p>
         </div>
       )}
-      {room.roundType !== 'pulse' && teamTotal > 0 && (
+      {usesTeams && room.roundType !== 'pulse' && teamTotal > 0 && (
         <div
           className="mt-7 border border-[#ccd5dc] bg-white p-5"
           aria-label="Team score bar chart"
@@ -2235,7 +2280,21 @@ function ResultsState({
           </p>
         </div>
       )}
-      <div className="mt-7 border-y border-[#cdd3d5]">
+      <div className="mt-7 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#607486]">
+            {showsPersonalRanking ? 'Player scores' : 'Room contributors'}
+          </p>
+          <h3 className="font-display mt-1 text-2xl font-extrabold">
+            {showsPersonalRanking
+              ? 'Live standings'
+              : room.playMode === 'teams'
+                ? 'Everyone who moved their team'
+                : 'Everyone who moved the room'}
+          </h3>
+        </div>
+      </div>
+      <div className="mt-3 border-y border-[#cdd3d5]">
         {leaderboard.map((player, index) => (
           <motion.div
             key={player.id}
@@ -2250,9 +2309,16 @@ function ResultsState({
             }}
             className="flex items-center gap-4 border-b border-[#d9dddd] px-2 py-4 last:border-0"
           >
-            <span className="font-display text-2xl font-extrabold text-[#7a8995]">
-              {index + 1}
-            </span>
+            {showsPersonalRanking ? (
+              <span className="font-display text-2xl font-extrabold text-[#7a8995]">
+                {index + 1}
+              </span>
+            ) : usesTeams ? (
+              <span
+                className={`h-3 w-3 shrink-0 rounded-full ${player.teamId === 'signal' ? 'bg-[#1f72d2]' : 'bg-[#d56552]'}`}
+                aria-label={player.teamId === 'signal' ? 'Team Signal' : 'Team Spark'}
+              />
+            ) : null}
             <MimoProfileAvatar
               profile={player.profileStyle}
               nickname={player.nickname}
@@ -2268,6 +2334,11 @@ function ResultsState({
             )}
             <span className="font-display text-xl font-extrabold">
               {player.score.toLocaleString()}
+              {!showsPersonalRanking && (
+                <span className="ml-1 font-sans text-xs font-bold text-[#718291]">
+                  contributed
+                </span>
+              )}
             </span>
           </motion.div>
         ))}
@@ -2343,6 +2414,7 @@ function ResultsState({
 type EventRecap = {
   title: string;
   code: string;
+  playMode: LiveRoomState['playMode'];
   participants: number;
   verifiedParticipants: number;
   uniqueVisits: number;
@@ -2417,8 +2489,12 @@ function HostEventRecap({ code, hostKey }: { code: string; hostKey: string }) {
         ))}
       </div>
       <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-bold text-[#5d7183]">
-        <span>Signal {recap.teams.signal.toLocaleString()}</span>
-        <span>Spark {recap.teams.spark.toLocaleString()}</span>
+        {(recap.playMode === 'teams' || recap.playMode === 'hybrid') && (
+          <>
+            <span>Signal {recap.teams.signal.toLocaleString()}</span>
+            <span>Spark {recap.teams.spark.toLocaleString()}</span>
+          </>
+        )}
         {confirmedPayouts > 0 && <span className="text-[#237044]">{confirmedPayouts} payout{confirmedPayouts === 1 ? '' : 's'} confirmed</span>}
         {recap.failures.length > 0 && <span>{recap.failures.reduce((sum, item) => sum + Number(item.count), 0)} join issue{recap.failures.reduce((sum, item) => sum + Number(item.count), 0) === 1 ? '' : 's'}</span>}
       </div>

@@ -245,6 +245,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
         title: draft.title.trim().slice(0, 80),
         community,
         accessMode: 'public',
+        playMode: eventKind === 'community_vote' ? 'individual' : 'hybrid',
         walletRequired: false,
         rewardMode: 'free',
         custodyMode: 'host_wallet',

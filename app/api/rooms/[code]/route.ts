@@ -71,7 +71,7 @@ export async function GET(
         id: string;
         nickname: string;
         profileStyle: 'hype' | 'cool' | 'clever' | 'bold';
-        teamId: 'signal' | 'spark';
+        teamId: 'signal' | 'spark' | null;
         score: number;
         answerLocked: number;
         walletHash: string | null;
@@ -174,7 +174,9 @@ export async function GET(
     .filter((player) => player.teamId === 'spark')
     .reduce((total, player) => total + player.score, 0);
   const hasNextRound = roundIndex + 1 < roundCount;
-  const roomSignal = reward.adaptiveMoments
+  const usesTeams = reward.playMode === 'teams' || reward.playMode === 'hybrid';
+  const roomSignal = reward.adaptiveMoments &&
+    (usesTeams || round?.type === 'finale')
     ? detectLivingRoomSignal({
         status: room.status,
         roundType: round?.type ?? 'multiple_choice',
@@ -223,6 +225,7 @@ export async function GET(
     refundState: rewardRow?.refundState ?? null,
     refundTxHash: rewardRow?.refundTxHash ?? null,
     accessMode: reward.accessMode,
+    playMode: reward.playMode,
     walletRequired: reward.walletRequired,
     autoHostEnabled: Boolean(room.autoHostEnabled),
     adaptiveMode: reward.adaptiveMode,
@@ -267,7 +270,7 @@ export async function GET(
           const payload = JSON.parse(reaction.payloadJson) as {
             emoji: string;
             nickname: string;
-            teamId: 'signal' | 'spark';
+            teamId: 'signal' | 'spark' | null;
           };
           return { ...payload, id: reaction.id, createdAt: reaction.createdAt };
         } catch {

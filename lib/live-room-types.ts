@@ -2,7 +2,7 @@ export type LivePlayer = {
   id: string;
   nickname: string;
   profileStyle: import('@/lib/mimo-profile').MimoProfileStyle;
-  teamId: 'signal' | 'spark';
+  teamId: 'signal' | 'spark' | null;
   score: number;
   answerLocked: boolean;
   walletVerified: boolean;
@@ -14,7 +14,7 @@ export type LiveReaction = {
   id: string;
   emoji: '👏' | '🔥' | '🤯' | '💙';
   nickname: string;
-  teamId: 'signal' | 'spark';
+  teamId: 'signal' | 'spark' | null;
   createdAt: number;
 };
 
@@ -55,6 +55,7 @@ export type LiveRoomState = {
   refundState: 'prepared' | 'submitted' | 'confirmed' | null;
   refundTxHash: string | null;
   accessMode: 'public' | 'private';
+  playMode: 'individual' | 'teams' | 'hybrid' | 'together';
   walletRequired: boolean;
   autoHostEnabled: boolean;
   adaptiveMode: 'auto' | 'ask' | 'off';

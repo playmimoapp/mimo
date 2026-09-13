@@ -65,6 +65,26 @@ export async function POST(request: Request) {
     );
   }
   const accessMode = body.accessMode === 'private' ? 'private' : 'public';
+  const playMode = ['individual', 'teams', 'hybrid', 'together'].includes(
+    String(body.playMode),
+  )
+    ? String(body.playMode)
+    : eventKind === 'community_vote'
+      ? 'individual'
+      : 'hybrid';
+  if (
+    playMode === 'together' &&
+    rewardMode === 'nim' &&
+    rewardRule !== 'community_unlock'
+  ) {
+    return json(
+      {
+        error:
+          'Together mode can only use a Community Unlock NIM reward. It cannot secretly rank one winner.',
+      },
+      400,
+    );
+  }
   const walletRequired =
     body.walletRequired === true || rewardRule === 'community_unlock';
   const requestedStart = Number(body.startsAt);
@@ -223,6 +243,7 @@ export async function POST(request: Request) {
     funded: false,
     roundCount: parsedRounds.length,
     accessMode,
+    playMode,
     walletRequired,
     inviteTokenHash,
     collectiveTargetPercent: 60,

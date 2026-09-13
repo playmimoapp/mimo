@@ -78,10 +78,19 @@ type EventKind =
   | 'onboarding'
   | 'custom';
 type AdaptiveMode = 'auto' | 'ask' | 'off';
+type PlayMode = 'individual' | 'teams' | 'hybrid' | 'together';
+
+function defaultPlayMode(eventKind: EventKind): PlayMode {
+  if (eventKind === 'game_night') return 'hybrid';
+  if (eventKind === 'community_vote') return 'individual';
+  if (eventKind === 'product_launch' || eventKind === 'onboarding')
+    return 'together';
+  return 'individual';
+}
 
 const HOME_LINES = [
   'You bring the people. I’ll run the room.',
-  'I’ll balance the teams and keep the pace.',
+  'Solo, teams or all together—I’ll keep the pace.',
   'Answers locked? I handle the reveal.',
   'One last question. Can the room beat me?',
 ] as const;
@@ -152,6 +161,7 @@ type EventDraft = {
   community: string;
   communitySlug?: string;
   accessMode: 'public' | 'private';
+  playMode: PlayMode;
   walletRequired: boolean;
   rewardMode: RewardMode;
   custodyMode: RewardCustody;
@@ -472,6 +482,7 @@ export function MimoApp() {
     community: '',
     communitySlug: '',
     accessMode: 'public',
+    playMode: 'hybrid',
     walletRequired: false,
     rewardMode: 'free',
     custodyMode: 'host_wallet',
@@ -595,6 +606,7 @@ export function MimoApp() {
         setEvent((current) => ({
           ...current,
           eventKind,
+          playMode: defaultPlayMode(eventKind),
           community: linkedCommunityName,
           communitySlug: linkedCommunitySlug,
           startsAt: null,
@@ -784,6 +796,7 @@ export function MimoApp() {
       }
       setEvent({
         ...body.draft,
+        playMode: body.draft.playMode ?? defaultPlayMode(body.draft.eventKind),
         walletRequired: body.draft.walletRequired ?? false,
         community: event.communitySlug ? event.community : body.draft.community,
         communitySlug: event.communitySlug ?? '',
@@ -1067,7 +1080,11 @@ export function MimoApp() {
             <CreateChoice
               selectedKind={event.eventKind}
               selectKind={(eventKind) => {
-                setEvent({ ...event, eventKind });
+                setEvent({
+                  ...event,
+                  eventKind,
+                  playMode: defaultPlayMode(eventKind),
+                });
                 setAssistantBrief({ ...assistantBrief, eventKind });
               }}
               context={
@@ -1868,7 +1885,14 @@ function CreateEvent({
             round.correctChoice >= 0 &&
             round.correctChoice < round.choices.length)),
     ) &&
-    (event.rewardMode === 'free' || Number(event.rewardAmount) > 0),
+    (event.rewardMode === 'free' || Number(event.rewardAmount) > 0) &&
+    !(
+      event.playMode === 'together' &&
+      event.rewardMode === 'nim' &&
+      event.rewardRule !== 'community_unlock'
+    ) &&
+    (event.rewardRule !== 'community_unlock' ||
+      event.rounds.some((round) => round.type === 'finale')),
   );
   const basicsReady = event.title.trim().length >= 3;
   const questionsReady =
@@ -1894,7 +1918,10 @@ function CreateEvent({
             ? 'This room stays unlisted. Share its code or link with your guests.'
             : 'This room is public. Anyone with the code can join.'
           : event.rewardMode === 'nim'
-            ? 'Your NIM rules are visible before anyone joins.'
+            ? event.rewardRule === 'community_unlock' &&
+              !event.rounds.some((round) => round.type === 'finale')
+              ? 'Add a Beat Mimo question so the shared NIM target can be verified.'
+              : 'Your NIM rules are visible before anyone joins.'
             : 'No prize needed. Preview the guest experience when you are ready.';
   const nextMobileSection = () => {
     if (mobileSection === 'basics') setMobileSection('rounds');
@@ -1969,6 +1996,90 @@ function CreateEvent({
                 className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
               />
             </label>
+            <fieldset className="border-y border-[#cfd5d8] py-5">
+              <legend className="px-2 text-sm font-extrabold">
+                How should people play?
+              </legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    [
+                      'individual',
+                      'Individual',
+                      'Everyone plays for their own score.',
+                      CircleDot,
+                    ],
+                    [
+                      'teams',
+                      'Teams',
+                      'Signal and Spark compete as two sides.',
+                      Users,
+                    ],
+                    [
+                      'hybrid',
+                      'Hybrid',
+                      'Personal scores and team momentum together.',
+                      Sparkles,
+                    ],
+                    [
+                      'together',
+                      'Together',
+                      'The whole room works toward one result.',
+                      Trophy,
+                    ],
+                  ] as const
+                ).map(([mode, label, description, Icon]) => {
+                  const selected = event.playMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        if (
+                          mode === 'together' &&
+                          event.rewardMode === 'nim' &&
+                          mimoFundingAvailable
+                        ) {
+                          setEvent({
+                            ...event,
+                            playMode: mode,
+                            rewardRule: 'community_unlock',
+                            custodyMode: 'mimo_vault',
+                            walletRequired: true,
+                          });
+                          return;
+                        }
+                        update('playMode', mode);
+                      }}
+                      className={`flex min-h-20 items-start gap-3 border px-4 py-3 text-left transition ${
+                        selected
+                          ? 'border-[#1f72d2] bg-[#eaf4ff]'
+                          : 'border-[#d1d8dc] bg-white hover:border-[#93aabd]'
+                      }`}
+                    >
+                      <Icon
+                        size={19}
+                        className={selected ? 'text-[#1f72d2]' : 'text-[#607486]'}
+                      />
+                      <span>
+                        <strong className="block">
+                          {label}
+                          {mode === 'hybrid' && (
+                            <span className="ml-2 text-[10px] uppercase tracking-[.1em] text-[#1f72d2]">
+                              Game-night pick
+                            </span>
+                          )}
+                        </strong>
+                        <span className="mt-1 block text-sm font-medium leading-5 text-[#607486]">
+                          {description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
             <fieldset className="border-y border-[#cfd5d8] py-5">
               <legend className="px-2 text-sm font-extrabold">
                 When is it?
@@ -2433,22 +2544,37 @@ function CreateEvent({
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.985 }}
+                  disabled={
+                    event.playMode === 'together' && !mimoFundingAvailable
+                  }
                   onClick={() =>
                     setEvent({
                       ...event,
                       rewardMode: 'nim',
-                      rewardRule: 'skill',
-                      custodyMode: mimoFundingAvailable
-                        ? 'mimo_vault'
-                        : 'host_wallet',
+                      rewardRule:
+                        event.playMode === 'together' && mimoFundingAvailable
+                          ? 'community_unlock'
+                          : 'skill',
+                      custodyMode:
+                        event.playMode === 'together' && mimoFundingAvailable
+                          ? 'mimo_vault'
+                          : mimoFundingAvailable
+                            ? 'mimo_vault'
+                            : 'host_wallet',
+                      walletRequired:
+                        event.playMode === 'together' && mimoFundingAvailable
+                          ? true
+                          : event.walletRequired,
                     })
                   }
-                  className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                  className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
                 >
                   <Gift className="text-[#a87600]" />
                   <strong className="mt-3 block text-lg">NIM reward</strong>
                   <span className="mt-1 block text-sm text-[#617486]">
-                    Reward verified skill or participation.
+                    {event.playMode === 'together'
+                      ? 'Fund a shared target without creating a hidden individual winner.'
+                      : 'Reward verified skill or participation.'}
                   </span>
                 </motion.button>
               </div>
@@ -2463,13 +2589,16 @@ function CreateEvent({
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.985 }}
+                      disabled={event.playMode === 'together'}
                       onClick={() => update('rewardRule', 'skill')}
-                      className={`min-h-28 border-2 p-5 text-left transition ${event.rewardRule === 'skill' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
+                      className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${event.rewardRule === 'skill' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
                     >
                       <Trophy className="text-[#a87600]" />
                       <strong className="mt-3 block text-lg">Skill Drop</strong>
                       <span className="mt-1 block text-sm text-[#617486]">
-                        The verified first-place player earns the pool.
+                        {event.playMode === 'together'
+                          ? 'Together mode never creates a hidden individual winner.'
+                          : 'The verified first-place player earns the pool.'}
                       </span>
                     </motion.button>
                     <motion.button
@@ -2684,6 +2813,14 @@ function CreatorRehearsal({
   const [revealed, setRevealed] = useState(false);
   const round = event.rounds[roundIndex];
   const last = roundIndex === event.rounds.length - 1;
+  const playModeLabel =
+    event.playMode === 'individual'
+      ? 'Individual play'
+      : event.playMode === 'teams'
+        ? 'Team play'
+        : event.playMode === 'together'
+          ? 'Play together'
+          : 'Hybrid play';
   const next = () => {
     if (!revealed) {
       setRevealed(true);
@@ -2699,7 +2836,7 @@ function CreatorRehearsal({
     <section className="mobile-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_390px]">
       <div>
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c65340]">
-          Private rehearsal · nothing is live
+          Private rehearsal · {playModeLabel} · nothing is live
         </p>
         <h1 className="mobile-flow-title font-display mt-3 text-[clamp(2.7rem,7vw,5rem)] font-extrabold leading-[.92] tracking-[-.06em]">
           Test the room before your guests join.

@@ -306,7 +306,7 @@ export async function reconcileRoom(room: RoomRecord) {
           .prepare(`SELECT team_id AS teamId, score FROM participants
             WHERE event_id = ?`)
           .bind(room.id)
-          .all<{ teamId: 'signal' | 'spark'; score: number }>(),
+          .all<{ teamId: 'signal' | 'spark' | null; score: number }>(),
         db
           .prepare(`SELECT next.id FROM rounds current
             JOIN rounds next ON next.event_id = current.event_id
@@ -363,7 +363,11 @@ export async function reconcileRoom(room: RoomRecord) {
           ? (choiceCounts[correctChoice] ?? 0) >=
             Math.ceil(players.results.length * (collectiveTargetPercent / 100))
           : null;
-      const signal = detectLivingRoomSignal({
+      const usesTeams =
+        roomConfig.playMode === 'teams' || roomConfig.playMode === 'hybrid';
+      const signal =
+        usesTeams || currentRound?.type === 'finale'
+          ? detectLivingRoomSignal({
         status: room.status,
         roundType: currentRound?.type ?? 'multiple_choice',
         hasNextRound: Boolean(nextRound),
@@ -379,7 +383,8 @@ export async function reconcileRoom(room: RoomRecord) {
         ),
         signalPlayers: signalPlayers.length,
         sparkPlayers: sparkPlayers.length,
-      });
+            })
+          : null;
       if (signal && roomConfig.adaptiveMode === 'ask') {
         const changed = await db
           .prepare(`UPDATE events SET auto_host_enabled = 0 WHERE id = ?
@@ -461,12 +466,15 @@ export async function reconcileRoom(room: RoomRecord) {
 }
 
 export type RoomAccessMode = 'public' | 'private';
+export type RoomPlayMode = 'individual' | 'teams' | 'hybrid' | 'together';
 
 export function getRoomConfig(value: string | null) {
   const fallback = {
     mode: 'free' as const,
     amount: '0',
     accessMode: 'public' as RoomAccessMode,
+    // Rooms created before play styles existed used both team and personal scores.
+    playMode: 'hybrid' as RoomPlayMode,
     walletRequired: false,
     inviteTokenHash: '',
     custody: 'host_wallet' as const,
@@ -486,6 +494,11 @@ export function getRoomConfig(value: string | null) {
         config.accessMode === 'private'
           ? ('private' as const)
           : ('public' as const),
+      playMode: ['individual', 'teams', 'hybrid', 'together'].includes(
+        String(config.playMode),
+      )
+        ? (config.playMode as RoomPlayMode)
+        : ('hybrid' as const),
       walletRequired: config.walletRequired === true,
       inviteTokenHash:
         typeof config.inviteTokenHash === 'string'

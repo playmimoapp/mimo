@@ -44,7 +44,7 @@ export async function POST(
   const team = await db
     .prepare(`SELECT team_id AS teamId FROM participants WHERE id = ? LIMIT 1`)
     .bind(participant.id)
-    .first<{ teamId: 'signal' | 'spark' }>();
+    .first<{ teamId: 'signal' | 'spark' | null }>();
   const id = crypto.randomUUID();
   const createdAt = Date.now();
   await db
@@ -60,7 +60,7 @@ export async function POST(
       JSON.stringify({
         emoji,
         nickname: participant.nickname,
-        teamId: team?.teamId ?? 'signal',
+        teamId: team?.teamId ?? null,
       }),
       createdAt,
     )

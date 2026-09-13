@@ -27,7 +27,7 @@ type Report = {
   }>;
   transactionProof: Array<{
     kind: 'funding' | 'payout' | 'refund'; title: string; roomCode: string;
-    txHash: string; happenedAt: number;
+    analyticsClass: 'real' | 'qa'; txHash: string; happenedAt: number;
   }>;
   definitions: Record<string, string>;
 };
@@ -116,6 +116,16 @@ export function CompetitionReport() {
     );
   }
 
+  const qaFundingProof = report.transactionProof.filter(
+    (proof) => proof.analyticsClass === 'qa' && proof.kind === 'funding',
+  ).length;
+  const qaPayoutProof = report.transactionProof.filter(
+    (proof) => proof.analyticsClass === 'qa' && proof.kind === 'payout',
+  ).length;
+  const qaRefundProof = report.transactionProof.filter(
+    (proof) => proof.analyticsClass === 'qa' && proof.kind === 'refund',
+  ).length;
+
   return (
     <main className="min-h-dvh bg-[#f8f7f3] text-[#16283d]">
       <header className="border-b border-[#d8dddf] bg-[#fffdf9]">
@@ -175,6 +185,11 @@ export function CompetitionReport() {
                 </div>
               ))}
             </div>
+            {(qaFundingProof + qaPayoutProof + qaRefundProof) > 0 && (
+              <p className="mt-5 border-t border-[#e6dcae] pt-4 text-xs font-bold leading-5 text-[#726b4c]">
+                Engineering proof, excluded from real totals: {qaFundingProof} funding · {qaPayoutProof} payout · {qaRefundProof} refund.
+              </p>
+            )}
           </section>
         </div>
 
@@ -195,13 +210,19 @@ export function CompetitionReport() {
 
         <section className="mt-16">
           <h2 className="font-display text-3xl font-extrabold">Transaction proof</h2>
-          <p className="mt-2 text-[#617386]">Every link opens the public TestAlbatross explorer evidence.</p>
+          <p className="mt-2 text-[#617386]">Real-event evidence and engineering QA proof are labelled separately. Every link opens the public TestAlbatross explorer.</p>
           <div className="mt-5 divide-y divide-[#d8dddf] border-y border-[#cfd6d9]">
             {report.transactionProof.length ? report.transactionProof.map((proof) => (
               <a key={`${proof.kind}-${proof.txHash}`} href={`https://test.nimiq.watch/#${proof.txHash}`} target="_blank" rel="noreferrer"
                 className="flex items-center gap-4 py-4 hover:text-[#1d72d2]">
                 <CheckCircle2 size={20} className="text-[#24855e]" />
-                <div className="min-w-0 flex-1"><strong className="block capitalize">{proof.kind} · {proof.title}</strong><span className="block truncate font-mono text-xs text-[#718192]">{proof.txHash}</span></div>
+                <div className="min-w-0 flex-1">
+                  <strong className="block capitalize">{proof.kind} · {proof.title}</strong>
+                  <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[.1em] ${proof.analyticsClass === 'qa' ? 'bg-[#eef1f3] text-[#627384]' : 'bg-[#e6f6ed] text-[#237044]'}`}>
+                    {proof.analyticsClass === 'qa' ? 'Engineering QA proof' : 'Real event'}
+                  </span>
+                  <span className="mt-1 block truncate font-mono text-xs text-[#718192]">{proof.txHash}</span>
+                </div>
                 <ArrowUpRight size={18} />
               </a>
             )) : <p className="py-6 text-[#617386]">No real-event transaction proof recorded yet.</p>}

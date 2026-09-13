@@ -120,19 +120,24 @@ export async function GET(request: Request) {
         title: string; roomCode: string; status: string; createdAt: number;
         completedAt: number | null; participants: number; verifiedParticipants: number;
       }>(),
-    db.prepare(`SELECT e.title, e.room_code AS roomCode, r.funding_tx_hash AS txHash,
+    db.prepare(`SELECT e.title, e.room_code AS roomCode,
+      e.analytics_class AS analyticsClass, r.funding_tx_hash AS txHash,
       r.updated_at AS happenedAt FROM rewards r JOIN events e ON e.id = r.event_id
-      WHERE e.analytics_class = 'real' AND r.funding_tx_hash IS NOT NULL
-      ORDER BY r.updated_at DESC LIMIT 20`).all<{ title: string; roomCode: string; txHash: string; happenedAt: number }>(),
-    db.prepare(`SELECT e.title, e.room_code AS roomCode, p.tx_hash AS txHash,
+      WHERE r.funding_tx_hash IS NOT NULL ORDER BY r.updated_at DESC LIMIT 20`)
+      .all<{ title: string; roomCode: string; analyticsClass: 'real' | 'qa'; txHash: string; happenedAt: number }>(),
+    db.prepare(`SELECT e.title, e.room_code AS roomCode,
+      e.analytics_class AS analyticsClass, p.tx_hash AS txHash,
       p.updated_at AS happenedAt FROM payouts p JOIN rewards r ON r.id = p.reward_id
       JOIN events e ON e.id = r.event_id
-      WHERE e.analytics_class = 'real' AND p.state = 'confirmed' AND p.tx_hash IS NOT NULL
-      ORDER BY p.updated_at DESC LIMIT 30`).all<{ title: string; roomCode: string; txHash: string; happenedAt: number }>(),
-    db.prepare(`SELECT e.title, e.room_code AS roomCode, r.refund_tx_hash AS txHash,
+      WHERE p.state = 'confirmed' AND p.tx_hash IS NOT NULL
+      ORDER BY p.updated_at DESC LIMIT 30`)
+      .all<{ title: string; roomCode: string; analyticsClass: 'real' | 'qa'; txHash: string; happenedAt: number }>(),
+    db.prepare(`SELECT e.title, e.room_code AS roomCode,
+      e.analytics_class AS analyticsClass, r.refund_tx_hash AS txHash,
       r.updated_at AS happenedAt FROM rewards r JOIN events e ON e.id = r.event_id
-      WHERE e.analytics_class = 'real' AND r.refund_state = 'confirmed'
-        AND r.refund_tx_hash IS NOT NULL ORDER BY r.updated_at DESC LIMIT 20`).all<{ title: string; roomCode: string; txHash: string; happenedAt: number }>(),
+      WHERE r.refund_state = 'confirmed' AND r.refund_tx_hash IS NOT NULL
+      ORDER BY r.updated_at DESC LIMIT 20`)
+      .all<{ title: string; roomCode: string; analyticsClass: 'real' | 'qa'; txHash: string; happenedAt: number }>(),
   ]);
 
   const attempts = count(joinAttempts);

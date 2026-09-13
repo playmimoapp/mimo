@@ -662,7 +662,9 @@ export function MimoApp() {
             accessMode?: 'public' | 'private';
           };
           setJoinWalletRequired(Boolean(preview.walletRequired));
-          setJoinAccessMode(preview.accessMode === 'private' ? 'private' : 'public');
+          setJoinAccessMode(
+            preview.accessMode === 'private' ? 'private' : 'public',
+          );
         })
         .finally(() => setJoinRequirementsLoading(false));
       if (linkedInvite) {
@@ -989,7 +991,9 @@ export function MimoApp() {
           accessMode?: 'public' | 'private';
         };
         setJoinWalletRequired(Boolean(preview.walletRequired));
-        setJoinAccessMode(preview.accessMode === 'private' ? 'private' : 'public');
+        setJoinAccessMode(
+          preview.accessMode === 'private' ? 'private' : 'public',
+        );
       })
       .catch(() => undefined)
       .finally(() => setJoinRequirementsLoading(false));
@@ -1818,6 +1822,14 @@ function CreateEvent({
     'basics' | 'rounds' | 'access' | 'reward'
   >('basics');
   const [activeRound, setActiveRound] = useState(0);
+  const [showPlayModes, setShowPlayModes] = useState(false);
+  const [showTiming, setShowTiming] = useState(false);
+  const [showAccess, setShowAccess] = useState(false);
+  const [showHostSettings, setShowHostSettings] = useState(false);
+  const [showRewardChoices, setShowRewardChoices] = useState(false);
+  const [openQuestionSettings, setOpenQuestionSettings] = useState<
+    string | null
+  >(null);
   const sectionClass = (section: typeof mobileSection) =>
     mobileSection === section ? '' : 'creator-mobile-hidden';
   const update = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
@@ -1904,6 +1916,14 @@ function CreateEvent({
         round.choices.every((choice) => choice.trim()) &&
         (round.type === 'pulse' || round.correctChoice !== null),
     );
+  const playModeSummary =
+    event.playMode === 'individual'
+      ? ['Individual', 'Everyone plays for their own score.']
+      : event.playMode === 'teams'
+        ? ['Teams', 'Signal and Spark compete as two sides.']
+        : event.playMode === 'together'
+          ? ['Together', 'The whole room works toward one result.']
+          : ['Hybrid', 'Personal scores with team momentum.'];
   const creationCue =
     mobileSection === 'basics'
       ? basicsReady
@@ -1996,114 +2016,170 @@ function CreateEvent({
                 className="h-14 border-0 border-b-2 border-[#b7c0c7] bg-transparent text-xl font-bold outline-none focus:border-[#1f72d2]"
               />
             </label>
-            <fieldset className="border-y border-[#cfd5d8] py-5">
-              <legend className="px-2 text-sm font-extrabold">
-                How should people play?
-              </legend>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {(
-                  [
-                    [
-                      'individual',
-                      'Individual',
-                      'Everyone plays for their own score.',
-                      CircleDot,
-                    ],
-                    [
-                      'teams',
-                      'Teams',
-                      'Signal and Spark compete as two sides.',
-                      Users,
-                    ],
-                    [
-                      'hybrid',
-                      'Hybrid',
-                      'Personal scores and team momentum together.',
-                      Sparkles,
-                    ],
-                    [
-                      'together',
-                      'Together',
-                      'The whole room works toward one result.',
-                      Trophy,
-                    ],
-                  ] as const
-                ).map(([mode, label, description, Icon]) => {
-                  const selected = event.playMode === mode;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => {
-                        if (
-                          mode === 'together' &&
-                          event.rewardMode === 'nim' &&
-                          mimoFundingAvailable
-                        ) {
-                          setEvent({
-                            ...event,
-                            playMode: mode,
-                            rewardRule: 'community_unlock',
-                            custodyMode: 'mimo_vault',
-                            walletRequired: true,
-                          });
-                          return;
-                        }
-                        update('playMode', mode);
-                      }}
-                      className={`flex min-h-20 items-start gap-3 border px-4 py-3 text-left transition ${
-                        selected
-                          ? 'border-[#1f72d2] bg-[#eaf4ff]'
-                          : 'border-[#d1d8dc] bg-white hover:border-[#93aabd]'
-                      }`}
-                    >
-                      <Icon
-                        size={19}
-                        className={selected ? 'text-[#1f72d2]' : 'text-[#607486]'}
-                      />
-                      <span>
-                        <strong className="block">
-                          {label}
-                          {mode === 'hybrid' && (
-                            <span className="ml-2 text-[10px] uppercase tracking-[.1em] text-[#1f72d2]">
-                              Game-night pick
+            <div className="border-y border-[#cfd5d8] py-4">
+              <button
+                type="button"
+                aria-expanded={showPlayModes}
+                onClick={() => setShowPlayModes((open) => !open)}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eaf4ff] text-[#1f72d2]">
+                  {event.playMode === 'individual' ? (
+                    <CircleDot size={18} />
+                  ) : event.playMode === 'teams' ? (
+                    <Users size={18} />
+                  ) : event.playMode === 'together' ? (
+                    <Trophy size={18} />
+                  ) : (
+                    <Sparkles size={18} />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold uppercase tracking-[.1em] text-[#6a7b89]">
+                    Play style
+                  </span>
+                  <strong className="mt-0.5 block text-lg">
+                    {playModeSummary[0]}
+                  </strong>
+                  <span className="block text-sm font-medium text-[#607486]">
+                    {playModeSummary[1]}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-sm font-extrabold text-[#1f72d2]">
+                  {showPlayModes ? 'Done' : 'Change'}
+                  <ChevronRight
+                    size={17}
+                    className={`transition ${showPlayModes ? 'rotate-90' : ''}`}
+                  />
+                </span>
+              </button>
+              <AnimatePresence initial={false}>
+                {showPlayModes && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4 divide-y divide-[#dce1e4] border-t border-[#dce1e4]">
+                      {(
+                        [
+                          ['individual', 'Individual', 'Personal leaderboard'],
+                          ['teams', 'Teams', 'Two sides; team result leads'],
+                          ['hybrid', 'Hybrid', 'Personal scores plus teams'],
+                          ['together', 'Together', 'One shared room objective'],
+                        ] as const
+                      ).map(([mode, label, description]) => {
+                        const selected = event.playMode === mode;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => {
+                              if (
+                                mode === 'together' &&
+                                event.rewardMode === 'nim' &&
+                                mimoFundingAvailable
+                              ) {
+                                setEvent({
+                                  ...event,
+                                  playMode: mode,
+                                  rewardRule: 'community_unlock',
+                                  custodyMode: 'mimo_vault',
+                                  walletRequired: true,
+                                });
+                              } else {
+                                update('playMode', mode);
+                              }
+                              setShowPlayModes(false);
+                            }}
+                            className="flex min-h-14 w-full items-center gap-3 py-3 text-left"
+                          >
+                            <span
+                              className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-[#1f72d2]' : 'border-[#aeb9c1]'}`}
+                            >
+                              {selected && (
+                                <span className="h-2.5 w-2.5 rounded-full bg-[#1f72d2]" />
+                              )}
                             </span>
-                          )}
-                        </strong>
-                        <span className="mt-1 block text-sm font-medium leading-5 text-[#607486]">
-                          {description}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-            <fieldset className="border-y border-[#cfd5d8] py-5">
-              <legend className="px-2 text-sm font-extrabold">
-                When is it?
-              </legend>
-              <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => update('startsAt', null)}
-                  className={`min-h-20 border-2 p-4 text-left ${event.startsAt === null ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
-                >
-                  <Radio size={18} className="text-[#1f72d2]" />
-                  <strong className="mt-2 block">Open the room now</strong>
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    update('startsAt', Date.now() + 24 * 60 * 60_000)
-                  }
-                  className={`min-h-20 border-2 p-4 text-left ${event.startsAt !== null ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
-                >
-                  <CalendarDays size={18} className="text-[#203752]" />
-                  <strong className="mt-2 block">Schedule it</strong>
-                </button>
-              </div>
+                            <span className="flex-1">
+                              <strong>{label}</strong>
+                              {mode === 'hybrid' && (
+                                <span className="ml-2 text-[10px] font-extrabold uppercase tracking-[.1em] text-[#1f72d2]">
+                                  Recommended
+                                </span>
+                              )}
+                              <span className="block text-sm text-[#607486]">
+                                {description}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            <div className="border-b border-[#cfd5d8] pb-4">
+              <button
+                type="button"
+                aria-expanded={showTiming}
+                onClick={() => setShowTiming((open) => !open)}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#edf1f3] text-[#29445f]">
+                  {event.startsAt === null ? (
+                    <Radio size={18} />
+                  ) : (
+                    <CalendarDays size={18} />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold uppercase tracking-[.1em] text-[#6a7b89]">
+                    Start
+                  </span>
+                  <strong className="mt-0.5 block text-lg">
+                    {event.startsAt === null ? 'Open now' : 'Scheduled'}
+                  </strong>
+                  <span className="block text-sm font-medium text-[#607486]">
+                    {event.startsAt === null
+                      ? 'The lobby opens as soon as you publish.'
+                      : new Date(event.startsAt).toLocaleString()}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-sm font-extrabold text-[#1f72d2]">
+                  {showTiming ? 'Done' : 'Change'}
+                  <ChevronRight
+                    size={17}
+                    className={`transition ${showTiming ? 'rotate-90' : ''}`}
+                  />
+                </span>
+              </button>
+              {showTiming && (
+                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[#dce1e4] pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      update('startsAt', null);
+                      setShowTiming(false);
+                    }}
+                    className={`min-h-12 px-3 font-extrabold ${event.startsAt === null ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                  >
+                    Open now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      update('startsAt', Date.now() + 24 * 60 * 60_000)
+                    }
+                    className={`min-h-12 px-3 font-extrabold ${event.startsAt !== null ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                  >
+                    Schedule
+                  </button>
+                </div>
+              )}
               {event.startsAt !== null && (
                 <label className="mt-4 block text-sm font-extrabold">
                   Guests see this time on the community page
@@ -2123,7 +2199,7 @@ function CreateEvent({
                   {event.recurrence} schedule
                 </p>
               )}
-            </fieldset>
+            </div>
           </div>
           <div
             className={`border-y border-[#cfd5d8] py-6 ${sectionClass('rounds')}`}
@@ -2156,12 +2232,12 @@ function CreateEvent({
               {event.rounds.map((round, roundIndex) => (
                 <fieldset
                   key={round.id}
-                  className={`creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5 ${activeRound === roundIndex ? '' : 'creator-round-mobile-hidden'}`}
+                  className={`creator-round flex flex-col rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5 ${activeRound === roundIndex ? '' : 'creator-round-mobile-hidden'}`}
                 >
                   <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
                     Question {roundIndex + 1}
                   </legend>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="order-1 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       {(
                         [
@@ -2207,95 +2283,119 @@ function CreateEvent({
                       </button>
                     )}
                   </div>
-                  <div className="mt-4 grid gap-4 border-y border-[#e0e4e6] py-4 sm:grid-cols-2">
-                    <fieldset>
-                      <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
-                        Answer time
-                      </legend>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {[10, 20, 30, 45, 60].map((duration) => (
-                          <button
-                            key={duration}
-                            type="button"
-                            aria-pressed={round.durationSeconds === duration}
-                            onClick={() =>
-                              updateRound(roundIndex, {
-                                durationSeconds: duration,
-                              })
-                            }
-                            className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
-                              round.durationSeconds === duration
-                                ? 'bg-[#203752] text-white'
-                                : 'bg-[#edf1f3] text-[#526a7c]'
-                            }`}
-                          >
-                            {duration}s
-                          </button>
-                        ))}
-                      </div>
-                    </fieldset>
-                    {round.type !== 'pulse' && (
+                  <button
+                    type="button"
+                    aria-expanded={openQuestionSettings === round.id}
+                    onClick={() =>
+                      setOpenQuestionSettings((current) =>
+                        current === round.id ? null : round.id,
+                      )
+                    }
+                    className="order-10 mt-5 flex min-h-12 items-center justify-between gap-3 border-t border-[#e0e4e6] pt-4 text-left text-sm font-extrabold text-[#526a7c]"
+                  >
+                    <span>Question settings</span>
+                    <span className="flex items-center gap-1 text-[#1f72d2]">
+                      {round.durationSeconds}s
+                      {round.type !== 'pulse'
+                        ? ` · ${round.scoringMode === 'speed' ? 'Speed scoring' : 'Accuracy only'}`
+                        : ''}
+                      <ChevronRight
+                        size={16}
+                        className={`transition ${openQuestionSettings === round.id ? 'rotate-90' : ''}`}
+                      />
+                    </span>
+                  </button>
+                  {openQuestionSettings === round.id && (
+                    <div className="order-11 mt-3 grid gap-4 border-t border-[#e0e4e6] pt-4 sm:grid-cols-2">
                       <fieldset>
                         <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
-                          Scoring
-                        </legend>
-                        <div className="mt-2 grid grid-cols-2 gap-1.5">
-                          {(
-                            [
-                              ['accuracy', 'Accuracy only'],
-                              ['speed', 'Accuracy + speed'],
-                            ] as const
-                          ).map(([mode, label]) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              aria-pressed={round.scoringMode === mode}
-                              onClick={() =>
-                                updateRound(roundIndex, { scoringMode: mode })
-                              }
-                              className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
-                                round.scoringMode === mode
-                                  ? 'bg-[#1f72d2] text-white'
-                                  : 'bg-[#edf1f3] text-[#526a7c]'
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      </fieldset>
-                    )}
-                    {round.type === 'finale' && (
-                      <fieldset>
-                        <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
-                          Room target
+                          Answer time
                         </legend>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {[50, 60, 70, 80].map((target) => (
+                          {[10, 20, 30, 45, 60].map((duration) => (
                             <button
-                              key={target}
+                              key={duration}
                               type="button"
-                              aria-pressed={
-                                round.collectiveTargetPercent === target
-                              }
+                              aria-pressed={round.durationSeconds === duration}
                               onClick={() =>
                                 updateRound(roundIndex, {
-                                  collectiveTargetPercent: target,
+                                  durationSeconds: duration,
                                 })
                               }
                               className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
-                                round.collectiveTargetPercent === target
-                                  ? 'bg-[#d09a00] text-white'
-                                  : 'bg-[#f6efd6] text-[#6f5700]'
+                                round.durationSeconds === duration
+                                  ? 'bg-[#203752] text-white'
+                                  : 'bg-[#edf1f3] text-[#526a7c]'
                               }`}
                             >
-                              {target}%
+                              {duration}s
                             </button>
                           ))}
                         </div>
                       </fieldset>
-                    )}
-                  </div>
+                      {round.type !== 'pulse' && (
+                        <fieldset>
+                          <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
+                            Scoring
+                          </legend>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            {(
+                              [
+                                ['accuracy', 'Accuracy only'],
+                                ['speed', 'Accuracy + speed'],
+                              ] as const
+                            ).map(([mode, label]) => (
+                              <button
+                                key={mode}
+                                type="button"
+                                aria-pressed={round.scoringMode === mode}
+                                onClick={() =>
+                                  updateRound(roundIndex, { scoringMode: mode })
+                                }
+                                className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
+                                  round.scoringMode === mode
+                                    ? 'bg-[#1f72d2] text-white'
+                                    : 'bg-[#edf1f3] text-[#526a7c]'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </fieldset>
+                      )}
+                      {round.type === 'finale' && (
+                        <fieldset>
+                          <legend className="text-xs font-extrabold uppercase tracking-[.11em] text-[#617486]">
+                            Room target
+                          </legend>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {[50, 60, 70, 80].map((target) => (
+                              <button
+                                key={target}
+                                type="button"
+                                aria-pressed={
+                                  round.collectiveTargetPercent === target
+                                }
+                                onClick={() =>
+                                  updateRound(roundIndex, {
+                                    collectiveTargetPercent: target,
+                                  })
+                                }
+                                className={`min-h-9 rounded-full px-3 text-sm font-extrabold ${
+                                  round.collectiveTargetPercent === target
+                                    ? 'bg-[#d09a00] text-white'
+                                    : 'bg-[#f6efd6] text-[#6f5700]'
+                                }`}
+                              >
+                                {target}%
+                              </button>
+                            ))}
+                          </div>
+                        </fieldset>
+                      )}
+                    </div>
+                  )}
                   <textarea
                     value={round.question}
                     onChange={(e) =>
@@ -2309,16 +2409,16 @@ function CreateEvent({
                           ? 'Write one final question for the whole room'
                           : 'Write one clear, objectively scored question'
                     }
-                    className="mt-4 min-h-20 w-full resize-none border-b-2 border-[#c5cdd2] bg-transparent text-lg font-bold leading-7 outline-none placeholder:text-[#97a2ab] focus:border-[#1f72d2]"
+                    className="order-2 mt-4 min-h-20 w-full resize-none border-b-2 border-[#c5cdd2] bg-transparent text-lg font-bold leading-7 outline-none placeholder:text-[#97a2ab] focus:border-[#1f72d2]"
                   />
-                  <p className="mt-5 text-sm font-extrabold text-[#5a6e80]">
+                  <p className="order-3 mt-5 text-sm font-extrabold text-[#5a6e80]">
                     {round.type === 'pulse'
                       ? 'Poll choices · choose between two and four'
                       : round.type === 'finale'
                         ? `Everyone answers · ${round.collectiveTargetPercent}% correct means the room wins`
                         : 'Answer choices · select the correct one'}
                   </p>
-                  <div className="mt-2 grid gap-2">
+                  <div className="order-4 mt-2 grid gap-2">
                     {round.choices.map((choice, choiceIndex) => (
                       <div
                         key={choiceIndex}
@@ -2379,7 +2479,7 @@ function CreateEvent({
                     <button
                       type="button"
                       onClick={() => addChoice(roundIndex)}
-                      className="mt-3 flex min-h-10 items-center gap-2 text-sm font-extrabold text-[#1f72d2]"
+                      className="order-5 mt-3 flex min-h-10 items-center gap-2 text-sm font-extrabold text-[#1f72d2]"
                     >
                       <Plus size={16} /> Add another choice
                     </button>
@@ -2419,77 +2519,141 @@ function CreateEvent({
             </p>
           </div>
           <div className={`grid gap-7 ${sectionClass('access')}`}>
-            <div className="border-y border-[#cfd5d8] py-5">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-extrabold">
-                  <Sparkles size={17} className="text-[#1f72d2]" /> Living Room
-                  moments
-                </p>
-                <p className="mt-1 max-w-[560px] text-sm font-medium leading-5 text-[#617486]">
-                  Pre-approve how Mimo handles close votes, comeback pressure
-                  and shared wins. Scoring and reward rules stay locked.
-                </p>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {(
-                  [
-                    ['auto', 'Autopilot'],
-                    ['ask', 'Ask me live'],
-                    ['off', 'Fixed flow'],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() =>
-                      setEvent({
-                        ...event,
-                        adaptiveMode: mode,
-                        adaptiveMoments: mode !== 'off',
-                      })
-                    }
-                    className={`min-h-11 rounded-full border px-4 text-sm font-extrabold ${event.adaptiveMode === mode ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-3 text-xs font-bold leading-5 text-[#718295]">
-                {event.adaptiveMode === 'auto'
-                  ? 'Mimo runs approved social moments and continues on time—even when you step away.'
-                  : event.adaptiveMode === 'ask'
-                    ? 'Mimo recommends a moment and waits for your decision.'
-                    : 'Mimo follows the published rounds without adaptive moments.'}
-              </p>
+            <div className="order-2 border-y border-[#cfd5d8] py-5">
+              <button
+                type="button"
+                aria-expanded={showHostSettings}
+                onClick={() => setShowHostSettings((open) => !open)}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eaf4ff] text-[#1f72d2]">
+                  <Sparkles size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold uppercase tracking-[.1em] text-[#6a7b89]">
+                    Mimo hosting
+                  </span>
+                  <strong className="mt-0.5 block text-lg">
+                    {event.adaptiveMode === 'auto'
+                      ? 'Autopilot'
+                      : event.adaptiveMode === 'ask'
+                        ? 'Ask me live'
+                        : 'Fixed flow'}
+                  </strong>
+                  <span className="block text-sm font-medium text-[#607486]">
+                    {event.adaptiveMode === 'auto'
+                      ? 'Mimo keeps the event moving automatically.'
+                      : event.adaptiveMode === 'ask'
+                        ? 'Mimo pauses for your approval.'
+                        : 'Only the published flow runs.'}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-sm font-extrabold text-[#1f72d2]">
+                  {showHostSettings ? 'Done' : 'Change'}
+                  <ChevronRight
+                    size={17}
+                    className={`transition ${showHostSettings ? 'rotate-90' : ''}`}
+                  />
+                </span>
+              </button>
+              {showHostSettings && (
+                <div className="mt-4 border-t border-[#dce1e4] pt-4">
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        ['auto', 'Autopilot'],
+                        ['ask', 'Ask me live'],
+                        ['off', 'Fixed flow'],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => {
+                          setEvent({
+                            ...event,
+                            adaptiveMode: mode,
+                            adaptiveMoments: mode !== 'off',
+                          });
+                          setShowHostSettings(false);
+                        }}
+                        className={`min-h-11 rounded-full border px-4 text-sm font-extrabold ${event.adaptiveMode === mode ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs font-bold leading-5 text-[#718295]">
+                    {event.adaptiveMode === 'auto'
+                      ? 'Mimo runs approved social moments and continues on time—even when you step away.'
+                      : event.adaptiveMode === 'ask'
+                        ? 'Mimo recommends a moment and waits for your decision.'
+                        : 'Mimo follows the published rounds without adaptive moments.'}
+                  </p>
+                </div>
+              )}
             </div>
-            <fieldset>
-              <legend className="text-sm font-extrabold">Who can join?</legend>
-              <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.985 }}
-                  onClick={() => update('accessMode', 'public')}
-                  className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'public' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
-                >
-                  <Globe2 className="text-[#1f72d2]" />
-                  <strong className="mt-3 block text-lg">Public room</strong>
-                  <span className="mt-1 block text-sm text-[#617486]">
-                    Anyone with the room code can join.
+            <div className="order-1 border-b border-[#cfd5d8] pb-5">
+              <button
+                type="button"
+                aria-expanded={showAccess}
+                onClick={() => setShowAccess((open) => !open)}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#edf1f3] text-[#29445f]">
+                  {event.accessMode === 'private' ? (
+                    <LockKeyhole size={18} />
+                  ) : (
+                    <Globe2 size={18} />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold uppercase tracking-[.1em] text-[#6a7b89]">
+                    Entry
                   </span>
-                </motion.button>
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.985 }}
-                  onClick={() => update('accessMode', 'private')}
-                  className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'private' ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
-                >
-                  <LockKeyhole className="text-[#203752]" />
-                  <strong className="mt-3 block text-lg">Private room</strong>
-                  <span className="mt-1 block text-sm text-[#617486]">
-                    Hidden from public listings. Guests join with the code or link you share.
+                  <strong className="mt-0.5 block text-lg">
+                    {event.accessMode === 'private'
+                      ? 'Private room'
+                      : 'Public room'}
+                  </strong>
+                  <span className="block text-sm font-medium text-[#607486]">
+                    {event.accessMode === 'private'
+                      ? 'Unlisted; guests use your code or link.'
+                      : 'Open to anyone with the room code.'}
                   </span>
-                </motion.button>
-              </div>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-sm font-extrabold text-[#1f72d2]">
+                  {showAccess ? 'Done' : 'Change'}
+                  <ChevronRight
+                    size={17}
+                    className={`transition ${showAccess ? 'rotate-90' : ''}`}
+                  />
+                </span>
+              </button>
+              {showAccess && (
+                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[#dce1e4] pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      update('accessMode', 'public');
+                      setShowAccess(false);
+                    }}
+                    className={`min-h-12 px-3 font-extrabold ${event.accessMode === 'public' ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                  >
+                    Public
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      update('accessMode', 'private');
+                      setShowAccess(false);
+                    }}
+                    className={`min-h-12 px-3 font-extrabold ${event.accessMode === 'private' ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                  >
+                    Private
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 role="switch"
@@ -2497,7 +2661,7 @@ function CreateEvent({
                 aria-checked={event.walletRequired}
                 disabled={event.rewardRule === 'community_unlock'}
                 onClick={() => update('walletRequired', !event.walletRequired)}
-                className="mt-4 flex w-full items-center justify-between gap-5 border-y border-[#d8e0e5] py-4 text-left"
+                className="mt-4 flex w-full items-center justify-between gap-5 border-t border-[#d8e0e5] pt-4 text-left"
               >
                 <span>
                   <strong className="block">
@@ -2518,67 +2682,93 @@ function CreateEvent({
                   />
                 </span>
               </button>
-            </fieldset>
+            </div>
           </div>
           <div className={`grid gap-7 ${sectionClass('reward')}`}>
-            <fieldset>
-              <legend className="text-sm font-extrabold">Reward setup</legend>
-              <div className="creator-option-grid mt-3 grid gap-3 sm:grid-cols-2">
-                <motion.button
-                  whileTap={{ scale: 0.985 }}
-                  onClick={() =>
-                    setEvent({
-                      ...event,
-                      rewardMode: 'free',
-                      custodyMode: 'host_wallet',
-                      rewardRule: 'skill',
-                    })
-                  }
-                  className={`min-h-28 border-2 p-5 text-left transition ${event.rewardMode === 'free' ? 'border-[#1f72d2] bg-[#edf6ff]' : 'border-[#d5dade] bg-white'}`}
+            <div className="border-y border-[#cfd5d8] py-4">
+              <button
+                type="button"
+                aria-expanded={showRewardChoices}
+                onClick={() => setShowRewardChoices((open) => !open)}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${event.rewardMode === 'nim' ? 'bg-[#fff1bd] text-[#8a6500]' : 'bg-[#eaf4ff] text-[#1f72d2]'}`}
                 >
-                  <Gamepad2 className="text-[#1f72d2]" />
-                  <strong className="mt-3 block text-lg">Free game</strong>
-                  <span className="mt-1 block text-sm text-[#617486]">
-                    Play without a prize. Wallet access stays your choice.
+                  {event.rewardMode === 'nim' ? (
+                    <Gift size={18} />
+                  ) : (
+                    <Gamepad2 size={18} />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold uppercase tracking-[.1em] text-[#6a7b89]">
+                    Reward
                   </span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.985 }}
-                  disabled={
-                    event.playMode === 'together' && !mimoFundingAvailable
-                  }
-                  onClick={() =>
-                    setEvent({
-                      ...event,
-                      rewardMode: 'nim',
-                      rewardRule:
-                        event.playMode === 'together' && mimoFundingAvailable
-                          ? 'community_unlock'
-                          : 'skill',
-                      custodyMode:
-                        event.playMode === 'together' && mimoFundingAvailable
+                  <strong className="mt-0.5 block text-lg">
+                    {event.rewardMode === 'nim' ? 'NIM reward' : 'No reward'}
+                  </strong>
+                  <span className="block text-sm font-medium text-[#607486]">
+                    {event.rewardMode === 'nim'
+                      ? 'Funding and eligibility are shown before guests join.'
+                      : 'Free to join; no payment setup needed.'}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-sm font-extrabold text-[#1f72d2]">
+                  {showRewardChoices ? 'Done' : 'Change'}
+                  <ChevronRight
+                    size={17}
+                    className={`transition ${showRewardChoices ? 'rotate-90' : ''}`}
+                  />
+                </span>
+              </button>
+              {showRewardChoices && (
+                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[#dce1e4] pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEvent({
+                        ...event,
+                        rewardMode: 'free',
+                        custodyMode: 'host_wallet',
+                        rewardRule: 'skill',
+                      });
+                      setShowRewardChoices(false);
+                    }}
+                    className={`min-h-12 px-3 font-extrabold ${event.rewardMode === 'free' ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                  >
+                    No reward
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      event.playMode === 'together' && !mimoFundingAvailable
+                    }
+                    onClick={() => {
+                      setEvent({
+                        ...event,
+                        rewardMode: 'nim',
+                        rewardRule:
+                          event.playMode === 'together'
+                            ? 'community_unlock'
+                            : 'skill',
+                        custodyMode: mimoFundingAvailable
                           ? 'mimo_vault'
-                          : mimoFundingAvailable
-                            ? 'mimo_vault'
-                            : 'host_wallet',
-                      walletRequired:
-                        event.playMode === 'together' && mimoFundingAvailable
-                          ? true
-                          : event.walletRequired,
-                    })
-                  }
-                  className={`min-h-28 border-2 p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${event.rewardMode === 'nim' ? 'border-[#d09a00] bg-[#fff7d9]' : 'border-[#d5dade] bg-white'}`}
-                >
-                  <Gift className="text-[#a87600]" />
-                  <strong className="mt-3 block text-lg">NIM reward</strong>
-                  <span className="mt-1 block text-sm text-[#617486]">
-                    {event.playMode === 'together'
-                      ? 'Fund a shared target without creating a hidden individual winner.'
-                      : 'Reward verified skill or participation.'}
-                  </span>
-                </motion.button>
-              </div>
-            </fieldset>
+                          : 'host_wallet',
+                        walletRequired:
+                          event.playMode === 'together'
+                            ? true
+                            : event.walletRequired,
+                      });
+                      setShowRewardChoices(false);
+                    }}
+                    className={`min-h-12 px-3 font-extrabold disabled:cursor-not-allowed disabled:opacity-50 ${event.rewardMode === 'nim' ? 'bg-[#f7c933] text-[#203752]' : 'bg-[#fff4c9] text-[#715600]'}`}
+                  >
+                    Add NIM reward
+                  </button>
+                </div>
+              )}
+            </div>
             {event.rewardMode === 'nim' && (
               <div className="grid gap-6">
                 <fieldset>
@@ -3011,9 +3201,12 @@ function Join({
           className="mt-2 h-16 w-full border-0 border-b-2 border-[#a9b4bd] bg-transparent text-2xl font-bold outline-none placeholder:text-[#a8afb6] focus:border-[#1f72d2]"
         />
         <fieldset className="mt-7">
-          <legend className="text-sm font-extrabold">Choose your player pose</legend>
+          <legend className="text-sm font-extrabold">
+            Choose your player pose
+          </legend>
           <p className="mt-1 text-sm text-[#647789]">
-            Same Mimo, four clear poses. This is your visual identity in the room.
+            Same Mimo, four clear poses. This is your visual identity in the
+            room.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {MIMO_PROFILES.map((profile) => {
@@ -3036,8 +3229,12 @@ function Join({
                     className="h-14 w-14"
                   />
                   <span>
-                    <strong className="block font-extrabold">{profile.label}</strong>
-                    <span className="mt-0.5 block text-xs font-bold text-[#6a7b89]">{profile.description}</span>
+                    <strong className="block font-extrabold">
+                      {profile.label}
+                    </strong>
+                    <span className="mt-0.5 block text-xs font-bold text-[#6a7b89]">
+                      {profile.description}
+                    </span>
                   </span>
                 </button>
               );

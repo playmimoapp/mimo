@@ -49,7 +49,7 @@ export async function POST(
     return json(
       {
         error:
-          'Confirm your wallet before playing this Community Unlock. No money moves during verification.',
+          'Confirm your wallet before playing this NIM event. No money moves during verification.',
       },
       409,
     );

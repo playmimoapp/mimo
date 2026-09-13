@@ -1853,6 +1853,19 @@ function CreateEvent({
   const [openQuestionSettings, setOpenQuestionSettings] = useState<
     string | null
   >(null);
+  const selectRound = (index: number) => {
+    const next = Math.max(0, Math.min(index, event.rounds.length - 1));
+    setActiveRound(next);
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-question-tab="${next}"]`)
+        ?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
+    }, 0);
+  };
   const sectionClass = (section: typeof mobileSection) =>
     mobileSection === section ? '' : 'creator-mobile-hidden';
   const update = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
@@ -1893,8 +1906,18 @@ function CreateEvent({
   };
   const addRound = (type: RoundType) => {
     if (event.rounds.length >= 8) return;
+    const nextIndex = event.rounds.length;
     update('rounds', [...event.rounds, blankRound(type)]);
-    setActiveRound(event.rounds.length);
+    setActiveRound(nextIndex);
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-question-tab="${nextIndex}"]`)
+        ?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
+    }, 0);
   };
   const removeRound = (roundIndex: number) => {
     if (event.rounds.length === 1) return;
@@ -2245,7 +2268,8 @@ function CreateEvent({
                   <button
                     key={round.id}
                     type="button"
-                    onClick={() => setActiveRound(index)}
+                    onClick={() => selectRound(index)}
+                    data-question-tab={index}
                     className={`h-10 shrink-0 rounded-full px-4 text-sm font-extrabold ${activeRound === index ? 'bg-[#203752] text-white' : 'border border-[#c8d1d7] bg-white text-[#607486]'}`}
                   >
                     Question {index + 1}
@@ -2509,6 +2533,32 @@ function CreateEvent({
                   )}
                 </fieldset>
               ))}
+              {event.rounds.length > 1 && (
+                <nav
+                  className="mobile-only items-center justify-between border-y border-[#d7dde1] py-2"
+                  aria-label="Question navigation"
+                >
+                  <button
+                    type="button"
+                    disabled={activeRound === 0}
+                    onClick={() => selectRound(activeRound - 1)}
+                    className="min-h-10 px-2 text-sm font-extrabold text-[#29445f] disabled:opacity-35"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm font-bold text-[#6a7b89]">
+                    {activeRound + 1} of {event.rounds.length}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={activeRound === event.rounds.length - 1}
+                    onClick={() => selectRound(activeRound + 1)}
+                    className="min-h-10 px-2 text-sm font-extrabold text-[#1f72d2] disabled:opacity-35"
+                  >
+                    Next
+                  </button>
+                </nav>
+              )}
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-2 sm:flex">
@@ -2778,10 +2828,7 @@ function CreateEvent({
                         custodyMode: mimoFundingAvailable
                           ? 'mimo_vault'
                           : 'host_wallet',
-                        walletRequired:
-                          event.playMode === 'together'
-                            ? true
-                            : event.walletRequired,
+                        walletRequired: true,
                       });
                       setShowRewardChoices(false);
                     }}

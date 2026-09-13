@@ -86,8 +86,7 @@ export async function POST(request: Request) {
       400,
     );
   }
-  const walletRequired =
-    body.walletRequired === true || rewardRule === 'community_unlock';
+  const walletRequired = body.walletRequired === true || rewardMode === 'nim';
   const requestedStart = Number(body.startsAt);
   const startsAt =
     Number.isFinite(requestedStart) && requestedStart > Date.now() - 5 * 60_000

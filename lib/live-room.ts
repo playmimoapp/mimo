@@ -255,17 +255,9 @@ export async function reconcileRoom(room: RoomRecord) {
   if (!['live', 'verifying'].includes(room.status)) return room;
 
   if (room.status === 'live' && room.roundStartedAt) {
-    const counts = await db
-      .prepare(`SELECT COUNT(*) AS total,
-        SUM(CASE WHEN answer_locked = 1 THEN 1 ELSE 0 END) AS locked
-        FROM participants WHERE event_id = ?`)
-      .bind(room.id)
-      .first<{ total: number; locked: number | null }>();
     const deadline = room.roundStartedAt + room.roundDurationSeconds * 1000;
-    const everyoneAnswered =
-      (counts?.total ?? 0) > 0 && (counts?.locked ?? 0) >= (counts?.total ?? 0);
-    if (now >= deadline || everyoneAnswered) {
-      if (now >= deadline) await finalizePendingAnswers(room);
+    if (now >= deadline) {
+      await finalizePendingAnswers(room);
       const changed = await db
         .prepare(`UPDATE events SET status = 'verifying', state_changed_at = ?
           WHERE id = ? AND status = 'live' AND auto_host_enabled = 1`)
@@ -280,7 +272,7 @@ export async function reconcileRoom(room: RoomRecord) {
             crypto.randomUUID(),
             room.id,
             JSON.stringify({
-              reason: everyoneAnswered ? 'all_answered' : 'timer',
+              reason: 'timer',
             }),
             now,
           )
@@ -502,7 +494,7 @@ export function getRoomConfig(value: string | null) {
       )
         ? (config.playMode as RoomPlayMode)
         : ('hybrid' as const),
-      walletRequired: config.walletRequired === true,
+      walletRequired: config.walletRequired === true || config.mode === 'nim',
       inviteTokenHash:
         typeof config.inviteTokenHash === 'string'
           ? config.inviteTokenHash

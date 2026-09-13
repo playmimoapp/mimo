@@ -1075,27 +1075,25 @@ function ProfileEditor({
   }
   return (
     <section className={standalone ? 'pt-5' : 'border-b border-[#d9e1e6] py-6'}>
-      <div className={onboarding ? '' : 'grid gap-4 sm:grid-cols-2'}>
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Display name"
           value={draft.displayName}
           setValue={(displayName) => setDraft({ ...draft, displayName })}
           placeholder="Your name"
         />
-        {!onboarding && (
-          <Field
-            label="Mimo handle"
-            value={draft.handle ?? ''}
-            setValue={(handle) =>
-              setDraft({
-                ...draft,
-                handle: handle.toLowerCase().replace(/[^a-z0-9_]/g, ''),
-              })
-            }
-            placeholder="mimo_player"
-            prefix="@"
-          />
-        )}
+        <Field
+          label="Mimo handle"
+          value={draft.handle ?? ''}
+          setValue={(handle) =>
+            setDraft({
+              ...draft,
+              handle: handle.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            })
+          }
+          placeholder="mimo_player"
+          prefix="@"
+        />
       </div>
       {!onboarding && (
         <label className="mt-4 block text-sm font-extrabold">
@@ -1138,7 +1136,11 @@ function ProfileEditor({
       </div>
       <Button
         onClick={() => void save()}
-        disabled={saving || draft.displayName.trim().length < 2}
+        disabled={
+          saving ||
+          draft.displayName.trim().length < 2 ||
+          (draft.handle ?? '').trim().length < 3
+        }
         className="mt-5 h-11 rounded-full bg-[#172f49] px-6 font-extrabold text-white"
       >
         {saving ? 'Saving…' : onboarding ? 'Enter Studio' : 'Save profile'}

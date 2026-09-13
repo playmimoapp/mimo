@@ -1675,11 +1675,12 @@ function LobbyState({
       </div>
       {usesTeams ? (
         <>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <div className="border-l-4 border-[#1f72d2] bg-[#eaf4ff] px-4 py-3">
+          <div className="mt-4 grid border-y border-[#d1d8dc] sm:grid-cols-2">
+            <div className="py-4 sm:pr-5">
               <div className="flex items-center justify-between gap-3">
-                <strong className="font-display text-lg text-[#175fa9]">
-                  Team Signal
+                <strong className="font-display flex items-center gap-2 text-lg text-[#175fa9]">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#1f72d2]" />
+                  Signal
                 </strong>
                 <span className="text-sm font-extrabold text-[#175fa9]">
                   {
@@ -1689,13 +1690,14 @@ function LobbyState({
                 </span>
               </div>
               <p className="mt-1 text-sm font-medium text-[#526a7e]">
-                Correct answers and participation push the blue side.
+                Blue team
               </p>
             </div>
-            <div className="border-l-4 border-[#d56552] bg-[#fff0ec] px-4 py-3">
+            <div className="border-t border-[#d1d8dc] py-4 sm:border-l sm:border-t-0 sm:pl-5">
               <div className="flex items-center justify-between gap-3">
-                <strong className="font-display text-lg text-[#b64c39]">
-                  Team Spark
+                <strong className="font-display flex items-center gap-2 text-lg text-[#b64c39]">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#d56552]" />
+                  Spark
                 </strong>
                 <span className="text-sm font-extrabold text-[#b64c39]">
                   {
@@ -1705,7 +1707,7 @@ function LobbyState({
                 </span>
               </div>
               <p className="mt-1 text-sm font-medium text-[#526a7e]">
-                Correct answers and participation push the coral side.
+                Coral team
               </p>
             </div>
           </div>
@@ -1750,19 +1752,15 @@ function LobbyState({
       )}
       <EventPromise room={room} />
       {!isHost && currentPlayer && usesTeams && (
-        <div
-          className={`mt-4 flex items-center gap-3 border px-4 py-3 ${
-            currentPlayer.teamId === 'signal'
-              ? 'border-[#8cb9e4] bg-[#eaf4ff] text-[#175fa9]'
-              : 'border-[#e2a194] bg-[#fff0ec] text-[#a94837]'
-          }`}
-        >
+        <div className="mt-4 flex items-center gap-3 border-b border-[#d1d8dc] pb-4">
           <MimoProfileAvatar
             profile={currentPlayer.profileStyle}
             nickname={currentPlayer.nickname}
           />
           <span>
-            <strong className="block font-display text-lg">
+            <strong
+              className={`block font-display text-lg ${currentPlayer.teamId === 'signal' ? 'text-[#175fa9]' : 'text-[#a94837]'}`}
+            >
               You’re Team{' '}
               {currentPlayer.teamId === 'signal' ? 'Signal' : 'Spark'}
             </strong>
@@ -1840,31 +1838,33 @@ function EventPromise({ room }: { room: LiveRoomState }) {
   const vaultFunded =
     room.rewardMode === 'nim' && room.rewardCustody === 'mimo_vault';
   return (
-    <section className="mt-4 overflow-hidden rounded-[22px] border border-[#c9d5df] bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-[#dbe2e7] px-4 py-3">
-        <p className="flex items-center gap-2 font-display text-lg font-extrabold">
-          <ShieldCheck size={19} className="text-[#237044]" /> The room promise
-        </p>
-        <span className="rounded-full bg-[#edf8f1] px-3 py-1 text-xs font-extrabold uppercase tracking-[.1em] text-[#237044]">
-          Rules locked
+    <details className="group mt-4 border-y border-[#c9d5df]">
+      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 py-3 [&::-webkit-details-marker]:hidden">
+        <ShieldCheck size={19} className="shrink-0 text-[#237044]" />
+        <strong className="font-display flex-1 text-lg">Rules locked</strong>
+        <span className="text-sm font-extrabold text-[#607486] group-open:hidden">
+          View
         </span>
-      </div>
-      <div className="grid gap-px bg-[#dbe2e7] sm:grid-cols-3">
-        <div className="bg-white px-4 py-3">
+        <span className="hidden text-sm font-extrabold text-[#607486] group-open:inline">
+          Close
+        </span>
+      </summary>
+      <div className="grid border-t border-[#dbe2e7] sm:grid-cols-3">
+        <div className="py-3 sm:pr-4">
           <strong className="text-sm">Before play</strong>
           <p className="mt-1 text-sm leading-5 text-[#607486]">
             The host may cancel. Confirmed vault funding returns to its funding
             wallet.
           </p>
         </div>
-        <div className="bg-white px-4 py-3">
+        <div className="border-t border-[#e1e6e9] py-3 sm:border-l sm:border-t-0 sm:px-4">
           <strong className="text-sm">After start</strong>
           <p className="mt-1 text-sm leading-5 text-[#607486]">
             The host may pause, but cannot cancel, rewrite scoring or reduce the
             reward.
           </p>
         </div>
-        <div className="bg-white px-4 py-3">
+        <div className="border-t border-[#e1e6e9] py-3 sm:border-l sm:border-t-0 sm:pl-4">
           <strong className="text-sm">After results</strong>
           <p className="mt-1 text-sm leading-5 text-[#607486]">
             {vaultFunded
@@ -1875,7 +1875,7 @@ function EventPromise({ room }: { room: LiveRoomState }) {
           </p>
         </div>
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -1988,7 +1988,7 @@ function QuestionState({
               </p>
               <p className="mt-1 text-sm text-[#c1d1de]">
                 {autoHost
-                  ? 'Mimo reveals when all are in or time ends'
+                  ? 'Mimo reveals when the question timer ends'
                   : 'answers locked safely'}
               </p>
             </div>
@@ -2251,7 +2251,7 @@ function ResultsState({
       )}
       {usesTeams && room.roundType !== 'pulse' && teamTotal > 0 && (
         <div
-          className="mt-7 border border-[#ccd5dc] bg-white p-5"
+          className="mt-7 border-y border-[#ccd5dc] py-5"
           aria-label="Team score bar chart"
         >
           <div className="flex items-end justify-between gap-4">

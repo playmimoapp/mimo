@@ -60,9 +60,15 @@ export async function PATCH(request: Request) {
   const profileStyle = isMimoProfileStyle(body?.profileStyle)
     ? body.profileStyle
     : 'hype';
-  if (displayName.length < 2 || handle.length < 3) {
+  if (displayName.length < 2) {
     return json(
-      { error: 'Add a name and a handle of at least 3 characters.' },
+      { error: 'Your display name needs at least 2 characters.' },
+      400,
+    );
+  }
+  if (handle.length < 3) {
+    return json(
+      { error: 'Your Mimo handle needs at least 3 letters or numbers.' },
       400,
     );
   }

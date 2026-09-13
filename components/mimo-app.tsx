@@ -167,6 +167,7 @@ type EventDraft = {
   custodyMode: RewardCustody;
   rewardAmount: string;
   rewardRule: RewardRule;
+  rewardWinnerCount: number;
   adaptiveMoments: boolean;
   adaptiveMode: AdaptiveMode;
   startsAt: number | null;
@@ -447,6 +448,10 @@ export function MimoApp() {
   const [communitySlug, setCommunitySlug] = useState('');
   const [name, setName] = useState('');
   const [profileStyle, setProfileStyle] = useState<MimoProfileStyle>('hype');
+  const [signedInProfile, setSignedInProfile] = useState<{
+    displayName: string;
+    profileStyle: MimoProfileStyle;
+  } | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [hostKey, setHostKey] = useState('');
@@ -495,6 +500,7 @@ export function MimoApp() {
     custodyMode: 'host_wallet',
     rewardAmount: '',
     rewardRule: 'skill',
+    rewardWinnerCount: 1,
     adaptiveMoments: true,
     adaptiveMode: 'auto',
     startsAt: null,
@@ -568,7 +574,17 @@ export function MimoApp() {
           body.notifications?.filter((notification) => !notification.readAt)
             .length ?? 0,
         );
-        if (body.profile?.displayName) setName(body.profile.displayName);
+        if (body.profile?.displayName) {
+          setName(body.profile.displayName);
+          setSignedInProfile({
+            displayName: body.profile.displayName,
+            profileStyle:
+              body.profile.profileStyle &&
+              MIMO_PROFILES.some(({ id }) => id === body.profile?.profileStyle)
+                ? body.profile.profileStyle
+                : 'hype',
+          });
+        }
         if (
           body.profile?.profileStyle &&
           MIMO_PROFILES.some(({ id }) => id === body.profile?.profileStyle)
@@ -829,6 +845,7 @@ export function MimoApp() {
         startsAt: event.startsAt,
         recurrence: event.recurrence,
         rewardRule: 'skill',
+        rewardWinnerCount: body.draft.rewardWinnerCount ?? 1,
         adaptiveMoments: true,
         adaptiveMode: 'auto',
         custodyMode: rewardCapabilities.mimoFundingAvailable
@@ -1211,6 +1228,7 @@ export function MimoApp() {
               setName={setName}
               profileStyle={profileStyle}
               setProfileStyle={setProfileStyle}
+              signedInProfile={signedInProfile}
               next={() => void joinLiveRoom()}
               roomCode={roomCode}
               working={working}
@@ -1877,15 +1895,6 @@ function CreateEvent({
   const selectRound = (index: number) => {
     const next = Math.max(0, Math.min(index, event.rounds.length - 1));
     setActiveRound(next);
-    window.setTimeout(() => {
-      document
-        .querySelector(`[data-question-tab="${next}"]`)
-        ?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'center',
-        });
-    }, 0);
   };
   const sectionClass = (section: typeof mobileSection) =>
     mobileSection === section ? '' : 'creator-mobile-hidden';
@@ -1930,15 +1939,6 @@ function CreateEvent({
     const nextIndex = event.rounds.length;
     update('rounds', [...event.rounds, blankRound(type)]);
     setActiveRound(nextIndex);
-    window.setTimeout(() => {
-      document
-        .querySelector(`[data-question-tab="${nextIndex}"]`)
-        ?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'center',
-        });
-    }, 0);
   };
   const removeRound = (roundIndex: number) => {
     if (event.rounds.length === 1) return;
@@ -2018,17 +2018,34 @@ function CreateEvent({
   return (
     <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div>
-        <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
+        <p className="desktop-only text-sm font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
           Create a live event
         </p>
-        <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
+        <h1 className="desktop-only font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
           Build your live room.
         </h1>
-        <MimoCue
-          className="mobile-only mt-5"
-          mood={questionsReady ? 'happy' : 'thinking'}
-          message={creationCue}
-        />
+        <div className="mobile-only flex-col border-b border-[#d5dade] pb-3">
+          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#cf624e]">
+            Create event
+          </p>
+          <h1 className="font-display mt-1 text-3xl font-extrabold tracking-[-.04em]">
+            {mobileSection === 'basics'
+              ? 'Basics'
+              : mobileSection === 'rounds'
+                ? 'Questions'
+                : mobileSection === 'access'
+                  ? 'Guests'
+                  : 'NIM reward'}
+          </h1>
+          <motion.p
+            key={creationCue}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-1 text-sm font-bold leading-5 text-[#607486]"
+          >
+            {creationCue}
+          </motion.p>
+        </div>
         <nav
           aria-label="Event editor sections"
           className="mobile-only creator-editor-nav sticky top-0 z-30 -mx-[18px] mt-5 grid-cols-4 gap-1 border-y border-[#d5dade] bg-[#f6f4ef]/95 px-[18px] py-2 backdrop-blur"
@@ -2813,6 +2830,7 @@ function CreateEvent({
                         rewardMode: 'free',
                         custodyMode: 'host_wallet',
                         rewardRule: 'skill',
+                        rewardWinnerCount: 1,
                       });
                       setShowRewardChoices(false);
                     }}
@@ -2833,6 +2851,7 @@ function CreateEvent({
                           event.playMode === 'together'
                             ? 'community_unlock'
                             : 'skill',
+                        rewardWinnerCount: 1,
                         custodyMode: mimoFundingAvailable
                           ? 'mimo_vault'
                           : 'host_wallet',
@@ -2878,6 +2897,7 @@ function CreateEvent({
                         setEvent({
                           ...event,
                           rewardRule: 'community_unlock',
+                          rewardWinnerCount: 1,
                           custodyMode: 'mimo_vault',
                           walletRequired: true,
                         });
@@ -2901,6 +2921,31 @@ function CreateEvent({
                     </p>
                   )}
                 </fieldset>
+                {event.rewardRule === 'skill' && (
+                  <fieldset className="border-y border-[#d5dade] py-4">
+                    <legend className="px-1 text-sm font-extrabold">
+                      How many winners?
+                    </legend>
+                    <div className="mt-2 flex gap-2">
+                      {[1, 2, 3, 5].map((count) => (
+                        <button
+                          key={count}
+                          type="button"
+                          aria-pressed={event.rewardWinnerCount === count}
+                          onClick={() => update('rewardWinnerCount', count)}
+                          className={`h-10 min-w-12 rounded-full px-4 text-sm font-extrabold ${event.rewardWinnerCount === count ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                        >
+                          {count}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-[#607486]">
+                      {event.rewardWinnerCount === 1
+                        ? 'First place earns the full reward.'
+                        : `The top ${event.rewardWinnerCount} verified players share the reward equally.`}
+                    </p>
+                  </fieldset>
+                )}
                 <fieldset>
                   <legend className="text-sm font-extrabold">
                     Where is the reward held?
@@ -2934,6 +2979,7 @@ function CreateEvent({
                             ...event,
                             custodyMode: 'host_wallet',
                             rewardRule: 'skill',
+                            rewardWinnerCount: 1,
                           });
                         }}
                         className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
@@ -2943,7 +2989,7 @@ function CreateEvent({
                         </strong>
                         <span className="mt-1 block text-sm leading-5 text-[#617486]">
                           Keep your NIM. After Mimo verifies the winner, approve
-                          one real mainnet payment in Nimiq Pay.
+                          each exact mainnet payment in Nimiq Pay.
                         </span>
                       </motion.button>
                     </div>
@@ -3008,7 +3054,7 @@ function CreateEvent({
             {error}
           </p>
         )}
-        <div className="mobile-only mobile-action-bar mt-6 flex-col gap-2">
+        <div className="creator-step-action mobile-only mobile-action-bar mt-6 flex-col gap-2">
           {mobileSection !== 'reward' ? (
             <Button
               onClick={nextMobileSection}
@@ -3226,6 +3272,7 @@ function Join({
   setName,
   profileStyle,
   setProfileStyle,
+  signedInProfile,
   next,
   roomCode,
   working,
@@ -3239,6 +3286,10 @@ function Join({
   setName: (value: string) => void;
   profileStyle: MimoProfileStyle;
   setProfileStyle: (value: MimoProfileStyle) => void;
+  signedInProfile: {
+    displayName: string;
+    profileStyle: MimoProfileStyle;
+  } | null;
   next: () => void;
   roomCode: string;
   working: boolean;
@@ -3248,19 +3299,25 @@ function Join({
   requirementsLoading: boolean;
   walletUnavailable: boolean;
 }) {
+  const [guestIdentity, setGuestIdentity] = useState(false);
+  const useSavedIdentity = Boolean(signedInProfile && !guestIdentity);
   return (
     <section className="mobile-page app-frame grid max-w-[1060px] items-center gap-8 pb-12 pt-3 sm:pt-10 md:grid-cols-[290px_minmax(0,1fr)]">
       <MimoCharacter className="mx-auto hidden w-[260px] md:block" />
       <div>
-        <MimoCue
-          className="mobile-only mb-6"
-          message="Pick a name. You’ll be in the room in seconds."
-        />
+        {!useSavedIdentity && (
+          <MimoCue
+            className="mobile-only mb-6"
+            message="Pick a name. You’ll be in the room in seconds."
+          />
+        )}
         <p className="text-sm font-extrabold uppercase tracking-[.15em] text-[#cf624e]">
           {privateInvite ? 'Private room' : 'Join room'} {roomCode}
         </p>
         <h1 className="mobile-flow-title font-display mt-3 text-[clamp(2.7rem,7vw,5rem)] font-extrabold leading-[.95] tracking-[-.065em]">
-          What should everyone call you?
+          {useSavedIdentity
+            ? `Ready, ${signedInProfile?.displayName}?`
+            : 'What should everyone call you?'}
         </h1>
         <p className="mt-4 text-base leading-7 text-[#5b7082] sm:text-lg">
           {walletRequired
@@ -3278,18 +3335,49 @@ function Join({
             </span>
           </div>
         )}
-        <label htmlFor="nickname" className="mt-8 block text-sm font-extrabold">
-          Your room name
-        </label>
-        <input
-          id="nickname"
-          value={name}
-          maxLength={18}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => event.key === 'Enter' && next()}
-          placeholder="e.g. River"
-          className="mt-2 h-16 w-full border-0 border-b-2 border-[#a9b4bd] bg-transparent text-2xl font-bold outline-none placeholder:text-[#a8afb6] focus:border-[#1f72d2]"
-        />
+        {useSavedIdentity ? (
+          <div className="mt-7 flex items-center gap-4 border-y border-[#ccd5dc] py-4">
+            <MimoProfileAvatar
+              profile={signedInProfile!.profileStyle}
+              nickname={signedInProfile!.displayName}
+              className="h-14 w-14"
+            />
+            <div className="min-w-0 flex-1">
+              <strong className="font-display block truncate text-xl">
+                {signedInProfile!.displayName}
+              </strong>
+              <span className="text-sm font-bold text-[#607486]">
+                Your saved Mimo profile
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGuestIdentity(true);
+                setName('');
+              }}
+              className="text-sm font-extrabold text-[#1f72d2]"
+            >
+              Change
+            </button>
+          </div>
+        ) : (
+          <>
+            <label
+              htmlFor="nickname"
+              className="mt-8 block text-sm font-extrabold"
+            >
+              Your room name
+            </label>
+            <input
+              id="nickname"
+              value={name}
+              maxLength={18}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && next()}
+              placeholder="e.g. River"
+              className="mt-2 h-16 w-full border-0 border-b-2 border-[#a9b4bd] bg-transparent text-2xl font-bold outline-none placeholder:text-[#a8afb6] focus:border-[#1f72d2]"
+            />
         <fieldset className="mt-7">
           <legend className="text-sm font-extrabold">
             Choose your player pose
@@ -3330,7 +3418,22 @@ function Join({
               );
             })}
           </div>
-        </fieldset>
+            </fieldset>
+            {signedInProfile && (
+              <button
+                type="button"
+                onClick={() => {
+                  setGuestIdentity(false);
+                  setName(signedInProfile.displayName);
+                  setProfileStyle(signedInProfile.profileStyle);
+                }}
+                className="mt-4 text-sm font-extrabold text-[#1f72d2]"
+              >
+                Use {signedInProfile.displayName} instead
+              </button>
+            )}
+          </>
+        )}
         {error && (
           <p
             role="alert"

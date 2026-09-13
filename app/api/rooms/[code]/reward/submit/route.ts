@@ -20,7 +20,8 @@ export async function POST(
   const hostKey = typeof body?.hostKey === 'string' ? body.hostKey : '';
   if (!hostKey || (await hashToken(hostKey)) !== room.hostKeyHash)
     return json({ error: 'Host access was rejected.' }, 403);
-  if (getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault') {
+  const roomConfig = getRoomConfig(room.launchedConfigJson);
+  if (roomConfig.custody === 'mimo_vault') {
     return json(
       {
         error: 'This funded reward is settled automatically by the Mimo vault.',
@@ -29,7 +30,7 @@ export async function POST(
     );
   }
   if (
-    getRoomConfig(room.launchedConfigJson).rewardNetwork !== 'MainAlbatross'
+    roomConfig.rewardNetwork !== 'MainAlbatross'
   ) {
     return json(
       { error: 'This room was not locked for a mainnet payout.' },
@@ -48,13 +49,14 @@ export async function POST(
     return json({ error: 'The submitted payment proof is incomplete.' }, 400);
 
   const db = getD1();
-  const [winner, reward, reusedTransaction] = await Promise.all([
+  const [winners, reward, reusedTransaction] = await Promise.all([
     db
       .prepare(
-        `SELECT id, wallet_hash AS walletHash FROM participants WHERE event_id = ? ORDER BY score DESC, joined_at ASC LIMIT 1`,
+        `SELECT id, wallet_hash AS walletHash FROM participants
+          WHERE event_id = ? ORDER BY score DESC, joined_at ASC LIMIT ?`,
       )
-      .bind(room.id)
-      .first<{ id: string; walletHash: string | null }>(),
+      .bind(room.id, roomConfig.rewardWinnerCount)
+      .all<{ id: string; walletHash: string | null }>(),
     db
       .prepare(
         `SELECT id, amount_luna AS amountLuna FROM rewards WHERE event_id = ? LIMIT 1`,
@@ -72,8 +74,19 @@ export async function POST(
         state: string;
       }>(),
   ]);
-  if (!winner || winner.id !== participantId || !winner.walletHash || !reward)
+  const winnerIndex = winners.results.findIndex(
+    (participant) => participant.id === participantId,
+  );
+  const winner = winners.results[winnerIndex];
+  if (!winner || !winner.walletHash || !reward)
     return json({ error: 'The reward result could not be verified.' }, 409);
+  const recipientCount = BigInt(winners.results.length);
+  const totalLuna = BigInt(reward.amountLuna);
+  const amountLuna = (
+    totalLuna / recipientCount +
+    (BigInt(winnerIndex) < totalLuna % recipientCount ? BigInt(1) : BigInt(0))
+  ).toString();
+  const memo = `MIMO ${room.roomCode} WINNER${winners.results.length > 1 ? ` ${winnerIndex + 1}` : ''}`;
   if (reusedTransaction) {
     if (
       reusedTransaction.rewardId === reward.id &&
@@ -97,8 +110,8 @@ export async function POST(
   try {
     const verified = await verifyMainnetPayout(transactionHash, {
       recipient: payoutAddress || undefined,
-      amountLuna: reward.amountLuna,
-      memo: `MIMO ${room.roomCode} WINNER`,
+      amountLuna,
+      memo,
     });
     if (!verified.confirmed) {
       const now = Date.now();
@@ -115,14 +128,17 @@ export async function POST(
             crypto.randomUUID(),
             reward.id,
             participantId,
-            reward.amountLuna,
+            amountLuna,
             transactionHash,
             now,
           ),
         db
-          .prepare(`UPDATE rewards SET state = 'payout_submitted', updated_at = ?
-            WHERE id = ?`)
-          .bind(now, reward.id),
+          .prepare(`UPDATE rewards SET state =
+            CASE WHEN EXISTS (SELECT 1 FROM payouts
+              WHERE reward_id = ? AND state = 'confirmed')
+            THEN 'partially_paid' ELSE 'payout_submitted' END,
+            updated_at = ? WHERE id = ?`)
+          .bind(reward.id, now, reward.id),
       ]);
       return json({ state: 'payout_submitted', txHash: transactionHash }, 202);
     }
@@ -154,15 +170,17 @@ export async function POST(
           crypto.randomUUID(),
           reward.id,
           participantId,
-          reward.amountLuna,
+          amountLuna,
           transactionHash,
           now,
         ),
       db
-        .prepare(
-          `UPDATE rewards SET state = 'payout_confirmed', updated_at = ? WHERE id = ?`,
-        )
-        .bind(now, reward.id),
+        .prepare(`UPDATE rewards SET state =
+          CASE WHEN (SELECT COUNT(*) FROM payouts
+            WHERE reward_id = ? AND state = 'confirmed') + 1 >= ?
+          THEN 'payout_confirmed' ELSE 'partially_paid' END,
+          updated_at = ? WHERE id = ?`)
+        .bind(reward.id, winners.results.length, now, reward.id),
     ]);
     return json({ state: 'payout_confirmed', txHash: transactionHash });
   } catch (error) {

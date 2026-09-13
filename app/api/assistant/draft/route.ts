@@ -191,7 +191,17 @@ scored moments must have exactly one correct answer.
 Never invent a claim from supplied source text. If no source is supplied, use only stable,
 widely established facts. Avoid trick wording, subjective judgment, politics, medical advice,
 financial advice, gambling, random reward rules and promotional claims. Keep the language
-warm, concise and suitable for a fast mobile game. Return only the requested JSON.`;
+warm, concise and suitable for a fast mobile game.
+
+For Nimiq topics, you are a Nimiq-native editor. Without supplied source text, you may rely
+only on this maintained stable knowledge: NIM is the native coin of the Nimiq network;
+Albatross is Nimiq's proof-of-stake consensus protocol; Nimiq Pay is a self-custodial mobile
+payment app; Mini Apps run as web apps inside Nimiq Pay and can request account access,
+message signatures and payments; sensitive wallet actions are confirmed by the user in
+native Nimiq Pay dialogs. Do not generate questions about current prices, yields, fees,
+network statistics, release status, competition standings or other changing facts unless
+the host supplies approved source text. Never treat a wallet signature as a payment.
+Return only the requested JSON.`;
 
   const continuityInstruction =
     hostingMode === 'community'
@@ -251,6 +261,7 @@ warm, concise and suitable for a fast mobile game. Return only the requested JSO
         custodyMode: 'host_wallet',
         rewardAmount: '',
         rewardRule: 'skill',
+        rewardWinnerCount: 1,
         adaptiveMoments: true,
         rounds: draft.rounds.map((round) => ({
           id: crypto.randomUUID(),

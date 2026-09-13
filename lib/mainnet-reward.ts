@@ -45,7 +45,11 @@ export async function verifyMainnetPayout(
   txHash: string,
   expected: { recipient?: string; amountLuna: string; memo: string },
 ) {
-  const config = assertMainnetRewardAmount(expected.amountLuna);
+  const config = getMainnetRewardConfig();
+  const amount = BigInt(expected.amountLuna);
+  if (!config.enabled || amount < BigInt(1) || amount > config.maxRewardLuna) {
+    throw new Error('mainnet_payout_out_of_range');
+  }
   if (expected.recipient) Address.fromUserFriendlyAddress(expected.recipient);
   let transaction: unknown = null;
   try {

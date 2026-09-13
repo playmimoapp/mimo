@@ -474,6 +474,7 @@ export function getRoomConfig(value: string | null) {
     custody: 'host_wallet' as const,
     rewardNetwork: null as 'MainAlbatross' | 'TestAlbatross' | null,
     rewardRule: 'skill' as const,
+    rewardWinnerCount: 1,
     eventKind: 'custom' as const,
     adaptiveMoments: false,
     adaptiveMode: 'off' as const,
@@ -512,6 +513,10 @@ export function getRoomConfig(value: string | null) {
         config.rewardRule === 'community_unlock'
           ? ('community_unlock' as const)
           : ('skill' as const),
+      rewardWinnerCount: Math.max(
+        1,
+        Math.min(5, Math.floor(Number(config.rewardWinnerCount) || 1)),
+      ),
       eventKind: [
         'game_night',
         'community_vote',

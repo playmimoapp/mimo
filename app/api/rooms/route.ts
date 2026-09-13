@@ -38,6 +38,10 @@ export async function POST(request: Request) {
     : 'custom';
   const rewardRule =
     body.rewardRule === 'community_unlock' ? 'community_unlock' : 'skill';
+  const rewardWinnerCount =
+    rewardRule === 'skill'
+      ? Math.max(1, Math.min(5, Math.floor(Number(body.rewardWinnerCount) || 1)))
+      : 1;
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
   if (
     rewardMode === 'nim' &&
@@ -269,6 +273,7 @@ export async function POST(request: Request) {
         ? 'MainAlbatross'
         : (vault?.network ?? null),
     rewardRule,
+    rewardWinnerCount,
     eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,
     adaptiveMode: ['auto', 'ask', 'off'].includes(String(body.adaptiveMode))
@@ -358,9 +363,14 @@ export async function POST(request: Request) {
                 (BigInt(rewardAmount) * BigInt(100000)).toString(),
                 JSON.stringify({
                   type: rewardRule,
-                  winners: rewardRule === 'skill' ? 1 : 'eligible_finishers',
+                  winners:
+                    rewardRule === 'skill'
+                      ? rewardWinnerCount
+                      : 'eligible_finishers',
                   distribution:
-                    rewardRule === 'skill' ? 'winner_takes_all' : 'equal_split',
+                    rewardRule === 'skill' && rewardWinnerCount === 1
+                      ? 'winner_takes_all'
+                      : 'equal_split',
                   custody: rewardCustody,
                 }),
                 now,

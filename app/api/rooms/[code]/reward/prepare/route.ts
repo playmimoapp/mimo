@@ -31,7 +31,8 @@ export async function POST(
       { error: 'Finish and verify the event before paying a reward.' },
       409,
     );
-  if (getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault') {
+  const roomConfig = getRoomConfig(room.launchedConfigJson);
+  if (roomConfig.custody === 'mimo_vault') {
     return json(
       {
         error: 'This funded reward is settled automatically by the Mimo vault.',
@@ -40,7 +41,7 @@ export async function POST(
     );
   }
   if (
-    getRoomConfig(room.launchedConfigJson).rewardNetwork !== 'MainAlbatross'
+    roomConfig.rewardNetwork !== 'MainAlbatross'
   ) {
     return json(
       { error: 'This room was not locked for a mainnet payout.' },
@@ -54,7 +55,7 @@ export async function POST(
   if (!participantId)
     return json({ error: 'The winning result is missing.' }, 400);
   const db = getD1();
-  const [winner, reward] = await Promise.all([
+  const [winners, reward] = await Promise.all([
     db
       .prepare(
         `SELECT id, wallet_hash AS walletHash,
@@ -62,10 +63,10 @@ export async function POST(
           payout_address_iv AS payoutIv,
           payout_address_hash AS payoutHash
           FROM participants WHERE event_id = ?
-          ORDER BY score DESC, joined_at ASC LIMIT 1`,
+          ORDER BY score DESC, joined_at ASC LIMIT ?`,
       )
-      .bind(room.id)
-      .first<{
+      .bind(room.id, roomConfig.rewardWinnerCount)
+      .all<{
         id: string;
         walletHash: string | null;
         payoutCiphertext: string | null;
@@ -79,9 +80,13 @@ export async function POST(
       .bind(room.id)
       .first<{ id: string; amountLuna: string }>(),
   ]);
-  if (!winner || winner.id !== participantId)
+  const winnerIndex = winners.results.findIndex(
+    (participant) => participant.id === participantId,
+  );
+  const winner = winners.results[winnerIndex];
+  if (!winner)
     return json(
-      { error: 'Only the verified first-place result can be paid.' },
+      { error: 'Only a verified winning result can be paid.' },
       409,
     );
   if (!winner.walletHash)
@@ -133,10 +138,17 @@ export async function POST(
       503,
     );
   }
+  const recipientCount = BigInt(winners.results.length);
+  const totalLuna = BigInt(reward.amountLuna);
+  const amountLuna = (
+    totalLuna / recipientCount +
+    (BigInt(winnerIndex) < totalLuna % recipientCount ? BigInt(1) : BigInt(0))
+  ).toString();
   return json({
     verified: true,
-    amountLuna: reward.amountLuna,
-    memo: `MIMO ${room.roomCode} WINNER`,
+    amountLuna,
+    amountNim: (Number(amountLuna) / 100_000).toFixed(5).replace(/\.?0+$/, ''),
+    memo: `MIMO ${room.roomCode} WINNER${winners.results.length > 1 ? ` ${winnerIndex + 1}` : ''}`,
     network: 'MainAlbatross',
     payoutAddress,
   });

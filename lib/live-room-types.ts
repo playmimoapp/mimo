@@ -7,6 +7,8 @@ export type LivePlayer = {
   answerLocked: boolean;
   walletVerified: boolean;
   payoutAddressRegistered: boolean;
+  payoutState: string | null;
+  payoutTxHash: string | null;
   rewardEligible: boolean;
 };
 
@@ -31,6 +33,7 @@ export type LiveRoomState = {
   rewardMode: 'free' | 'nim';
   rewardAmount: string;
   rewardRule: 'skill' | 'community_unlock';
+  rewardWinnerCount: number;
   rewardState:
     | 'none'
     | 'proposed'

@@ -446,6 +446,18 @@ button {
     margin-top: 22px !important;
     gap: 22px !important;
   }
+  .creator-form-page:has(.creator-step-action) {
+    padding-bottom: 112px !important;
+  }
+  .creator-step-action {
+    position: fixed !important;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    margin: 0 !important;
+    padding-right: 18px !important;
+    padding-left: 18px !important;
+  }
   .creator-mobile-hidden,
   .creator-round-mobile-hidden {
     display: none !important;
@@ -555,9 +567,9 @@ button {
     background: linear-gradient(180deg, rgba(248, 247, 243, 0), #f8f7f3 24%);
   }
   .mobile-answer {
-    min-height: 84px !important;
-    border-radius: 18px;
-    padding: 16px !important;
+    min-height: 68px !important;
+    border-radius: 16px;
+    padding: 13px !important;
   }
   .mobile-round-top {
     align-items: center;
@@ -565,6 +577,11 @@ button {
   .mobile-round-top h1 {
     font-size: clamp(2rem, 9vw, 2.8rem) !important;
     line-height: 0.98 !important;
+  }
+  .mobile-question-prompt {
+    overflow-wrap: anywhere;
+    font-size: clamp(1.65rem, 7.5vw, 2.25rem) !important;
+    line-height: 1.02 !important;
   }
   .mobile-round-top > div:last-child {
     width: 52px;

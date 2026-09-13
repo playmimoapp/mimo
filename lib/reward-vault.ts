@@ -277,9 +277,19 @@ export async function getRewardEligibility(eventId: string) {
     ]);
 
   let rule: 'skill' | 'community_unlock' = 'skill';
+  let winnerCount = 1;
   try {
-    const rules = JSON.parse(reward?.rulesJson ?? '{}') as { type?: unknown };
+    const rules = JSON.parse(reward?.rulesJson ?? '{}') as {
+      type?: unknown;
+      winners?: unknown;
+    };
     if (rules.type === 'community_unlock') rule = 'community_unlock';
+    if (rule === 'skill') {
+      winnerCount = Math.max(
+        1,
+        Math.min(5, Math.floor(Number(rules.winners) || 1)),
+      );
+    }
   } catch {
     // Old rewards retain the skill fallback.
   }
@@ -331,7 +341,7 @@ export async function getRewardEligibility(eventId: string) {
       ? participantRows.results.filter(
           (participant) => participant.acceptedRounds >= roundCount,
         )
-      : participantRows.results.slice(0, 1);
+      : participantRows.results.slice(0, winnerCount);
   const eligible = candidates
     .filter(
       (

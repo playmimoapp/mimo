@@ -61,6 +61,10 @@ export async function GET(
       .prepare(`SELECT id, nickname, profile_style AS profileStyle, team_id AS teamId, score,
         answer_locked AS answerLocked, wallet_hash AS walletHash,
         payout_address_registered_at AS payoutAddressRegisteredAt,
+        (SELECT state FROM payouts p WHERE p.participant_id = participants.id
+          ORDER BY p.updated_at DESC LIMIT 1) AS payoutState,
+        (SELECT tx_hash FROM payouts p WHERE p.participant_id = participants.id
+          ORDER BY p.updated_at DESC LIMIT 1) AS participantPayoutTxHash,
         (SELECT COUNT(*) FROM answers a
           WHERE a.participant_id = participants.id AND a.accepted = 1) AS acceptedRounds
       FROM participants
@@ -76,6 +80,8 @@ export async function GET(
         answerLocked: number;
         walletHash: string | null;
         payoutAddressRegisteredAt: number | null;
+        payoutState: string | null;
+        participantPayoutTxHash: string | null;
         acceptedRounds: number;
       }>(),
     db
@@ -202,9 +208,12 @@ export async function GET(
   } catch {
     // The immutable launch snapshot remains the fallback.
   }
-  const leadingPlayerId = [...playerRows.results].sort(
-    (a, b) => b.score - a.score,
-  )[0]?.id;
+  const skillWinnerIds = new Set(
+    [...playerRows.results]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, reward.rewardWinnerCount)
+      .map((player) => player.id),
+  );
 
   return json({
     code: room.roomCode,
@@ -216,6 +225,7 @@ export async function GET(
     rewardMode: reward.mode,
     rewardAmount: reward.amount,
     rewardRule,
+    rewardWinnerCount: reward.rewardWinnerCount,
     rewardState: rewardRow?.state ?? 'none',
     rewardCustody: reward.custody,
     fundingTxHash: rewardRow?.fundingTxHash ?? null,
@@ -250,6 +260,8 @@ export async function GET(
       ({
         walletHash,
         payoutAddressRegisteredAt,
+        payoutState,
+        participantPayoutTxHash,
         acceptedRounds,
         ...player
       }) => ({
@@ -257,11 +269,13 @@ export async function GET(
         answerLocked: Boolean(player.answerLocked),
         walletVerified: Boolean(walletHash),
         payoutAddressRegistered: Boolean(payoutAddressRegisteredAt),
+        payoutState,
+        payoutTxHash: participantPayoutTxHash,
         rewardEligible:
           Boolean(walletHash) &&
           (rewardRule === 'community_unlock'
             ? Boolean(finalePassed) && acceptedRounds >= roundCount
-            : player.id === leadingPlayerId),
+            : skillWinnerIds.has(player.id)),
       }),
     ),
     reactions: reactionRows.results

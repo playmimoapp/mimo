@@ -2736,6 +2736,58 @@ function RewardSettlement({
     return () => window.clearInterval(timer);
   }, [room.code, room.rewardCustody, room.rewardRule, room.rewardState]);
 
+  useEffect(() => {
+    if (
+      role !== 'host' ||
+      !hostKey ||
+      room.rewardCustody !== 'host_wallet' ||
+      room.rewardState !== 'payout_submitted' ||
+      !room.payoutTxHash
+    ) {
+      return;
+    }
+    const check = async () => {
+      try {
+        const response = await fetch(`/api/rooms/${room.code}/reward/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hostKey,
+            participantId: winner.id,
+            transactionHash: room.payoutTxHash,
+          }),
+        });
+        if (!response.ok) return;
+        const result = (await response.json()) as {
+          state?: string;
+          txHash?: string;
+        };
+        if (result.state === 'payout_confirmed') {
+          setState('submitted');
+          setDetail(
+            `Confirmed on Nimiq mainnet · proof ${result.txHash?.slice(0, 10) ?? ''}…`,
+          );
+        } else {
+          setState('checking');
+          setDetail('Payment sent. Waiting for mainnet confirmation…');
+        }
+      } catch {
+        // Keep the submitted hash visible. The next poll safely retries it.
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [
+    hostKey,
+    role,
+    room.code,
+    room.payoutTxHash,
+    room.rewardCustody,
+    room.rewardState,
+    winner.id,
+  ]);
+
   const registerPayoutWallet = async () => {
     if (!participantToken || !isEligible) return;
     setState('connecting');
@@ -2978,9 +3030,9 @@ function RewardSettlement({
         );
         return;
       }
-      let submittedResponse: Response | null = null;
+      let submitted: { state?: string; txHash: string } | null = null;
       for (let attempt = 0; attempt < 8; attempt += 1) {
-        submittedResponse = await fetch(
+        const submittedResponse = await fetch(
           `/api/rooms/${room.code}/reward/submit`,
           {
             method: 'POST',
@@ -2993,20 +3045,28 @@ function RewardSettlement({
             }),
           },
         );
-        if (submittedResponse.ok) break;
-        const submissionError = await getError(submittedResponse);
-        if (!submissionError.includes('not confirmed on mainnet yet')) {
-          throw new Error(submissionError);
+        if (!submittedResponse.ok) {
+          throw new Error(await getError(submittedResponse));
         }
+        const result = (await submittedResponse.json()) as {
+          state?: string;
+          txHash: string;
+        };
+        if (result.state === 'payout_confirmed') {
+          submitted = result;
+          break;
+        }
+        setState('checking');
         setDetail('Payment sent. Waiting for mainnet confirmation…');
         await new Promise((resolve) => window.setTimeout(resolve, 1_500));
       }
-      if (!submittedResponse?.ok) {
-        throw new Error(
-          'Payment was sent, but confirmation is still pending. Do not pay again; reopen this result shortly.',
+      if (!submitted) {
+        setState('checking');
+        setDetail(
+          'Payment sent. Mimo saved the proof and will keep checking mainnet. Do not pay again.',
         );
+        return;
       }
-      const submitted = (await submittedResponse.json()) as { txHash: string };
       setState('submitted');
       setDetail(
         `Confirmed on Nimiq mainnet · proof ${submitted.txHash.slice(0, 10)}…`,

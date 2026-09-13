@@ -43,10 +43,10 @@ export function assertMainnetRewardAmount(amountLuna: string) {
 
 export async function verifyMainnetPayout(
   txHash: string,
-  expected: { recipient: string; amountLuna: string; memo: string },
+  expected: { recipient?: string; amountLuna: string; memo: string },
 ) {
   const config = assertMainnetRewardAmount(expected.amountLuna);
-  Address.fromUserFriendlyAddress(expected.recipient);
+  if (expected.recipient) Address.fromUserFriendlyAddress(expected.recipient);
   let transaction: unknown = null;
   try {
     transaction = await rpcCall(config.rpcUrl, 'getTransactionByHash', [
@@ -58,9 +58,13 @@ export async function verifyMainnetPayout(
   if (!transaction || typeof transaction !== 'object') {
     return { confirmed: false as const };
   }
+  const rawRecipient = (transaction as Record<string, unknown>).to;
+  const transactionRecipient =
+    typeof rawRecipient === 'string' ? rawRecipient : '';
+  Address.fromUserFriendlyAddress(transactionRecipient);
   const verified = await verifyFundingTransaction(transaction, {
     txHash,
-    address: expected.recipient,
+    address: expected.recipient || transactionRecipient,
     amountLuna: expected.amountLuna,
     memo: expected.memo,
     networkId: config.networkId,

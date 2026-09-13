@@ -82,29 +82,52 @@ export async function POST(
     ) {
       return json({ state: 'payout_confirmed', txHash: transactionHash });
     }
-    return json(
-      { error: 'That transaction proof has already been used.' },
-      409,
-    );
+    if (
+      reusedTransaction.rewardId !== reward.id ||
+      reusedTransaction.participantId !== participantId ||
+      reusedTransaction.state !== 'submitted'
+    ) {
+      return json(
+        { error: 'That transaction proof has already been used.' },
+        409,
+      );
+    }
   }
 
   try {
     const verified = await verifyMainnetPayout(transactionHash, {
-      recipient: payoutAddress,
+      recipient: payoutAddress || undefined,
       amountLuna: reward.amountLuna,
       memo: `MIMO ${room.roomCode} WINNER`,
     });
     if (!verified.confirmed) {
-      return json(
-        {
-          error:
-            'The payment is not confirmed on mainnet yet. Try again shortly.',
-        },
-        409,
-      );
+      const now = Date.now();
+      await db.batch([
+        db
+          .prepare(`INSERT INTO payouts
+            (id, reward_id, participant_id, amount_luna, state, tx_hash,
+              failure_code, updated_at)
+            VALUES (?, ?, ?, ?, 'submitted', ?, 'confirmation_pending', ?)
+            ON CONFLICT(reward_id, participant_id) DO UPDATE SET
+              state = 'submitted', tx_hash = excluded.tx_hash,
+              failure_code = 'confirmation_pending', updated_at = excluded.updated_at`)
+          .bind(
+            crypto.randomUUID(),
+            reward.id,
+            participantId,
+            reward.amountLuna,
+            transactionHash,
+            now,
+          ),
+        db
+          .prepare(`UPDATE rewards SET state = 'payout_submitted', updated_at = ?
+            WHERE id = ?`)
+          .bind(now, reward.id),
+      ]);
+      return json({ state: 'payout_submitted', txHash: transactionHash }, 202);
     }
     if (
-      (await hashToken(normalizeNimiqAddress(payoutAddress))) !==
+      (await hashToken(normalizeNimiqAddress(verified.recipient))) !==
       winner.walletHash
     ) {
       return json(

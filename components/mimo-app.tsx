@@ -465,7 +465,14 @@ export function MimoApp() {
   const [rewardCapabilities, setRewardCapabilities] = useState<{
     mimoFundingAvailable: boolean;
     network: 'MainAlbatross' | 'TestAlbatross' | null;
-  }>({ mimoFundingAvailable: false, network: null });
+    mainnetCreatorPayoutsAvailable: boolean;
+    mainnetMaximumRewardNim: number;
+  }>({
+    mimoFundingAvailable: false,
+    network: null,
+    mainnetCreatorPayoutsAvailable: false,
+    mainnetMaximumRewardNim: 5,
+  });
   const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
     eventKind: 'game_night',
     hostingMode: 'one_time',
@@ -526,10 +533,16 @@ export function MimoApp() {
         const capabilities = (await response.json()) as {
           mimoFundingAvailable?: boolean;
           network?: 'MainAlbatross' | 'TestAlbatross' | null;
+          mainnetCreatorPayoutsAvailable?: boolean;
+          mainnetMaximumRewardNim?: number;
         };
         setRewardCapabilities({
           mimoFundingAvailable: Boolean(capabilities.mimoFundingAvailable),
           network: capabilities.network ?? null,
+          mainnetCreatorPayoutsAvailable: Boolean(
+            capabilities.mainnetCreatorPayoutsAvailable,
+          ),
+          mainnetMaximumRewardNim: capabilities.mainnetMaximumRewardNim ?? 5,
         });
       })
       .catch(() => undefined);
@@ -1120,6 +1133,12 @@ export function MimoApp() {
               error={roomError}
               mimoFundingAvailable={rewardCapabilities.mimoFundingAvailable}
               vaultNetwork={rewardCapabilities.network}
+              mainnetCreatorPayoutsAvailable={
+                rewardCapabilities.mainnetCreatorPayoutsAvailable
+              }
+              mainnetMaximumRewardNim={
+                rewardCapabilities.mainnetMaximumRewardNim
+              }
             />
           )}
           {screen === 'preview' && (
@@ -1808,6 +1827,8 @@ function CreateEvent({
   error,
   mimoFundingAvailable,
   vaultNetwork,
+  mainnetCreatorPayoutsAvailable,
+  mainnetMaximumRewardNim,
 }: {
   event: EventDraft;
   setEvent: (event: EventDraft) => void;
@@ -1817,6 +1838,8 @@ function CreateEvent({
   error: string;
   mimoFundingAvailable: boolean;
   vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
+  mainnetCreatorPayoutsAvailable: boolean;
+  mainnetMaximumRewardNim: number;
 }) {
   const [mobileSection, setMobileSection] = useState<
     'basics' | 'rounds' | 'access' | 'reward'
@@ -2848,29 +2871,36 @@ function CreateEvent({
                       </motion.button>
                       <motion.button
                         type="button"
+                        disabled={!mainnetCreatorPayoutsAvailable}
                         whileTap={{ scale: 0.985 }}
-                        onClick={() =>
+                        onClick={() => {
+                          if (!mainnetCreatorPayoutsAvailable) return;
                           setEvent({
                             ...event,
                             custodyMode: 'host_wallet',
                             rewardRule: 'skill',
-                          })
-                        }
+                          });
+                        }}
                         className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
                       >
-                        <strong className="block text-lg">Host promise</strong>
+                        <strong className="block text-lg">
+                          Creator payout
+                        </strong>
                         <span className="mt-1 block text-sm leading-5 text-[#617486]">
-                          Keep the NIM in your wallet and approve payment after
-                          Mimo verifies the result.
+                          Keep your NIM. After Mimo verifies the winner, approve
+                          one real mainnet payment in Nimiq Pay.
                         </span>
                       </motion.button>
                     </div>
                   ) : (
                     <div className="mt-3 border-l-4 border-[#d7b13f] bg-[#fff8dc] px-4 py-3">
-                      <strong className="block">Host promise</strong>
+                      <strong className="block">
+                        Creator payout · mainnet
+                      </strong>
                       <span className="mt-1 block text-sm leading-5 text-[#675e3e]">
-                        The NIM stays in your wallet. You approve payment in
-                        Nimiq Pay after Mimo verifies the result.
+                        {mainnetCreatorPayoutsAvailable
+                          ? `Your NIM stays in your wallet. Approve the verified winner's payment after play. Pilot limit: ${mainnetMaximumRewardNim} NIM.`
+                          : 'Real-NIM payouts are temporarily unavailable.'}
                       </span>
                     </div>
                   )}
@@ -2891,6 +2921,11 @@ function CreateEvent({
                   <input
                     inputMode="numeric"
                     maxLength={8}
+                    max={
+                      event.custodyMode === 'host_wallet'
+                        ? mainnetMaximumRewardNim
+                        : undefined
+                    }
                     value={event.rewardAmount}
                     onChange={(e) =>
                       update(
@@ -2903,7 +2938,7 @@ function CreateEvent({
                   <span className="text-sm font-medium text-[#6f7e8b]">
                     {event.custodyMode === 'mimo_vault'
                       ? 'NIM · confirmed on the Nimiq network before play'
-                      : 'NIM · paid from your wallet after the verified result'}
+                      : `real NIM · mainnet · maximum ${mainnetMaximumRewardNim} NIM`}
                   </span>
                 </label>
               </div>

@@ -437,33 +437,36 @@ export function LiveRoom({
     }
   };
 
-  const selectAnswer = useCallback(async (choice: number) => {
-    if (!participantToken || locked || busy) return;
-    const previousChoice = selected;
-    setSelected(choice);
-    window.sessionStorage.setItem(
-      `mimo:${code}:${room?.activeRoundId}:choice`,
-      String(choice),
-    );
-    setBusy(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/rooms/${code}/answer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ choice, participantToken, intent: 'select' }),
-      });
-      if (!response.ok) throw new Error(await getError(response));
-      if ('vibrate' in navigator) navigator.vibrate(35);
-    } catch (cause) {
-      setSelected(previousChoice);
-      setError(
-        cause instanceof Error ? cause.message : 'That choice was not saved.',
+  const selectAnswer = useCallback(
+    async (choice: number) => {
+      if (!participantToken || locked || busy) return;
+      const previousChoice = selected;
+      setSelected(choice);
+      window.sessionStorage.setItem(
+        `mimo:${code}:${room?.activeRoundId}:choice`,
+        String(choice),
       );
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, code, locked, participantToken, room?.activeRoundId, selected]);
+      setBusy(true);
+      setError('');
+      try {
+        const response = await fetch(`/api/rooms/${code}/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ choice, participantToken, intent: 'select' }),
+        });
+        if (!response.ok) throw new Error(await getError(response));
+        if ('vibrate' in navigator) navigator.vibrate(35);
+      } catch (cause) {
+        setSelected(previousChoice);
+        setError(
+          cause instanceof Error ? cause.message : 'That choice was not saved.',
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, code, locked, participantToken, room?.activeRoundId, selected],
+  );
 
   const submitAnswer = useCallback(async () => {
     if (!participantToken || selected === null || locked || busy) return;
@@ -950,15 +953,15 @@ export function LiveRoom({
           {room.rewardMode === 'nim' &&
             mode === 'player' &&
             room.status === 'lobby' && (
-            <WalletProofCard
-              verified={Boolean(me?.walletVerified)}
-              automaticPayout={room.rewardCustody === 'mimo_vault'}
-              payoutReady={Boolean(me?.payoutAddressRegistered)}
-              canChange={room.status === 'lobby'}
-              state={walletProof}
-              onVerify={() => void verifyWallet()}
-            />
-          )}
+              <WalletProofCard
+                verified={Boolean(me?.walletVerified)}
+                automaticPayout={room.rewardCustody === 'mimo_vault'}
+                payoutReady={Boolean(me?.payoutAddressRegistered)}
+                canChange={room.status === 'lobby'}
+                state={walletProof}
+                onVerify={() => void verifyWallet()}
+              />
+            )}
 
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -1030,8 +1033,8 @@ export function LiveRoom({
 
           {mode === 'player' &&
             ['lobby', 'verifying', 'complete'].includes(room.status) && (
-            <ReactionBar busy={reactionBusy} onReact={react} />
-          )}
+              <ReactionBar busy={reactionBusy} onReact={react} />
+            )}
         </div>
 
         <aside className="desktop-only relative self-start overflow-hidden rounded-[30px] bg-[#203752] p-5 text-white lg:sticky lg:top-5">
@@ -1672,52 +1675,55 @@ function LobbyState({
       </div>
       {usesTeams ? (
         <>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <div className="border-l-4 border-[#1f72d2] bg-[#eaf4ff] px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <strong className="font-display text-lg text-[#175fa9]">
-              Team Signal
-            </strong>
-            <span className="text-sm font-extrabold text-[#175fa9]">
-              {
-                room.players.filter((player) => player.teamId === 'signal')
-                  .length
-              }
-            </span>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className="border-l-4 border-[#1f72d2] bg-[#eaf4ff] px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <strong className="font-display text-lg text-[#175fa9]">
+                  Team Signal
+                </strong>
+                <span className="text-sm font-extrabold text-[#175fa9]">
+                  {
+                    room.players.filter((player) => player.teamId === 'signal')
+                      .length
+                  }
+                </span>
+              </div>
+              <p className="mt-1 text-sm font-medium text-[#526a7e]">
+                Correct answers and participation push the blue side.
+              </p>
+            </div>
+            <div className="border-l-4 border-[#d56552] bg-[#fff0ec] px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <strong className="font-display text-lg text-[#b64c39]">
+                  Team Spark
+                </strong>
+                <span className="text-sm font-extrabold text-[#b64c39]">
+                  {
+                    room.players.filter((player) => player.teamId === 'spark')
+                      .length
+                  }
+                </span>
+              </div>
+              <p className="mt-1 text-sm font-medium text-[#526a7e]">
+                Correct answers and participation push the coral side.
+              </p>
+            </div>
           </div>
-          <p className="mt-1 text-sm font-medium text-[#526a7e]">
-            Correct answers and participation push the blue side.
+          <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
+            <Zap size={16} className="text-[#b17900]" /> Teams build separate
+            scores. An optional Beat Mimo challenge gives the whole room one
+            final target.
           </p>
-        </div>
-        <div className="border-l-4 border-[#d56552] bg-[#fff0ec] px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <strong className="font-display text-lg text-[#b64c39]">
-              Team Spark
-            </strong>
-            <span className="text-sm font-extrabold text-[#b64c39]">
-              {
-                room.players.filter((player) => player.teamId === 'spark')
-                  .length
-              }
-            </span>
-          </div>
-          <p className="mt-1 text-sm font-medium text-[#526a7e]">
-            Correct answers and participation push the coral side.
-          </p>
-        </div>
-      </div>
-      <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
-        <Zap size={16} className="text-[#b17900]" /> Teams build separate
-        scores. An optional Beat Mimo challenge gives the whole room one final
-        target.
-      </p>
         </>
       ) : (
         <div className="mt-4 flex items-start gap-3 border-y border-[#d1d8dc] py-4">
           {room.playMode === 'together' ? (
             <Trophy size={20} className="mt-0.5 shrink-0 text-[#a97800]" />
           ) : (
-            <CircleUserRound size={20} className="mt-0.5 shrink-0 text-[#1f72d2]" />
+            <CircleUserRound
+              size={20}
+              className="mt-0.5 shrink-0 text-[#1f72d2]"
+            />
           )}
           <span>
             <strong className="block font-display text-lg">
@@ -1964,7 +1970,8 @@ function QuestionState({
                 {busy ? 'Saving…' : 'Submit answer'} <ArrowRight size={18} />
               </Button>
               <p className="mt-2 text-center text-xs font-bold text-[#66798a]">
-                Change your choice anytime before submitting. At zero, Mimo uses your last saved choice.
+                Change your choice anytime before submitting. At zero, Mimo uses
+                your last saved choice.
               </p>
             </div>
           )}
@@ -2316,7 +2323,9 @@ function ResultsState({
             ) : usesTeams ? (
               <span
                 className={`h-3 w-3 shrink-0 rounded-full ${player.teamId === 'signal' ? 'bg-[#1f72d2]' : 'bg-[#d56552]'}`}
-                aria-label={player.teamId === 'signal' ? 'Team Signal' : 'Team Spark'}
+                aria-label={
+                  player.teamId === 'signal' ? 'Team Signal' : 'Team Spark'
+                }
               />
             ) : null}
             <MimoProfileAvatar
@@ -2398,15 +2407,17 @@ function ResultsState({
                 : 'The host will close the final result.'}
         </p>
       )}
-      {room.status === 'complete' && room.persistentCommunity && onOpenCommunity && (
-        <Button
-          onClick={() => onOpenCommunity(room.communitySlug)}
-          variant="outline"
-          className="mt-4 h-12 rounded-full border-[#afbdc7] bg-white px-6 font-extrabold"
-        >
-          Back to {room.community} <ArrowRight size={17} />
-        </Button>
-      )}
+      {room.status === 'complete' &&
+        room.persistentCommunity &&
+        onOpenCommunity && (
+          <Button
+            onClick={() => onOpenCommunity(room.communitySlug)}
+            variant="outline"
+            className="mt-4 h-12 rounded-full border-[#afbdc7] bg-white px-6 font-extrabold"
+          >
+            Back to {room.community} <ArrowRight size={17} />
+          </Button>
+        )}
     </div>
   );
 }
@@ -2452,7 +2463,8 @@ function HostEventRecap({ code, hostKey }: { code: string; hostKey: string }) {
 
   if (!recap) return null;
   const confirmedPayouts =
-    recap.reward?.payouts.filter((payout) => payout.state === 'confirmed').length ?? 0;
+    recap.reward?.payouts.filter((payout) => payout.state === 'confirmed')
+      .length ?? 0;
   const copyRecap = async () => {
     const summary = `${recap.title} · ${recap.participants} played · ${recap.completedParticipants} completed · ${recap.verifiedParticipants} verified wallets${confirmedPayouts ? ` · ${confirmedPayouts} NIM payout${confirmedPayouts === 1 ? '' : 's'} confirmed` : ''}`;
     try {
@@ -2465,14 +2477,26 @@ function HostEventRecap({ code, hostKey }: { code: string; hostKey: string }) {
   };
 
   return (
-    <section className="mt-9 border-y border-[#cdd5d9] py-7" aria-label="Host event recap">
+    <section
+      className="mt-9 border-y border-[#cdd5d9] py-7"
+      aria-label="Host event recap"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#20805a]">Host recap</p>
-          <h3 className="font-display mt-2 text-3xl font-extrabold tracking-[-.035em]">The room, at a glance.</h3>
+          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#20805a]">
+            Host recap
+          </p>
+          <h3 className="font-display mt-2 text-3xl font-extrabold tracking-[-.035em]">
+            The room, at a glance.
+          </h3>
         </div>
-        <Button onClick={() => void copyRecap()} variant="outline" className="h-11 shrink-0 rounded-full bg-white px-4 font-extrabold">
-          <Share2 size={16} /> <span className="hidden sm:inline">{copyLabel}</span>
+        <Button
+          onClick={() => void copyRecap()}
+          variant="outline"
+          className="h-11 shrink-0 rounded-full bg-white px-4 font-extrabold"
+        >
+          <Share2 size={16} />{' '}
+          <span className="hidden sm:inline">{copyLabel}</span>
         </Button>
       </div>
       <div className="mt-6 grid grid-cols-2 gap-y-6 sm:grid-cols-4">
@@ -2482,9 +2506,16 @@ function HostEventRecap({ code, hostKey }: { code: string; hostKey: string }) {
           [`${recap.completionRate}%`, 'Completed'],
           [`${recap.visitToJoinRate}%`, 'Visit to join'],
         ].map(([value, label]) => (
-          <div key={String(label)} className="border-l border-[#d6dcdf] pl-4 first:border-0 first:pl-0">
-            <strong className="font-display block text-3xl font-extrabold">{value}</strong>
-            <span className="mt-1 block text-sm font-bold text-[#64788a]">{label}</span>
+          <div
+            key={String(label)}
+            className="border-l border-[#d6dcdf] pl-4 first:border-0 first:pl-0"
+          >
+            <strong className="font-display block text-3xl font-extrabold">
+              {value}
+            </strong>
+            <span className="mt-1 block text-sm font-bold text-[#64788a]">
+              {label}
+            </span>
           </div>
         ))}
       </div>
@@ -2495,8 +2526,24 @@ function HostEventRecap({ code, hostKey }: { code: string; hostKey: string }) {
             <span>Spark {recap.teams.spark.toLocaleString()}</span>
           </>
         )}
-        {confirmedPayouts > 0 && <span className="text-[#237044]">{confirmedPayouts} payout{confirmedPayouts === 1 ? '' : 's'} confirmed</span>}
-        {recap.failures.length > 0 && <span>{recap.failures.reduce((sum, item) => sum + Number(item.count), 0)} join issue{recap.failures.reduce((sum, item) => sum + Number(item.count), 0) === 1 ? '' : 's'}</span>}
+        {confirmedPayouts > 0 && (
+          <span className="text-[#237044]">
+            {confirmedPayouts} payout{confirmedPayouts === 1 ? '' : 's'}{' '}
+            confirmed
+          </span>
+        )}
+        {recap.failures.length > 0 && (
+          <span>
+            {recap.failures.reduce((sum, item) => sum + Number(item.count), 0)}{' '}
+            join issue
+            {recap.failures.reduce(
+              (sum, item) => sum + Number(item.count),
+              0,
+            ) === 1
+              ? ''
+              : 's'}
+          </span>
+        )}
       </div>
     </section>
   );
@@ -2847,7 +2894,7 @@ function RewardSettlement({
         )}
         {room.payoutTxHash && (
           <a
-            href={`https://test.nimiq.watch/#${room.payoutTxHash}`}
+            href={`${room.rewardCustody === 'mimo_vault' ? 'https://test.nimiq.watch' : 'https://nimiq.watch'}/#${room.payoutTxHash}`}
             target="_blank"
             rel="noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#675e3e] underline decoration-[#c7a838] underline-offset-4"
@@ -2931,24 +2978,38 @@ function RewardSettlement({
         );
         return;
       }
-      const submittedResponse = await fetch(
-        `/api/rooms/${room.code}/reward/submit`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            hostKey,
-            participantId: winner.id,
-            transactionHash: payment.transactionHash,
-          }),
-        },
-      );
-      if (!submittedResponse.ok)
-        throw new Error(await getError(submittedResponse));
+      let submittedResponse: Response | null = null;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        submittedResponse = await fetch(
+          `/api/rooms/${room.code}/reward/submit`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hostKey,
+              participantId: winner.id,
+              transactionHash: payment.transactionHash,
+              payoutAddress: address,
+            }),
+          },
+        );
+        if (submittedResponse.ok) break;
+        const submissionError = await getError(submittedResponse);
+        if (!submissionError.includes('not confirmed on mainnet yet')) {
+          throw new Error(submissionError);
+        }
+        setDetail('Payment sent. Waiting for mainnet confirmation…');
+        await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+      }
+      if (!submittedResponse?.ok) {
+        throw new Error(
+          'Payment was sent, but confirmation is still pending. Do not pay again; reopen this result shortly.',
+        );
+      }
       const submitted = (await submittedResponse.json()) as { txHash: string };
       setState('submitted');
       setDetail(
-        `Submitted to Nimiq · proof ${submitted.txHash.slice(0, 10)}… Network confirmation pending.`,
+        `Confirmed on Nimiq mainnet · proof ${submitted.txHash.slice(0, 10)}…`,
       );
     } catch (cause) {
       setState('failed');

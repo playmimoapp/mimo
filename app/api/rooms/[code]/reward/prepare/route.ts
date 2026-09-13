@@ -6,6 +6,7 @@ import {
   json,
   readJson,
 } from '@/lib/live-room';
+import { assertMainnetRewardAmount } from '@/lib/mainnet-reward';
 
 function normalizeAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -34,6 +35,14 @@ export async function POST(
       {
         error: 'This funded reward is settled automatically by the Mimo vault.',
       },
+      409,
+    );
+  }
+  if (
+    getRoomConfig(room.launchedConfigJson).rewardNetwork !== 'MainAlbatross'
+  ) {
+    return json(
+      { error: 'This room was not locked for a mainnet payout.' },
       409,
     );
   }
@@ -71,9 +80,24 @@ export async function POST(
       403,
     );
   if (!reward) return json({ error: 'This room has no NIM reward.' }, 404);
+  try {
+    assertMainnetRewardAmount(reward.amountLuna);
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error &&
+          error.message === 'mainnet_reward_out_of_range'
+            ? 'This real-NIM reward is outside the protected pilot limit.'
+            : 'Real-NIM payouts are temporarily unavailable.',
+      },
+      503,
+    );
+  }
   return json({
     verified: true,
     amountLuna: reward.amountLuna,
     memo: `MIMO ${room.roomCode} WINNER`,
+    network: 'MainAlbatross',
   });
 }

@@ -6,6 +6,8 @@ import {
   json,
   readJson,
 } from '@/lib/live-room';
+import { verifyMainnetPayout } from '@/lib/mainnet-reward';
+import { normalizeNimiqAddress } from '@/lib/reward-vault';
 
 export async function POST(
   request: Request,
@@ -26,17 +28,27 @@ export async function POST(
       409,
     );
   }
+  if (
+    getRoomConfig(room.launchedConfigJson).rewardNetwork !== 'MainAlbatross'
+  ) {
+    return json(
+      { error: 'This room was not locked for a mainnet payout.' },
+      409,
+    );
+  }
   const participantId =
     typeof body?.participantId === 'string' ? body.participantId : '';
   const transactionHash =
     typeof body?.transactionHash === 'string'
       ? body.transactionHash.trim().toLowerCase()
       : '';
+  const payoutAddress =
+    typeof body?.payoutAddress === 'string' ? body.payoutAddress : '';
   if (!participantId || !/^[0-9a-f]{64}$/.test(transactionHash))
     return json({ error: 'The submitted payment proof is incomplete.' }, 400);
 
   const db = getD1();
-  const [winner, reward] = await Promise.all([
+  const [winner, reward, reusedTransaction] = await Promise.all([
     db
       .prepare(
         `SELECT id, wallet_hash AS walletHash FROM participants WHERE event_id = ? ORDER BY score DESC, joined_at ASC LIMIT 1`,
@@ -49,17 +61,72 @@ export async function POST(
       )
       .bind(room.id)
       .first<{ id: string; amountLuna: string }>(),
+    db
+      .prepare(`SELECT id, reward_id AS rewardId, participant_id AS participantId,
+        state FROM payouts WHERE tx_hash = ? LIMIT 1`)
+      .bind(transactionHash)
+      .first<{
+        id: string;
+        rewardId: string;
+        participantId: string;
+        state: string;
+      }>(),
   ]);
   if (!winner || winner.id !== participantId || !winner.walletHash || !reward)
     return json({ error: 'The reward result could not be verified.' }, 409);
+  if (reusedTransaction) {
+    if (
+      reusedTransaction.rewardId === reward.id &&
+      reusedTransaction.participantId === participantId &&
+      reusedTransaction.state === 'confirmed'
+    ) {
+      return json({ state: 'payout_confirmed', txHash: transactionHash });
+    }
+    return json(
+      { error: 'That transaction proof has already been used.' },
+      409,
+    );
+  }
+
+  try {
+    const verified = await verifyMainnetPayout(transactionHash, {
+      recipient: payoutAddress,
+      amountLuna: reward.amountLuna,
+      memo: `MIMO ${room.roomCode} WINNER`,
+    });
+    if (!verified.confirmed) {
+      return json(
+        {
+          error:
+            'The payment is not confirmed on mainnet yet. Try again shortly.',
+        },
+        409,
+      );
+    }
+    if (
+      (await hashToken(normalizeNimiqAddress(payoutAddress))) !==
+      winner.walletHash
+    ) {
+      return json(
+        { error: 'The payment recipient is not the verified winner.' },
+        403,
+      );
+    }
+  } catch (error) {
+    console.error('mainnet_payout_verification_failed', error);
+    return json(
+      { error: 'The mainnet transaction does not match the verified reward.' },
+      403,
+    );
+  }
 
   try {
     const now = Date.now();
     await db.batch([
       db
         .prepare(`INSERT INTO payouts (id, reward_id, participant_id, amount_luna, state, tx_hash, failure_code, updated_at)
-        VALUES (?, ?, ?, ?, 'submitted', ?, NULL, ?)
-        ON CONFLICT(reward_id, participant_id) DO UPDATE SET state = 'submitted', tx_hash = excluded.tx_hash, failure_code = NULL, updated_at = excluded.updated_at`)
+        VALUES (?, ?, ?, ?, 'confirmed', ?, NULL, ?)
+        ON CONFLICT(reward_id, participant_id) DO UPDATE SET state = 'confirmed', tx_hash = excluded.tx_hash, failure_code = NULL, updated_at = excluded.updated_at`)
         .bind(
           crypto.randomUUID(),
           reward.id,
@@ -70,11 +137,11 @@ export async function POST(
         ),
       db
         .prepare(
-          `UPDATE rewards SET state = 'payout_submitted', updated_at = ? WHERE id = ?`,
+          `UPDATE rewards SET state = 'payout_confirmed', updated_at = ? WHERE id = ?`,
         )
         .bind(now, reward.id),
     ]);
-    return json({ state: 'payout_submitted', txHash: transactionHash });
+    return json({ state: 'payout_confirmed', txHash: transactionHash });
   } catch (error) {
     console.error('payout_proof_failed', error);
     return json({ error: 'Nimiq Pay returned an invalid payment proof.' }, 403);

@@ -36,7 +36,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Wallet-owned Community Studio profiles with real pictures and durable public links
 - Permanent community pages that collect their live events in one place
 
-Mimo does not claim that proposed rewards are escrowed or funded. Creator-held rewards remain a clearly labelled promise and require wallet approval. The production competition build has a valueless TestAlbatross vault and automatic settlement enabled; mainnet custody is deliberately disabled.
+Mimo does not claim that proposed rewards are escrowed or funded. Creator-held mainnet rewards remain in the creator's wallet, require explicit Nimiq Pay approval after the verified result, and are independently checked on-chain against the winner, amount and room memo. This pilot is capped at 5 NIM per room. The production competition build also has a valueless TestAlbatross vault with automatic settlement enabled; automatic mainnet custody remains deliberately disabled until it has separate production key management and operational safeguards.
 
 ## Nimiq Pay flow
 

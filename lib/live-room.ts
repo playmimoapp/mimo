@@ -92,7 +92,9 @@ function durationFromConfig(configJson: string) {
 export async function finalizePendingAnswers(room: RoomRecord) {
   const db = getD1();
   const round = await db
-    .prepare(`SELECT config_json AS configJson FROM rounds WHERE id = ? LIMIT 1`)
+    .prepare(
+      `SELECT config_json AS configJson FROM rounds WHERE id = ? LIMIT 1`,
+    )
     .bind(room.activeRoundId)
     .first<{ configJson: string }>();
   if (!round) return 0;
@@ -368,21 +370,21 @@ export async function reconcileRoom(room: RoomRecord) {
       const signal =
         usesTeams || currentRound?.type === 'finale'
           ? detectLivingRoomSignal({
-        status: room.status,
-        roundType: currentRound?.type ?? 'multiple_choice',
-        hasNextRound: Boolean(nextRound),
-        choiceCounts,
-        finalePassed,
-        signalScore: signalPlayers.reduce(
-          (total, player) => total + player.score,
-          0,
-        ),
-        sparkScore: sparkPlayers.reduce(
-          (total, player) => total + player.score,
-          0,
-        ),
-        signalPlayers: signalPlayers.length,
-        sparkPlayers: sparkPlayers.length,
+              status: room.status,
+              roundType: currentRound?.type ?? 'multiple_choice',
+              hasNextRound: Boolean(nextRound),
+              choiceCounts,
+              finalePassed,
+              signalScore: signalPlayers.reduce(
+                (total, player) => total + player.score,
+                0,
+              ),
+              sparkScore: sparkPlayers.reduce(
+                (total, player) => total + player.score,
+                0,
+              ),
+              signalPlayers: signalPlayers.length,
+              sparkPlayers: sparkPlayers.length,
             })
           : null;
       if (signal && roomConfig.adaptiveMode === 'ask') {
@@ -478,6 +480,7 @@ export function getRoomConfig(value: string | null) {
     walletRequired: false,
     inviteTokenHash: '',
     custody: 'host_wallet' as const,
+    rewardNetwork: null as 'MainAlbatross' | 'TestAlbatross' | null,
     rewardRule: 'skill' as const,
     eventKind: 'custom' as const,
     adaptiveMoments: false,
@@ -508,6 +511,11 @@ export function getRoomConfig(value: string | null) {
         config.custody === 'mimo_vault'
           ? ('mimo_vault' as const)
           : ('host_wallet' as const),
+      rewardNetwork:
+        config.rewardNetwork === 'MainAlbatross' ||
+        config.rewardNetwork === 'TestAlbatross'
+          ? config.rewardNetwork
+          : null,
       rewardRule:
         config.rewardRule === 'community_unlock'
           ? ('community_unlock' as const)

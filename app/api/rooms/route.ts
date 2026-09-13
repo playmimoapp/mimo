@@ -13,6 +13,7 @@ import {
   getCommunityRole,
 } from '@/lib/mimo-account';
 import { analyticsClassForRequest } from '@/lib/usage-evidence';
+import { getMainnetRewardConfig } from '@/lib/mainnet-reward';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -107,6 +108,7 @@ export async function POST(request: Request) {
           .replace(/[^0-9]/g, '')
           .slice(0, 8)
       : '0';
+  const mainnetReward = getMainnetRewardConfig();
   const rawRounds = Array.isArray(body.rounds)
     ? body.rounds
     : [
@@ -170,6 +172,21 @@ export async function POST(request: Request) {
   }
   if (rewardMode === 'nim' && (!rewardAmount || Number(rewardAmount) < 1)) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
+  }
+  if (
+    rewardMode === 'nim' &&
+    rewardCustody === 'host_wallet' &&
+    (!mainnetReward.enabled ||
+      Number(rewardAmount) > mainnetReward.maxRewardNim)
+  ) {
+    return json(
+      {
+        error: mainnetReward.enabled
+          ? `The real-NIM pilot is capped at ${mainnetReward.maxRewardNim} NIM per room.`
+          : 'Real-NIM creator payouts are temporarily unavailable.',
+      },
+      503,
+    );
   }
   if (
     rewardMode === 'nim' &&
@@ -248,6 +265,10 @@ export async function POST(request: Request) {
     inviteTokenHash,
     collectiveTargetPercent: 60,
     custody: rewardCustody,
+    rewardNetwork:
+      rewardMode === 'nim' && rewardCustody === 'host_wallet'
+        ? 'MainAlbatross'
+        : (vault?.network ?? null),
     rewardRule,
     eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,

@@ -38,11 +38,13 @@ export function MimoCue({
   message,
   mood = 'calm',
   tone = 'light',
+  eyebrow,
   className,
 }: {
   message: string;
   mood?: Mood;
   tone?: 'light' | 'dark';
+  eyebrow?: string;
   className?: string;
 }) {
   const reduceMotion = useReducedMotion();
@@ -74,6 +76,11 @@ export function MimoCue({
           className="mimo-cue-message"
           aria-live="polite"
         >
+          {eyebrow && (
+            <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-[.13em] opacity-65">
+              {eyebrow}
+            </span>
+          )}
           <span className="sr-only">{message}</span>
           <span aria-hidden="true">
             {words.map((word, index) => (
@@ -141,9 +148,6 @@ export function MimoProfileAvatar({
           profileSpritePosition[profile],
         )}
       />
-      <span className="absolute bottom-0 right-0 grid h-4 min-w-4 place-items-center rounded-full bg-white px-0.5 text-[9px] font-black text-[#203752] shadow-sm">
-        {definition.symbol}
-      </span>
     </span>
   );
 }

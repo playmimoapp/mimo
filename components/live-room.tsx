@@ -221,7 +221,14 @@ export function LiveRoom({
         const answerIsLocked = Boolean(me?.answerLocked);
         setLocked(answerIsLocked);
         if (!answerIsLocked) {
-          setSelected(null);
+          const savedChoice = window.sessionStorage.getItem(
+            `mimo:${code}:${next.activeRoundId}:choice`,
+          );
+          setSelected(
+            savedChoice !== null && Number.isInteger(Number(savedChoice))
+              ? Number(savedChoice)
+              : null,
+          );
         } else {
           const savedChoice = window.sessionStorage.getItem(
             `mimo:${code}:${next.activeRoundId}:choice`,
@@ -429,35 +436,79 @@ export function LiveRoom({
     }
   };
 
-  const answer = async (choice: number) => {
+  const selectAnswer = useCallback(async (choice: number) => {
     if (!participantToken || locked || busy) return;
+    const previousChoice = selected;
     setSelected(choice);
+    window.sessionStorage.setItem(
+      `mimo:${code}:${room?.activeRoundId}:choice`,
+      String(choice),
+    );
     setBusy(true);
     setError('');
     try {
       const response = await fetch(`/api/rooms/${code}/answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ choice, participantToken }),
+        body: JSON.stringify({ choice, participantToken, intent: 'select' }),
+      });
+      if (!response.ok) throw new Error(await getError(response));
+      if ('vibrate' in navigator) navigator.vibrate(35);
+    } catch (cause) {
+      setSelected(previousChoice);
+      setError(
+        cause instanceof Error ? cause.message : 'That choice was not saved.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, code, locked, participantToken, room?.activeRoundId, selected]);
+
+  const submitAnswer = useCallback(async () => {
+    if (!participantToken || selected === null || locked || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/rooms/${code}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          choice: selected,
+          participantToken,
+          intent: 'confirm',
+        }),
       });
       if (!response.ok) throw new Error(await getError(response));
       setLocked(true);
       playSound('lock');
-      window.sessionStorage.setItem(
-        `mimo:${code}:${room?.activeRoundId}:choice`,
-        String(choice),
-      );
       if ('vibrate' in navigator) navigator.vibrate(35);
       await refresh();
     } catch (cause) {
-      setSelected(null);
       setError(
         cause instanceof Error ? cause.message : 'Your answer was not saved.',
       );
     } finally {
       setBusy(false);
     }
-  };
+  }, [busy, code, locked, participantToken, playSound, refresh, selected]);
+
+  const autoSubmittedRound = useRef('');
+  useEffect(() => {
+    if (
+      mode !== 'player' ||
+      room?.status !== 'live' ||
+      seconds === null ||
+      seconds > 1 ||
+      selected === null ||
+      locked ||
+      busy ||
+      autoSubmittedRound.current === room.activeRoundId
+    ) {
+      return;
+    }
+    autoSubmittedRound.current = room.activeRoundId;
+    void submitAnswer();
+  }, [busy, locked, mode, room, seconds, selected, submitAnswer]);
 
   const verifyWallet = async () => {
     if (!participantToken || walletProof.status === 'connecting') return;
@@ -665,7 +716,7 @@ export function LiveRoom({
           : `${answered} of ${room.players.length} locked in. I’m watching the clock.`
         : room.status === 'verifying'
           ? room.hasNextRound
-            ? 'Result checked. The next round is nearly here.'
+            ? 'Result checked. The next question is nearly here.'
             : 'Final result checked. Let’s bring this home.'
           : room.status === 'cancelled'
             ? 'The room was cancelled. No result or payout was created.'
@@ -681,7 +732,7 @@ export function LiveRoom({
 
   return (
     <section className="mobile-page app-frame relative pb-24 pt-1 sm:pt-3">
-      <ReactionSky reactions={room.reactions} />
+      {room.status !== 'live' && <ReactionSky reactions={room.reactions} />}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d1d5d5] pb-4">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
@@ -856,18 +907,14 @@ export function LiveRoom({
         </div>
       )}
 
-      <TeamMomentum
-        signal={signalEnergy}
-        spark={sparkEnergy}
-        live={room.status === 'live'}
-        label={
-          room.status === 'lobby'
-            ? 'Team presence'
-            : room.status === 'live'
-              ? 'Live team energy'
-              : 'Team result'
-        }
-      />
+      {room.players.length > 0 && room.status !== 'live' && (
+        <TeamMomentum
+          signal={signalEnergy}
+          spark={sparkEnergy}
+          live={false}
+          label={room.status === 'lobby' ? 'Team presence' : 'Team result'}
+        />
+      )}
 
       <div className="mt-6 grid gap-7 lg:grid-cols-[1fr_340px]">
         <div>
@@ -885,10 +932,13 @@ export function LiveRoom({
           <MimoCue
             className="mobile-only mt-5"
             mood={mimoMood}
+            eyebrow={aiCue?.source === 'ai' ? 'Live AI host' : undefined}
             message={mimoLine}
           />
 
-          {room.rewardMode === 'nim' && mode === 'player' && (
+          {room.rewardMode === 'nim' &&
+            mode === 'player' &&
+            room.status === 'lobby' && (
             <WalletProofCard
               verified={Boolean(me?.walletVerified)}
               automaticPayout={room.rewardCustody === 'mimo_vault'}
@@ -940,7 +990,8 @@ export function LiveRoom({
                   busy={busy}
                   answered={answered}
                   autoHost={autoHost}
-                  onAnswer={answer}
+                  onSelect={selectAnswer}
+                  onSubmit={submitAnswer}
                   onReveal={() => void hostAction('reveal')}
                   onExtend={() => void hostAction('extend')}
                 />
@@ -966,7 +1017,8 @@ export function LiveRoom({
             </motion.div>
           </AnimatePresence>
 
-          {mode === 'player' && room.status !== 'cancelled' && (
+          {mode === 'player' &&
+            ['lobby', 'verifying', 'complete'].includes(room.status) && (
             <ReactionBar busy={reactionBusy} onReact={react} />
           )}
         </div>
@@ -992,7 +1044,7 @@ export function LiveRoom({
               : room.status === 'live'
                 ? `${answered} of ${room.players.length} locked`
                 : room.status === 'verifying' && room.hasNextRound
-                  ? `Round ${room.roundIndex + 1} revealed`
+                  ? `Question ${room.roundIndex + 1} revealed`
                   : 'Scores verified'}
           </p>
           <motion.div
@@ -1638,7 +1690,7 @@ function LobbyState({
       </div>
       <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
         <Zap size={16} className="text-[#b17900]" /> Teams build separate
-        scores. An optional Beat Mimo round gives the whole room one final
+        scores. An optional Beat Mimo challenge gives the whole room one final
         target.
       </p>
       {room.rewardMode === 'nim' && (
@@ -1788,7 +1840,8 @@ function QuestionState({
   busy,
   answered,
   autoHost,
-  onAnswer,
+  onSelect,
+  onSubmit,
   onReveal,
   onExtend,
 }: {
@@ -1800,7 +1853,8 @@ function QuestionState({
   busy: boolean;
   answered: number;
   autoHost: boolean;
-  onAnswer: (choice: number) => void;
+  onSelect: (choice: number) => void;
+  onSubmit: () => void;
   onReveal: () => void;
   onExtend: () => void;
 }) {
@@ -1809,7 +1863,7 @@ function QuestionState({
       <div className="mobile-round-top flex items-start justify-between gap-4 border-b border-[#d1d5d5] pb-5">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
-            Round {room.roundIndex + 1} of {room.roundCount} ·{' '}
+            Question {room.roundIndex + 1} of {room.roundCount} ·{' '}
             {room.roundType === 'pulse'
               ? 'Live poll'
               : room.roundType === 'finale'
@@ -1836,29 +1890,42 @@ function QuestionState({
       {role === 'player' ? (
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           {room.choices.map((choice, index) => {
-            const tone = CHOICE_TONES[index];
             return (
               <button
                 key={choice}
                 disabled={locked || busy || seconds === 0}
-                onClick={() => onAnswer(index)}
+                onClick={() => onSelect(index)}
                 aria-pressed={selected === index}
-                className={`mobile-answer relative min-h-28 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? tone.selected : `${tone.surface} hover:-translate-y-1`} ${locked && selected !== index ? 'opacity-45 saturate-50' : ''} disabled:cursor-default disabled:hover:translate-y-0`}
+                className={`mobile-answer relative min-h-24 border-2 p-5 text-left font-display text-xl font-extrabold transition ${selected === index ? 'border-[#2577de] bg-[#eaf4ff] ring-2 ring-[#2577de]/15' : 'border-[#cbd4da] bg-white hover:border-[#8aa8c0]'} ${locked && selected !== index ? 'opacity-45' : ''} disabled:cursor-default`}
               >
                 <span
-                  className={`mr-3 inline-grid h-7 w-7 place-items-center rounded-full text-sm ${tone.badge}`}
+                  className={`mr-3 inline-grid h-7 w-7 place-items-center rounded-full text-sm ${selected === index ? 'bg-[#2577de] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
                 >
                   {String.fromCharCode(65 + index)}
                 </span>
                 {choice}
-                {locked && selected === index && (
+                {selected === index && (
                   <span className="mt-4 flex w-fit items-center gap-1.5 rounded-full bg-[#203752] px-3 py-1.5 font-sans text-xs font-extrabold text-white">
-                    <Check size={15} /> Locked in
+                    <Check size={15} /> {locked ? 'Submitted' : 'Selected'}
                   </span>
                 )}
               </button>
             );
           })}
+          {!locked && (
+            <div className="mobile-action-bar col-span-full mt-1">
+              <Button
+                onClick={onSubmit}
+                disabled={selected === null || busy || seconds === 0}
+                className="mobile-primary h-14 w-full rounded-full bg-[#1f72d2] px-7 font-extrabold"
+              >
+                {busy ? 'Saving…' : 'Submit answer'} <ArrowRight size={18} />
+              </Button>
+              <p className="mt-2 text-center text-xs font-bold text-[#66798a]">
+                Change your choice anytime before submitting. At zero, Mimo uses your last saved choice.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-7 overflow-hidden rounded-[26px] bg-[#203752] p-5 text-white sm:p-6">
@@ -1940,8 +2007,12 @@ function QuestionState({
               className="mt-5 flex items-center gap-2 font-bold text-[#536b7e]"
             >
               {seconds === 0
-                ? 'Time is up. Mimo is revealing the room.'
-                : 'Choose once. Mimo saves it instantly.'}
+                ? selected === null
+                  ? 'Time is up. No choice was selected.'
+                  : 'Time is up. Mimo is using your last saved choice.'
+                : selected === null
+                  ? 'Choose an answer, then submit it.'
+                  : 'Choice saved. Submit now or change it.'}
             </p>
           )}
         </AnimatePresence>
@@ -2024,7 +2095,7 @@ function ResultsState({
               ? room.finalePassed
                 ? 'The room beat Mimo!'
                 : 'Mimo takes this one.'
-              : 'Round revealed.'}
+              : 'Answer revealed.'}
       </h2>
       {room.roomSignal && (
         <LivingRoomMoment
@@ -2224,7 +2295,7 @@ function ResultsState({
             disabled={busy}
             className="mobile-primary mt-6 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
-            {autoHost ? 'Next now' : 'Next round'}
+            {autoHost ? 'Next now' : 'Next question'}
           </Button>
         ) : room.status === 'verifying' ? (
           <Button
@@ -2249,14 +2320,14 @@ function ResultsState({
             ? 'Event complete. Your result is saved.'
             : room.hasNextRound
               ? autoHost
-                ? 'Mimo is moving to the next round automatically.'
-                : 'The host will start the next round.'
+                ? 'Mimo is moving to the next question automatically.'
+                : 'The host will start the next question.'
               : autoHost
                 ? 'Mimo is checking the final result.'
                 : 'The host will close the final result.'}
         </p>
       )}
-      {room.status === 'complete' && onOpenCommunity && (
+      {room.status === 'complete' && room.persistentCommunity && onOpenCommunity && (
         <Button
           onClick={() => onOpenCommunity(room.communitySlug)}
           variant="outline"

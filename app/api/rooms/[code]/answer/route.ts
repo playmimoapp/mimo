@@ -16,6 +16,7 @@ export async function POST(
   const participantToken =
     typeof body?.participantToken === 'string' ? body.participantToken : '';
   const choice = Number(body?.choice);
+  const intent = body?.intent === 'select' ? 'select' : 'confirm';
   if (!participantToken || !Number.isInteger(choice) || choice < 0) {
     return json({ error: 'Choose one answer.' }, 400);
   }
@@ -80,12 +81,16 @@ export async function POST(
     ? 1000 + (config.scoringMode === 'speed' ? remaining * 10 : 0)
     : 0;
 
-  try {
-    await db.batch([
-      db
+  if (intent === 'select') {
+    try {
+      await db
         .prepare(`INSERT INTO answers
-        (id, event_id, round_id, participant_id, answer_json, received_at, accepted, score)
-        VALUES (?, ?, ?, ?, ?, ?, 1, ?)`)
+          (id, event_id, round_id, participant_id, answer_json, received_at, accepted, score)
+          VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+          ON CONFLICT(round_id, participant_id) DO UPDATE SET
+            answer_json = excluded.answer_json,
+            received_at = excluded.received_at
+          WHERE answers.accepted = 0`)
         .bind(
           crypto.randomUUID(),
           room.id,
@@ -93,6 +98,35 @@ export async function POST(
           participant.id,
           JSON.stringify({ choice }),
           now,
+        )
+        .run();
+      return json({ selected: true, choice });
+    } catch (error) {
+      console.error('answer_selection_failed', error);
+      return json({ error: 'That choice was not saved. Tap it again.' }, 409);
+    }
+  }
+
+  try {
+    await db.batch([
+      db
+        .prepare(`INSERT INTO answers
+        (id, event_id, round_id, participant_id, answer_json, received_at, accepted, score)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        ON CONFLICT(round_id, participant_id) DO UPDATE SET
+          answer_json = excluded.answer_json,
+          received_at = excluded.received_at,
+          accepted = 1,
+          score = ?
+        WHERE answers.accepted = 0`)
+        .bind(
+          crypto.randomUUID(),
+          room.id,
+          room.activeRoundId,
+          participant.id,
+          JSON.stringify({ choice }),
+          now,
+          score,
           score,
         ),
       db

@@ -1,6 +1,7 @@
 import { getD1 } from '@/db';
 import {
   advanceCommunitySchedule,
+  finalizePendingAnswers,
   getRoom,
   getRoomConfig,
   hashToken,
@@ -260,6 +261,7 @@ export async function POST(
       }
     }
   } else {
+    if (action === 'reveal') await finalizePendingAnswers(room);
     const changed = await db
       .prepare(`UPDATE events SET status = ?, state_changed_at = ?
         WHERE id = ? AND status = 'live' AND active_round_id = ?`)

@@ -43,7 +43,7 @@ export async function POST(
   if (!(await hasInviteAccess(room, body?.inviteToken))) {
     return reject(
       'private_access',
-      'This private room needs its original invite link.',
+      'You do not have access to this restricted room.',
       403,
     );
   }

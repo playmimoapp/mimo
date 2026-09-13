@@ -26,6 +26,7 @@ export type LiveRoomState = {
   title: string;
   community: string;
   communitySlug: string;
+  persistentCommunity: boolean;
   status: 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
   rewardMode: 'free' | 'nim';
   rewardAmount: string;

@@ -89,6 +89,81 @@ function durationFromConfig(configJson: string) {
   }
 }
 
+export async function finalizePendingAnswers(room: RoomRecord) {
+  const db = getD1();
+  const round = await db
+    .prepare(`SELECT config_json AS configJson FROM rounds WHERE id = ? LIMIT 1`)
+    .bind(room.activeRoundId)
+    .first<{ configJson: string }>();
+  if (!round) return 0;
+  let config: {
+    correctChoice: number | null;
+    scored?: boolean;
+    scoringMode?: 'accuracy' | 'speed';
+  };
+  try {
+    config = JSON.parse(round.configJson) as typeof config;
+  } catch {
+    return 0;
+  }
+  const pending = await db
+    .prepare(`SELECT a.id, a.participant_id AS participantId,
+      a.answer_json AS answerJson, a.received_at AS receivedAt
+      FROM answers a JOIN participants p ON p.id = a.participant_id
+      WHERE a.round_id = ? AND a.accepted = 0 AND p.answer_locked = 0`)
+    .bind(room.activeRoundId)
+    .all<{
+      id: string;
+      participantId: string;
+      answerJson: string;
+      receivedAt: number;
+    }>();
+  if (!pending.results.length) return 0;
+  const deadline =
+    (room.roundStartedAt ?? Date.now()) + room.roundDurationSeconds * 1000;
+  let finalized = 0;
+  for (const draft of pending.results) {
+    let choice = -1;
+    try {
+      choice = Number(
+        (JSON.parse(draft.answerJson) as { choice?: unknown }).choice,
+      );
+    } catch {
+      continue;
+    }
+    const scored = config.scored ?? config.correctChoice !== null;
+    const correct = scored ? choice === config.correctChoice : false;
+    const remaining = Math.max(
+      0,
+      Math.ceil((deadline - draft.receivedAt) / 1000),
+    );
+    const score = correct
+      ? 1000 + (config.scoringMode === 'speed' ? remaining * 10 : 0)
+      : 0;
+    const [answerChanged] = await db.batch([
+      db
+        .prepare(`UPDATE answers SET accepted = 1, score = ?
+          WHERE id = ? AND accepted = 0`)
+        .bind(score, draft.id),
+      db
+        .prepare(`UPDATE participants SET answer_locked = 1,
+          score = score + ?, last_seen_at = ?
+          WHERE id = ? AND answer_locked = 0
+            AND EXISTS (SELECT 1 FROM answers
+              WHERE id = ? AND participant_id = ? AND accepted = 1)`)
+        .bind(
+          score,
+          Date.now(),
+          draft.participantId,
+          draft.id,
+          draft.participantId,
+        ),
+    ]);
+    if (answerChanged.meta.changes) finalized += 1;
+  }
+  return finalized;
+}
+
 export async function advanceCommunitySchedule(communityId: string) {
   const db = getD1();
   const schedule = await db
@@ -188,6 +263,7 @@ export async function reconcileRoom(room: RoomRecord) {
     const everyoneAnswered =
       (counts?.total ?? 0) > 0 && (counts?.locked ?? 0) >= (counts?.total ?? 0);
     if (now >= deadline || everyoneAnswered) {
+      if (now >= deadline) await finalizePendingAnswers(room);
       const changed = await db
         .prepare(`UPDATE events SET status = 'verifying', state_changed_at = ?
           WHERE id = ? AND status = 'live' AND auto_host_enabled = 1`)
@@ -453,8 +529,10 @@ export async function hasInviteAccess(
 ) {
   const config = getRoomConfig(room.launchedConfigJson);
   if (config.accessMode === 'public') return true;
-  if (typeof inviteToken !== 'string' || !config.inviteTokenHash) return false;
-  return (await hashToken(inviteToken)) === config.inviteTokenHash;
+  // A private room is unlisted. Possession of its room code or link is access.
+  // The parameter remains for compatibility with previously issued links.
+  void inviteToken;
+  return true;
 }
 
 export async function canViewRoom(
@@ -466,7 +544,8 @@ export async function canViewRoom(
   },
 ) {
   const config = getRoomConfig(room.launchedConfigJson);
-  if (config.accessMode === 'public') return true;
+  if (config.accessMode === 'public' || config.accessMode === 'private')
+    return true;
 
   const inviteToken = request.headers.get('x-mimo-invite');
   if (await hasInviteAccess(room, inviteToken)) return true;

@@ -19,7 +19,7 @@ export async function GET(
   if (!room) return json({ error: 'That room does not exist.' }, 404);
   if (!(await canViewRoom(request, room))) {
     return json(
-      { error: 'This private room needs its original invite link.' },
+      { error: 'You do not have access to this restricted room.' },
       403,
     );
   }
@@ -209,6 +209,7 @@ export async function GET(
     title: room.title,
     community: room.communityName,
     communitySlug: room.communitySlug,
+    persistentCommunity: !room.communitySlug.startsWith('room-'),
     status: room.status,
     rewardMode: reward.mode,
     rewardAmount: reward.amount,

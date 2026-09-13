@@ -79,25 +79,6 @@ type EventKind =
   | 'custom';
 type AdaptiveMode = 'auto' | 'ask' | 'off';
 
-const CHOICE_TONES = [
-  {
-    base: 'border-[#78aee5] bg-[#edf6ff]',
-    active: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
-  },
-  {
-    base: 'border-[#e89989] bg-[#fff1ed]',
-    active: 'border-[#c85743] bg-[#ffe1da] ring-2 ring-[#c85743]/20',
-  },
-  {
-    base: 'border-[#d7b13f] bg-[#fff8dc]',
-    active: 'border-[#a97c00] bg-[#ffedaa] ring-2 ring-[#a97c00]/20',
-  },
-  {
-    base: 'border-[#72b88f] bg-[#eef9f2]',
-    active: 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20',
-  },
-] as const;
-
 const HOME_LINES = [
   'You bring the people. I’ll run the room.',
   'I’ll balance the teams and keep the pace.',
@@ -465,6 +446,9 @@ export function MimoApp() {
   const [working, setWorking] = useState(false);
   const [roomError, setRoomError] = useState('');
   const [joinWalletRequired, setJoinWalletRequired] = useState(false);
+  const [joinAccessMode, setJoinAccessMode] = useState<'public' | 'private'>(
+    'public',
+  );
   const [joinRequirementsLoading, setJoinRequirementsLoading] = useState(false);
   const [walletUnavailable, setWalletUnavailable] = useState(false);
   const [nimiq] = useState(() => new MimoNimiq());
@@ -663,8 +647,10 @@ export function MimoApp() {
           if (!response.ok) return;
           const preview = (await response.json()) as {
             walletRequired?: boolean;
+            accessMode?: 'public' | 'private';
           };
           setJoinWalletRequired(Boolean(preview.walletRequired));
+          setJoinAccessMode(preview.accessMode === 'private' ? 'private' : 'public');
         })
         .finally(() => setJoinRequirementsLoading(false));
       if (linkedInvite) {
@@ -987,8 +973,10 @@ export function MimoApp() {
         if (!response.ok) throw new Error('Room unavailable');
         const preview = (await response.json()) as {
           walletRequired?: boolean;
+          accessMode?: 'public' | 'private';
         };
         setJoinWalletRequired(Boolean(preview.walletRequired));
+        setJoinAccessMode(preview.accessMode === 'private' ? 'private' : 'public');
       })
       .catch(() => undefined)
       .finally(() => setJoinRequirementsLoading(false));
@@ -1166,7 +1154,7 @@ export function MimoApp() {
               roomCode={roomCode}
               working={working}
               error={roomError}
-              privateInvite={Boolean(inviteToken)}
+              privateInvite={joinAccessMode === 'private'}
               walletRequired={joinWalletRequired}
               requirementsLoading={joinRequirementsLoading}
               walletUnavailable={walletUnavailable}
@@ -1882,6 +1870,37 @@ function CreateEvent({
     ) &&
     (event.rewardMode === 'free' || Number(event.rewardAmount) > 0),
   );
+  const basicsReady = event.title.trim().length >= 3;
+  const questionsReady =
+    event.rounds.length > 0 &&
+    event.rounds.every(
+      (round) =>
+        round.question.trim().length >= 8 &&
+        round.choices.length >= 2 &&
+        round.choices.every((choice) => choice.trim()) &&
+        (round.type === 'pulse' || round.correctChoice !== null),
+    );
+  const creationCue =
+    mobileSection === 'basics'
+      ? basicsReady
+        ? 'Nice. Next, add what your guests will answer.'
+        : 'Name the event and choose when it starts.'
+      : mobileSection === 'rounds'
+        ? questionsReady
+          ? `${event.rounds.length} ${event.rounds.length === 1 ? 'question is' : 'questions are'} ready. Next, choose who can enter.`
+          : 'Write one clear question. Two answers are enough.'
+        : mobileSection === 'access'
+          ? event.accessMode === 'private'
+            ? 'This room stays unlisted. Share its code or link with your guests.'
+            : 'This room is public. Anyone with the code can join.'
+          : event.rewardMode === 'nim'
+            ? 'Your NIM rules are visible before anyone joins.'
+            : 'No prize needed. Preview the guest experience when you are ready.';
+  const nextMobileSection = () => {
+    if (mobileSection === 'basics') setMobileSection('rounds');
+    else if (mobileSection === 'rounds') setMobileSection('access');
+    else if (mobileSection === 'access') setMobileSection('reward');
+  };
   return (
     <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div>
@@ -1893,7 +1912,8 @@ function CreateEvent({
         </h1>
         <MimoCue
           className="mobile-only mt-5"
-          message={`${event.rounds.length} ${event.rounds.length === 1 ? 'round' : 'rounds'} ready. I’ll keep everyone moving together.`}
+          mood={questionsReady ? 'happy' : 'thinking'}
+          message={creationCue}
         />
         <nav
           aria-label="Event editor sections"
@@ -1902,7 +1922,7 @@ function CreateEvent({
           {(
             [
               ['basics', 'Basics'],
-              ['rounds', 'Rounds'],
+              ['rounds', 'Questions'],
               ['access', 'Guests'],
               ['reward', 'Reward'],
             ] as const
@@ -1999,7 +2019,7 @@ function CreateEvent({
           >
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-extrabold">Room flow</p>
+                <p className="text-sm font-extrabold">Questions and moments</p>
                 <p className="mt-1 text-sm font-medium text-[#6a7b89]">
                   Add only the polls, questions or team challenges you need.
                 </p>
@@ -2018,7 +2038,7 @@ function CreateEvent({
                     onClick={() => setActiveRound(index)}
                     className={`h-10 shrink-0 rounded-full px-4 text-sm font-extrabold ${activeRound === index ? 'bg-[#203752] text-white' : 'border border-[#c8d1d7] bg-white text-[#607486]'}`}
                   >
-                    Round {index + 1}
+                    Question {index + 1}
                   </button>
                 ))}
               </div>
@@ -2028,7 +2048,7 @@ function CreateEvent({
                   className={`creator-round rounded-[24px] border-2 border-[#d1d7da] bg-white p-4 sm:p-5 ${activeRound === roundIndex ? '' : 'creator-round-mobile-hidden'}`}
                 >
                   <legend className="px-2 font-display text-sm font-extrabold uppercase tracking-[.12em] text-[#617486]">
-                    Round {roundIndex + 1}
+                    Question {roundIndex + 1}
                   </legend>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
@@ -2069,7 +2089,7 @@ function CreateEvent({
                       <button
                         type="button"
                         onClick={() => removeRound(roundIndex)}
-                        aria-label={`Remove round ${roundIndex + 1}`}
+                        aria-label={`Remove question ${roundIndex + 1}`}
                         className="grid h-10 w-10 place-items-center rounded-full text-[#9f4a3c] hover:bg-[#fff0ec]"
                       >
                         <Trash2 size={17} />
@@ -2191,7 +2211,7 @@ function CreateEvent({
                     {round.choices.map((choice, choiceIndex) => (
                       <div
                         key={choiceIndex}
-                        className={`flex min-h-14 items-center gap-3 border px-3 transition ${round.correctChoice === choiceIndex ? 'border-[#1f72d2] bg-[#eaf4ff]' : choiceIndex === 0 ? 'border-[#a9caeb] bg-[#f4f9ff]' : choiceIndex === 1 ? 'border-[#efb2a7] bg-[#fff7f4]' : choiceIndex === 2 ? 'border-[#e5cf79] bg-[#fffbee]' : 'border-[#a9d3ba] bg-[#f3fbf6]'}`}
+                        className={`flex min-h-14 items-center gap-3 border px-3 transition ${round.correctChoice === choiceIndex ? 'border-[#2577de] bg-[#eaf4ff]' : 'border-[#cbd4da] bg-white'}`}
                       >
                         {round.type !== 'pulse' ? (
                           <input
@@ -2221,7 +2241,7 @@ function CreateEvent({
                             )
                           }
                           maxLength={80}
-                          aria-label={`Round ${roundIndex + 1}, choice ${String.fromCharCode(65 + choiceIndex)}`}
+                          aria-label={`Question ${roundIndex + 1}, choice ${String.fromCharCode(65 + choiceIndex)}`}
                           placeholder={
                             round.type === 'pulse'
                               ? `Side ${String.fromCharCode(65 + choiceIndex)}`
@@ -2284,7 +2304,7 @@ function CreateEvent({
               </button>
             </div>
             <p className="mt-3 text-sm font-bold text-[#617486]">
-              One round is enough. Mix formats only when your event needs them.
+              One question is enough. Add more only when the event needs them.
             </p>
           </div>
           <div className={`grid gap-7 ${sectionClass('access')}`}>
@@ -2353,9 +2373,9 @@ function CreateEvent({
                   className={`min-h-28 border-2 p-5 text-left transition ${event.accessMode === 'private' ? 'border-[#203752] bg-[#edf1f3]' : 'border-[#d5dade] bg-white'}`}
                 >
                   <LockKeyhole className="text-[#203752]" />
-                  <strong className="mt-3 block text-lg">Private invite</strong>
+                  <strong className="mt-3 block text-lg">Private room</strong>
                   <span className="mt-1 block text-sm text-[#617486]">
-                    Only people with the secure link can enter.
+                    Hidden from public listings. Guests join with the code or link you share.
                   </span>
                 </motion.button>
               </div>
@@ -2579,7 +2599,44 @@ function CreateEvent({
             {error}
           </p>
         )}
-        <div className="mobile-action-bar creator-actions mt-8 flex gap-2">
+        <div className="mobile-only mobile-action-bar mt-6 flex-col gap-2">
+          {mobileSection !== 'reward' ? (
+            <Button
+              onClick={nextMobileSection}
+              disabled={
+                (mobileSection === 'basics' && !basicsReady) ||
+                (mobileSection === 'rounds' && !questionsReady)
+              }
+              className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 font-extrabold"
+            >
+              {mobileSection === 'basics'
+                ? 'Next: add questions'
+                : mobileSection === 'rounds'
+                  ? 'Next: choose guests'
+                  : 'Next: choose reward'}{' '}
+              <ChevronRight size={18} />
+            </Button>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={preview}
+                disabled={!ready}
+                variant="outline"
+                className="h-14 rounded-full bg-white px-4 font-extrabold"
+              >
+                Preview
+              </Button>
+              <Button
+                onClick={launch}
+                disabled={working || !ready}
+                className="h-14 rounded-full bg-[#1f72d2] px-4 font-extrabold"
+              >
+                {working ? 'Opening…' : 'Open room'}
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="desktop-only creator-actions mt-8 flex gap-2">
           <Button
             onClick={preview}
             disabled={!ready}
@@ -2603,7 +2660,7 @@ function CreateEvent({
           Mimo takes it live.
         </p>
         <p className="mt-3 text-sm leading-6 text-[#c9d8e5]">
-          Every round, correct answer and reward rule is saved with the room.
+          Every question, correct answer and reward rule is saved with the room.
           Mimo keeps every phone in sync and runs the timing.
         </p>
       </aside>
@@ -2657,7 +2714,7 @@ function CreatorRehearsal({
                 : selected === round.correctChoice
                   ? 'That reveal lands. Keep the pace.'
                   : 'Good catch—this is why we rehearse.'
-              : `Round ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
+              : `Question ${roundIndex + 1}. Read it aloud, then tap an answer like a guest.`
           }
         />
         <div className="mt-7 flex flex-wrap gap-2">
@@ -2700,7 +2757,7 @@ function CreatorRehearsal({
       <div className="mx-auto w-full max-w-[390px] self-start rounded-[38px] border-[8px] border-[#203752] bg-[#f8f7f3] p-4 shadow-[0_30px_80px_rgba(25,49,76,.18)] lg:sticky lg:top-5">
         <div className="mx-auto mb-5 h-1.5 w-20 rounded-full bg-[#203752]/20" />
         <p className="text-xs font-extrabold uppercase tracking-[.13em] text-[#c65340]">
-          Round {roundIndex + 1} of {event.rounds.length}
+          Question {roundIndex + 1} of {event.rounds.length}
         </p>
         <h2 className="font-display mt-3 text-3xl font-extrabold leading-[1.02] tracking-[-.04em]">
           {round.question}
@@ -2718,7 +2775,7 @@ function CreatorRehearsal({
                 key={`${round.id}-${index}`}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => !revealed && setSelected(index)}
-                className={`min-h-16 rounded-[18px] border-2 p-4 text-left font-extrabold transition ${correct ? 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20' : selected === index ? CHOICE_TONES[index].active : CHOICE_TONES[index].base}`}
+                className={`min-h-16 rounded-[18px] border-2 p-4 text-left font-extrabold transition ${correct ? 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20' : selected === index ? 'border-[#1f72d2] bg-[#e8f3ff] ring-2 ring-[#1f72d2]/20' : 'border-[#cbd4da] bg-white'}`}
               >
                 <span className="mr-2 text-xs text-[#718291]">
                   {String.fromCharCode(65 + index)}
@@ -2737,7 +2794,7 @@ function CreatorRehearsal({
             ? 'Rehearse reveal'
             : last
               ? 'Rehearsal complete'
-              : 'Next round'}
+              : 'Next question'}
         </Button>
         <p className="mt-3 text-center text-xs font-bold text-[#74838e]">
           Participant-sized preview · safe rehearsal
@@ -2783,7 +2840,7 @@ function Join({
           message="Pick a name. You’ll be in the room in seconds."
         />
         <p className="text-sm font-extrabold uppercase tracking-[.15em] text-[#cf624e]">
-          {privateInvite ? 'Private invite' : 'Join room'} {roomCode}
+          {privateInvite ? 'Private room' : 'Join room'} {roomCode}
         </p>
         <h1 className="mobile-flow-title font-display mt-3 text-[clamp(2.7rem,7vw,5rem)] font-extrabold leading-[.95] tracking-[-.065em]">
           What should everyone call you?
@@ -2817,11 +2874,9 @@ function Join({
           className="mt-2 h-16 w-full border-0 border-b-2 border-[#a9b4bd] bg-transparent text-2xl font-bold outline-none placeholder:text-[#a8afb6] focus:border-[#1f72d2]"
         />
         <fieldset className="mt-7">
-          <legend className="text-sm font-extrabold">
-            Pick your Mimo vibe
-          </legend>
+          <legend className="text-sm font-extrabold">Choose your player pose</legend>
           <p className="mt-1 text-sm text-[#647789]">
-            This is how the room recognises you.
+            Same Mimo, four clear poses. This is your visual identity in the room.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {MIMO_PROFILES.map((profile) => {
@@ -2832,7 +2887,7 @@ function Join({
                   type="button"
                   aria-pressed={active}
                   onClick={() => setProfileStyle(profile.id)}
-                  className={`flex min-h-16 items-center gap-3 border px-3 text-left transition ${
+                  className={`flex min-h-24 flex-col items-start gap-2 border p-3 text-left transition ${
                     active
                       ? 'border-[#1f72d2] bg-[#e7f2ff] ring-2 ring-[#1f72d2]/15'
                       : 'border-[#cbd3d9] bg-white hover:border-[#8fa5b7]'
@@ -2841,9 +2896,12 @@ function Join({
                   <MimoProfileAvatar
                     profile={profile.id}
                     nickname={name.trim() || 'You'}
-                    className="h-10 w-10"
+                    className="h-14 w-14"
                   />
-                  <span className="font-extrabold">{profile.label}</span>
+                  <span>
+                    <strong className="block font-extrabold">{profile.label}</strong>
+                    <span className="mt-0.5 block text-xs font-bold text-[#6a7b89]">{profile.description}</span>
+                  </span>
                 </button>
               );
             })}

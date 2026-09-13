@@ -24,7 +24,7 @@ export async function POST(
   }
   const body = await readJson(request);
   if (!(await hasInviteAccess(room, body?.inviteToken))) {
-    return json({ error: 'This private room needs its original invite link.' }, 403);
+    return json({ error: 'You do not have access to this restricted room.' }, 403);
   }
   if (['complete', 'cancelled'].includes(room.status)) {
     return json({ error: 'This room is no longer accepting players.' }, 409);

@@ -140,7 +140,7 @@ export async function POST(
   const room = await getRoom(code);
   if (!room) return json({ error: 'That room does not exist.' }, 404);
   if (!(await canViewRoom(request, room))) {
-    return json({ error: 'This room needs its original invite.' }, 403);
+    return json({ error: 'You do not have access to this restricted room.' }, 403);
   }
 
   const db = getD1();
@@ -308,6 +308,7 @@ quotes, emojis or crypto hype. Return only the requested JSON.`;
         },
         body: JSON.stringify({
           model: getRuntimeVariable('GEMINI_MODEL') || 'gemini-3.7-flash',
+          store: false,
           input: `${instructions}\n\nVerified room facts:\n${facts}`,
           response_format: {
             type: 'text',

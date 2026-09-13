@@ -190,8 +190,8 @@ export async function POST(request: Request) {
   const code = makeCode();
   const hostKey = makeToken();
   const hostKeyHash = await hashToken(hostKey);
-  const inviteToken = accessMode === 'private' ? makeToken() : '';
-  const inviteTokenHash = inviteToken ? await hashToken(inviteToken) : '';
+  const inviteToken = '';
+  const inviteTokenHash = '';
   let communityId = crypto.randomUUID();
   let permanentCommunity = false;
   if (requestedCommunitySlug) {
@@ -260,8 +260,8 @@ export async function POST(request: Request) {
         (id, community_id, title, status, launched_config_json, config_version,
           starts_at, room_code, host_key_hash, active_round_id, round_duration_seconds,
           state_changed_at, auto_host_enabled, analytics_class,
-          created_by_account_id, created_at)
-        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+          created_by_account_id, public_visible, created_at)
+        VALUES (?, ?, ?, 'lobby', ?, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`)
         .bind(
           eventId,
           communityId,
@@ -275,6 +275,7 @@ export async function POST(request: Request) {
           now,
           analyticsClass,
           creatorAccount?.id ?? null,
+          accessMode === 'public' ? 1 : 0,
           now,
         ),
       ...parsedRounds.map((round, index) =>
@@ -355,9 +356,7 @@ export async function POST(request: Request) {
       code,
       hostKey,
       inviteToken: inviteToken || undefined,
-      sharePath: inviteToken
-        ? `/?room=${code}#invite=${inviteToken}`
-        : `/?room=${code}`,
+      sharePath: `/?room=${code}`,
     },
     201,
   );

@@ -11,6 +11,7 @@ import {
 } from '@/lib/live-room';
 import { isMimoProfileStyle } from '@/lib/mimo-profile';
 import { encryptVaultAddress, getVaultConfig } from '@/lib/reward-vault';
+import { hasDataEncryptionKey } from '@/lib/secret-box';
 import {
   normalizeNimiqAccount,
   verifyNimiqSignedMessage,
@@ -159,9 +160,13 @@ export async function POST(
       );
     }
     walletHash = await hashToken(verified.derivedAccount);
-    if (roomConfig.mode === 'nim' && roomConfig.custody === 'mimo_vault') {
-      const vault = await getVaultConfig();
-      if (!vault?.ready) {
+    if (roomConfig.mode === 'nim') {
+      const vault =
+        roomConfig.custody === 'mimo_vault' ? await getVaultConfig() : null;
+      if (
+        (roomConfig.custody === 'mimo_vault' && !vault?.ready) ||
+        !hasDataEncryptionKey()
+      ) {
         return reject(
           'reward_registration_unavailable',
           'Secure reward registration is temporarily unavailable.',

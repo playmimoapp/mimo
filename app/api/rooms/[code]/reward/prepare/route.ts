@@ -7,6 +7,7 @@ import {
   readJson,
 } from '@/lib/live-room';
 import { assertMainnetRewardAmount } from '@/lib/mainnet-reward';
+import { decryptVaultAddress } from '@/lib/reward-vault';
 
 function normalizeAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -47,19 +48,30 @@ export async function POST(
     );
   }
 
-  const payoutAddress = normalizeAddress(body?.payoutAddress);
+  let payoutAddress = normalizeAddress(body?.payoutAddress);
   const participantId =
     typeof body?.participantId === 'string' ? body.participantId : '';
-  if (!payoutAddress || !participantId)
-    return json({ error: 'Enter the winner’s Nimiq address.' }, 400);
+  if (!participantId)
+    return json({ error: 'The winning result is missing.' }, 400);
   const db = getD1();
   const [winner, reward] = await Promise.all([
     db
       .prepare(
-        `SELECT id, wallet_hash AS walletHash FROM participants WHERE event_id = ? ORDER BY score DESC, joined_at ASC LIMIT 1`,
+        `SELECT id, wallet_hash AS walletHash,
+          payout_address_ciphertext AS payoutCiphertext,
+          payout_address_iv AS payoutIv,
+          payout_address_hash AS payoutHash
+          FROM participants WHERE event_id = ?
+          ORDER BY score DESC, joined_at ASC LIMIT 1`,
       )
       .bind(room.id)
-      .first<{ id: string; walletHash: string | null }>(),
+      .first<{
+        id: string;
+        walletHash: string | null;
+        payoutCiphertext: string | null;
+        payoutIv: string | null;
+        payoutHash: string | null;
+      }>(),
     db
       .prepare(
         `SELECT id, amount_luna AS amountLuna FROM rewards WHERE event_id = ? LIMIT 1`,
@@ -74,6 +86,33 @@ export async function POST(
     );
   if (!winner.walletHash)
     return json({ error: 'The winner must verify their wallet first.' }, 409);
+  if (!payoutAddress) {
+    if (
+      !winner.payoutCiphertext ||
+      !winner.payoutIv ||
+      winner.payoutHash !== winner.walletHash
+    ) {
+      return json(
+        { error: 'The winner has not secured a payout wallet yet.' },
+        409,
+      );
+    }
+    try {
+      payoutAddress = normalizeAddress(
+        await decryptVaultAddress(
+          room.id,
+          'payout',
+          winner.payoutCiphertext,
+          winner.payoutIv,
+        ),
+      );
+    } catch {
+      return json(
+        { error: 'The winner’s secured payout wallet could not be opened.' },
+        503,
+      );
+    }
+  }
   if ((await hashToken(payoutAddress)) !== winner.walletHash)
     return json(
       { error: 'That address does not match the winner’s verified wallet.' },
@@ -99,5 +138,6 @@ export async function POST(
     amountLuna: reward.amountLuna,
     memo: `MIMO ${room.roomCode} WINNER`,
     network: 'MainAlbatross',
+    payoutAddress,
   });
 }

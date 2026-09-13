@@ -93,28 +93,28 @@ type HostAction =
 
 const CHOICE_TONES = [
   {
-    surface: 'border-[#78aee5] bg-[#edf6ff]',
+    surface: 'border-[#c9d2d9] bg-white',
     selected: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
-    badge: 'bg-[#1f72d2] text-white',
-    bar: 'bg-[#bdddff]',
+    badge: 'bg-[#203752] text-white',
+    bar: 'bg-[#cfe5fb]',
   },
   {
-    surface: 'border-[#e89989] bg-[#fff1ed]',
-    selected: 'border-[#c85743] bg-[#ffe1da] ring-2 ring-[#c85743]/20',
-    badge: 'bg-[#d76551] text-white',
-    bar: 'bg-[#ffc4b8]',
+    surface: 'border-[#c9d2d9] bg-white',
+    selected: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
+    badge: 'bg-[#203752] text-white',
+    bar: 'bg-[#cfe5fb]',
   },
   {
-    surface: 'border-[#d7b13f] bg-[#fff8dc]',
-    selected: 'border-[#a97c00] bg-[#ffedaa] ring-2 ring-[#a97c00]/20',
-    badge: 'bg-[#c18c00] text-white',
-    bar: 'bg-[#f8d65e]',
+    surface: 'border-[#c9d2d9] bg-white',
+    selected: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
+    badge: 'bg-[#203752] text-white',
+    bar: 'bg-[#cfe5fb]',
   },
   {
-    surface: 'border-[#72b88f] bg-[#eef9f2]',
-    selected: 'border-[#2d8a55] bg-[#d9f2e2] ring-2 ring-[#2d8a55]/20',
-    badge: 'bg-[#3b9a62] text-white',
-    bar: 'bg-[#ade0bf]',
+    surface: 'border-[#c9d2d9] bg-white',
+    selected: 'border-[#1f72d2] bg-[#dcecff] ring-2 ring-[#1f72d2]/20',
+    badge: 'bg-[#203752] text-white',
+    bar: 'bg-[#cfe5fb]',
   },
 ] as const;
 
@@ -677,7 +677,7 @@ export function LiveRoom({
   const rewardLabel =
     room.rewardMode === 'nim'
       ? room.rewardCustody === 'host_wallet'
-        ? `${room.rewardAmount} NIM · host promise`
+        ? `${room.rewardAmount} NIM · creator pays verified winner`
         : ['funded', 'event_live', 'results_under_verification'].includes(
               room.rewardState,
             )
@@ -686,38 +686,6 @@ export function LiveRoom({
             ? `${room.rewardAmount} NIM · funding confirmation pending`
             : `${room.rewardAmount} NIM · awaiting funding`
       : 'Free room · no wallet needed';
-  const signalScore = room.players
-    .filter((player) => player.teamId === 'signal')
-    .reduce((sum, player) => sum + player.score, 0);
-  const sparkScore = room.players
-    .filter((player) => player.teamId === 'spark')
-    .reduce((sum, player) => sum + player.score, 0);
-  const signalPlayers = room.players.filter(
-    (player) => player.teamId === 'signal',
-  );
-  const sparkPlayers = room.players.filter(
-    (player) => player.teamId === 'spark',
-  );
-  const signalReactions = room.reactions.filter(
-    (reaction) => reaction.teamId === 'signal',
-  ).length;
-  const sparkReactions = room.reactions.filter(
-    (reaction) => reaction.teamId === 'spark',
-  ).length;
-  const liveEnergy = (team: LiveRoomState['players'], reactions: number) =>
-    team.reduce((sum, player) => sum + player.score, 0) +
-    team.filter((player) => player.answerLocked).length * 120 +
-    reactions * 45 +
-    team.length * 30;
-  const scoredRoom = signalScore + sparkScore > 0;
-  const signalEnergy =
-    ['verifying', 'complete'].includes(room.status) && scoredRoom
-      ? signalScore
-      : liveEnergy(signalPlayers, signalReactions);
-  const sparkEnergy =
-    ['verifying', 'complete'].includes(room.status) && scoredRoom
-      ? sparkScore
-      : liveEnergy(sparkPlayers, sparkReactions);
   const fallbackMimoLine =
     room.status === 'lobby'
       ? room.players.length === 0
@@ -864,7 +832,7 @@ export function LiveRoom({
                   {` · ${playModeLabel}`}
                   {room.rewardMode === 'nim'
                     ? room.rewardCustody === 'host_wallet'
-                      ? ` · ${room.rewardAmount} NIM host promise`
+                      ? ` · ${room.rewardAmount} NIM creator payout`
                       : [
                             'funded',
                             'event_live',
@@ -921,15 +889,6 @@ export function LiveRoom({
         </div>
       )}
 
-      {usesTeams && room.players.length > 0 && room.status !== 'live' && (
-        <TeamMomentum
-          signal={signalEnergy}
-          spark={sparkEnergy}
-          live={false}
-          label={room.status === 'lobby' ? 'Team presence' : 'Team result'}
-        />
-      )}
-
       <div className="mt-6 grid gap-7 lg:grid-cols-[1fr_340px]">
         <div>
           <p className="text-sm font-extrabold text-[#5b7082]">
@@ -943,12 +902,13 @@ export function LiveRoom({
           >
             {rewardLabel}
           </p>
-          <MimoCue
-            className="mobile-only mt-5"
-            mood={mimoMood}
-            eyebrow={aiCue?.source === 'ai' ? 'Live AI host' : undefined}
-            message={mimoLine}
-          />
+          {room.status !== 'lobby' && (
+            <MimoCue
+              className="mobile-only mt-5"
+              mood={mimoMood}
+              message={mimoLine}
+            />
+          )}
 
           {room.rewardMode === 'nim' &&
             mode === 'player' &&
@@ -987,6 +947,7 @@ export function LiveRoom({
                   room={room}
                   isHost={mode === 'host'}
                   currentPlayer={me}
+                  mimoLine={mimoLine}
                   busy={busy}
                   hostKey={hostKey}
                   nimiq={nimiq}
@@ -1071,11 +1032,6 @@ export function LiveRoom({
             <p className="relative text-center text-sm font-bold leading-5 text-white">
               {mimoLine}
             </p>
-            {aiCue?.source === 'ai' && (
-              <span className="relative mt-2 block text-center text-[10px] font-extrabold uppercase tracking-[.14em] text-[#8ed9ae]">
-                Mimo AI · reacting live
-              </span>
-            )}
           </motion.div>
           <p className="mt-3 text-center text-xs leading-4 text-[#aebfce]">
             {mode === 'host'
@@ -1171,46 +1127,6 @@ export function LiveRoom({
         </aside>
       </div>
     </section>
-  );
-}
-
-function TeamMomentum({
-  signal,
-  spark,
-  live,
-  label,
-}: {
-  signal: number;
-  spark: number;
-  live: boolean;
-  label: string;
-}) {
-  const total = signal + spark;
-  const signalWidth = total
-    ? Math.max(12, Math.min(88, (signal / total) * 100))
-    : 50;
-  return (
-    <div className="mt-4 overflow-hidden rounded-[22px] border border-[#ccd5dc] bg-white p-3 sm:p-4">
-      <div className="mb-2 flex items-center justify-between text-xs font-extrabold uppercase tracking-[.1em]">
-        <span className="text-[#1f72d2]">Signal</span>
-        <span className={live ? 'text-[#c25340]' : 'text-[#73828e]'}>
-          {label}
-        </span>
-        <span className="text-[#c75d4a]">Spark</span>
-      </div>
-      <div className="flex h-3 overflow-hidden rounded-full bg-[#edf0f2]">
-        <motion.div
-          animate={{ width: `${signalWidth}%` }}
-          transition={{ type: 'spring', stiffness: 120, damping: 22 }}
-          className="bg-[#1f72d2]"
-        />
-        <motion.div
-          animate={{ width: `${100 - signalWidth}%` }}
-          transition={{ type: 'spring', stiffness: 120, damping: 22 }}
-          className="bg-[#e06b56]"
-        />
-      </div>
-    </div>
   );
 }
 
@@ -1528,11 +1444,12 @@ function RewardFundingPanel({
     return (
       <section className="mt-5 border-l-4 border-[#e1b928] bg-[#fff8d9] px-4 py-3">
         <p className="text-xs font-extrabold uppercase tracking-[.12em] text-[#806000]">
-          Host promise
+          Creator-paid NIM reward
         </p>
         <p className="mt-1 text-sm font-bold text-[#675e3e]">
-          {room.rewardAmount} NIM stays in the host’s wallet. Mimo verifies the
-          result; the host approves payment in Nimiq Pay.
+          {room.rewardAmount} NIM stays in your wallet during play. Each player
+          verifies a payout wallet before joining. After the final result, your
+          exact Pay button appears here.
         </p>
       </section>
     );
@@ -1612,6 +1529,7 @@ function LobbyState({
   room,
   isHost,
   currentPlayer,
+  mimoLine,
   busy,
   hostKey,
   nimiq,
@@ -1621,6 +1539,7 @@ function LobbyState({
   room: LiveRoomState;
   isHost: boolean;
   currentPlayer?: LiveRoomState['players'][number];
+  mimoLine: string;
   busy: boolean;
   hostKey?: string;
   nimiq: MimoNimiq;
@@ -1646,11 +1565,14 @@ function LobbyState({
           <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
             Mimo is warming up
           </p>
-          <p className="font-display mt-2 text-2xl font-extrabold leading-[1.02] tracking-[-.04em]">
-            {room.players.length
-              ? 'The room is coming alive.'
-              : 'Share the invite. I’ll welcome everyone.'}
-          </p>
+          <motion.p
+            key={mimoLine}
+            initial={{ opacity: 0, y: 7 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="font-display mt-2 text-2xl font-extrabold leading-[1.02] tracking-[-.04em]"
+          >
+            {mimoLine}
+          </motion.p>
           <span className="mt-3 inline-flex rounded-full bg-white/85 px-3 py-1.5 text-sm font-extrabold text-[#29445f]">
             {arrivalLabel}
           </span>
@@ -1750,7 +1672,7 @@ function LobbyState({
           onRefresh={onRefresh}
         />
       )}
-      <EventPromise room={room} />
+      {room.rewardMode === 'nim' && <EventPromise room={room} />}
       {!isHost && currentPlayer && usesTeams && (
         <div className="mt-4 flex items-center gap-3 border-b border-[#d1d8dc] pb-4">
           <MimoProfileAvatar
@@ -1977,16 +1899,16 @@ function QuestionState({
           )}
         </div>
       ) : (
-        <div className="mt-7 overflow-hidden rounded-[26px] bg-[#203752] p-5 text-white sm:p-6">
+        <div className="mt-7 border-y border-[#c8d2d9] py-5 sm:py-6">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#9fb5c8]">
+              <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#607486]">
                 Host desk
               </p>
               <p className="font-display mt-1 text-4xl font-extrabold">
                 {answered} / {room.players.length}
               </p>
-              <p className="mt-1 text-sm text-[#c1d1de]">
+              <p className="mt-1 text-sm text-[#607486]">
                 {autoHost
                   ? 'Mimo reveals when the question timer ends'
                   : 'answers locked safely'}
@@ -1994,10 +1916,10 @@ function QuestionState({
             </div>
             <div className="text-right">
               <strong className="font-display text-3xl">{seconds}s</strong>
-              <p className="text-xs text-[#9fb5c8]">remaining</p>
+              <p className="text-xs text-[#607486]">remaining</p>
             </div>
           </div>
-          <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#dfe5e9]">
             <motion.div
               animate={{
                 width: `${room.players.length ? (answered / room.players.length) * 100 : 0}%`,
@@ -2010,14 +1932,14 @@ function QuestionState({
               onClick={onExtend}
               disabled={busy}
               variant="outline"
-              className="h-12 rounded-full border-white/20 bg-transparent px-4 text-white hover:bg-white/10"
+              className="h-12 rounded-full border-[#afbdc7] bg-white px-4 text-[#29445f]"
             >
               <TimerReset /> +10s
             </Button>
             <Button
               onClick={onReveal}
               disabled={busy}
-              className="h-12 rounded-full bg-[#f7c933] px-6 font-extrabold text-[#203752] hover:bg-[#ffda4e]"
+              className="h-12 rounded-full bg-[#203752] px-6 font-extrabold text-white hover:bg-[#2e4864]"
             >
               <Zap />{' '}
               {room.roundType === 'pulse' ? 'Reveal poll now' : 'Reveal now'}
@@ -2033,7 +1955,7 @@ function QuestionState({
               initial={{ opacity: 0, y: 10, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               aria-live="polite"
-              className="mt-5 flex items-center gap-3 border border-[#8fc9aa] bg-[#edf9f1] p-4 text-[#245f3c]"
+              className="mt-5 flex items-center gap-3 border-y border-[#8fc9aa] bg-[#edf9f1] px-1 py-4 text-[#245f3c]"
             >
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#d5f0df]">
                 <ShieldCheck size={20} />
@@ -2122,16 +2044,6 @@ function ResultsState({
   const signalShare = teamTotal ? (signalTotal / teamTotal) * 100 : 50;
   return (
     <div className="relative mt-6 overflow-hidden sm:mt-8">
-      {room.status === 'verifying' && (
-        <div
-          className="pointer-events-none absolute right-2 top-0 flex gap-2 text-2xl"
-          aria-hidden="true"
-        >
-          <span className="reveal-orbit">✦</span>
-          <span className="reveal-orbit [animation-delay:120ms]">●</span>
-          <span className="reveal-orbit [animation-delay:220ms]">✦</span>
-        </div>
-      )}
       <div className="flex items-center gap-2 text-[#a97800]">
         <Trophy size={22} />
         <span className="text-sm font-extrabold uppercase tracking-[.14em]">
@@ -2334,11 +2246,13 @@ function ResultsState({
               className="h-9 w-9"
             />
             <strong className="flex-1">{player.nickname}</strong>
-            {room.rewardMode === 'nim' && (
+            {room.rewardMode === 'nim' && index === 0 && (
               <span
                 className={`text-xs font-extrabold ${player.walletVerified ? 'text-[#237044]' : 'text-[#9a6a00]'}`}
               >
-                {player.walletVerified ? 'Wallet confirmed' : 'Wallet needed'}
+                {player.walletVerified
+                  ? 'Verified winner'
+                  : 'Wallet verification needed'}
               </span>
             )}
             <span className="font-display text-xl font-extrabold">
@@ -2365,6 +2279,12 @@ function ResultsState({
             participantToken={participantToken}
           />
         )}
+      {room.rewardMode === 'nim' && room.status === 'verifying' && (
+        <p className="mt-6 flex items-center gap-2 border-y border-[#dec76d] bg-[#fff9dc] px-1 py-4 text-sm font-extrabold text-[#675e3e]">
+          <ShieldCheck size={18} /> Mimo is verifying eligibility. Payout opens
+          after the final result is locked.
+        </p>
+      )}
       {role === 'host' && room.status === 'complete' && hostKey && (
         <HostEventRecap code={room.code} hostKey={hostKey} />
       )}
@@ -2594,7 +2514,7 @@ function LivingRoomMoment({
       initial={{ opacity: 0, y: 12, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className={`mt-5 border-2 p-4 ${content.tone}`}
+      className={`mt-5 border-y p-4 ${content.tone}`}
       aria-live="polite"
     >
       <div className="flex items-start gap-3">
@@ -2673,8 +2593,7 @@ function RewardSettlement({
   );
   const isEligible =
     role === 'player' && Boolean(currentPlayer?.rewardEligible);
-  const isWinner =
-    role === 'player' && currentPlayerId === winner.id && winner.walletVerified;
+  const isWinner = role === 'player' && currentPlayerId === winner.id;
 
   useEffect(() => {
     if (
@@ -2958,29 +2877,10 @@ function RewardSettlement({
     );
   }
 
-  const copyWinnerAddress = async () => {
-    setState('connecting');
-    const connection = await nimiq.connect();
-    if (connection.status !== 'ready') {
-      setState(connection.status === 'cancelled' ? 'cancelled' : 'failed');
-      setDetail(
-        connection.status === 'cancelled'
-          ? 'You closed Nimiq Pay. Nothing changed.'
-          : 'Open Mimo inside Nimiq Pay to get your address.',
-      );
-      return;
-    }
-    await navigator.clipboard.writeText(connection.account);
-    setState('copied');
-    setDetail(
-      'Address copied. Send it privately to the host for the final wallet check.',
-    );
-  };
-
   const payWinner = async () => {
-    if (!hostKey || !address.trim()) return;
+    if (!hostKey) return;
     setState('checking');
-    setDetail('Matching this address to the verified winner…');
+    setDetail('Opening the verified winner’s secured payout wallet…');
     try {
       const preparedResponse = await fetch(
         `/api/rooms/${room.code}/reward/prepare`,
@@ -2990,7 +2890,6 @@ function RewardSettlement({
           body: JSON.stringify({
             hostKey,
             participantId: winner.id,
-            payoutAddress: address,
           }),
         },
       );
@@ -2999,7 +2898,9 @@ function RewardSettlement({
       const prepared = (await preparedResponse.json()) as {
         amountLuna: string;
         memo: string;
+        payoutAddress: string;
       };
+      setAddress(prepared.payoutAddress);
       const connection = await nimiq.connect();
       if (connection.status !== 'ready') {
         setState(connection.status === 'cancelled' ? 'cancelled' : 'failed');
@@ -3012,10 +2913,10 @@ function RewardSettlement({
       }
       setState('approving');
       setDetail(
-        `Nimiq Pay will show ${room.rewardAmount} NIM to ${address.slice(0, 6)}…${address.slice(-4)}.`,
+        `Nimiq Pay will show ${room.rewardAmount} NIM to ${prepared.payoutAddress.slice(0, 6)}…${prepared.payoutAddress.slice(-4)}.`,
       );
       const payment = await nimiq.sendNim(
-        address,
+        prepared.payoutAddress,
         Number(prepared.amountLuna),
         prepared.memo,
       );
@@ -3041,7 +2942,7 @@ function RewardSettlement({
               hostKey,
               participantId: winner.id,
               transactionHash: payment.transactionHash,
-              payoutAddress: address,
+              payoutAddress: prepared.payoutAddress,
             }),
           },
         );
@@ -3102,20 +3003,19 @@ function RewardSettlement({
       </div>
       {role === 'host' ? (
         <div className="mt-5 border-t border-[#dfcb83] pt-5">
-          <label htmlFor="winner-address" className="text-sm font-extrabold">
-            Winner’s verified Nimiq address
-          </label>
-          <input
-            id="winner-address"
-            value={address}
-            onChange={(event) => setAddress(event.target.value)}
-            placeholder="NQ…"
-            className="mt-2 h-13 w-full rounded-xl border border-[#cfb95f] bg-white px-4 font-mono text-sm outline-none focus:border-[#987000]"
-          />
+          <div className="flex items-center justify-between gap-4 text-sm font-bold text-[#675e3e]">
+            <span className="flex items-center gap-2">
+              <ShieldCheck size={17} /> Winner wallet verified before play
+            </span>
+            {address && (
+              <span className="font-mono text-xs">
+                {address.slice(0, 6)}…{address.slice(-4)}
+              </span>
+            )}
+          </div>
           <Button
             onClick={() => void payWinner()}
             disabled={
-              !address.trim() ||
               ['checking', 'approving', 'submitted'].includes(state)
             }
             className="mobile-primary mt-3 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
@@ -3126,21 +3026,14 @@ function RewardSettlement({
                 ? 'Waiting for Nimiq Pay…'
                 : state === 'submitted'
                   ? 'Payout submitted'
-                  : 'Verify and pay in Nimiq Pay'}
+                  : `Pay ${room.rewardAmount} NIM in Nimiq Pay`}
           </Button>
         </div>
       ) : isWinner ? (
-        <Button
-          onClick={() => void copyWinnerAddress()}
-          disabled={state === 'connecting'}
-          className="mobile-primary mt-5 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
-        >
-          {state === 'connecting'
-            ? 'Opening Nimiq Pay…'
-            : state === 'copied'
-              ? 'Address copied'
-              : 'Copy my payout address'}
-        </Button>
+        <p className="mt-5 flex items-center gap-2 border-t border-[#dfcb83] pt-4 text-sm font-bold text-[#675e3e]">
+          <ShieldCheck size={17} /> Your verified wallet is ready. The creator
+          will approve the exact payment in Nimiq Pay.
+        </p>
       ) : (
         <p className="mt-5 border-t border-[#dfcb83] pt-4 text-sm font-bold text-[#675e3e]">
           Only the verified winner can receive this declared skill reward.

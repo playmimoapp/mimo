@@ -8,6 +8,7 @@ import {
   readJson,
 } from '@/lib/live-room';
 import { encryptVaultAddress, getVaultConfig } from '@/lib/reward-vault';
+import { hasDataEncryptionKey } from '@/lib/secret-box';
 import {
   normalizeNimiqAccount,
   verifyNimiqSignedMessage,
@@ -87,8 +88,8 @@ export async function POST(
       return json({ error: 'Nimiq Pay could not verify this wallet.' }, 403);
     }
 
-    const automaticPayout =
-      getRoomConfig(room.launchedConfigJson).custody === 'mimo_vault';
+    const roomConfig = getRoomConfig(room.launchedConfigJson);
+    const automaticPayout = roomConfig.custody === 'mimo_vault';
     const vault = automaticPayout ? await getVaultConfig() : null;
     if (automaticPayout && !vault?.ready) {
       return json(
@@ -99,7 +100,16 @@ export async function POST(
         503,
       );
     }
-    const encryptedPayout = automaticPayout
+    if (roomConfig.mode === 'nim' && !hasDataEncryptionKey()) {
+      return json(
+        {
+          error:
+            'Secure reward registration is temporarily unavailable. Nothing was linked.',
+        },
+        503,
+      );
+    }
+    const encryptedPayout = roomConfig.mode === 'nim'
       ? await encryptVaultAddress(room.id, 'payout', derivedAccount)
       : null;
 

@@ -675,3 +675,12 @@ export async function encryptVaultAddress(
     vaultAddressContext(eventId, purpose),
   );
 }
+
+export async function decryptVaultAddress(
+  eventId: string,
+  purpose: 'payout' | 'refund',
+  ciphertext: string,
+  iv: string,
+) {
+  return decryptSecret(ciphertext, iv, vaultAddressContext(eventId, purpose));
+}

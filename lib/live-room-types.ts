@@ -59,7 +59,7 @@ export type LiveRoomState = {
   vaultAddress: string | null;
   vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
   payoutTxHash: string | null;
-  refundState: 'prepared' | 'submitted' | 'confirmed' | null;
+  refundState: 'prepared' | 'submitted' | 'confirmed' | 'failed' | null;
   refundTxHash: string | null;
   accessMode: 'public' | 'private';
   playMode: 'individual' | 'teams' | 'hybrid' | 'together';

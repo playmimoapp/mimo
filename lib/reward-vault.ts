@@ -24,6 +24,10 @@ export type VaultConfig = {
 
 const BASIC_SIGNED_TRANSACTION_BYTES = BigInt(139);
 const LUNA_PER_NIM = BigInt(100_000);
+// Keep one luna as an operational reserve so the final settlement never
+// attempts an exact-balance drain.
+const VAULT_ACCOUNT_RESERVE_LUNA = BigInt(1);
+const MAX_REFUND_EXECUTION_RETRIES = 2;
 
 export function normalizeNimiqAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -112,7 +116,9 @@ export function getVaultFundingQuote(
     1,
     Math.min(config.maxPayouts, Math.floor(requestedPayoutSlots) || 1),
   );
-  const feeReserveLuna = config.transactionFeeLuna * BigInt(feeSlots);
+  const feeReserveLuna =
+    config.transactionFeeLuna * BigInt(feeSlots) +
+    VAULT_ACCOUNT_RESERVE_LUNA;
   return {
     rewardAmountLuna,
     transactionFeeLuna: config.transactionFeeLuna,
@@ -219,12 +225,12 @@ export async function checkFundingConfirmation(
     transaction = null;
   }
   if (!transaction || typeof transaction !== 'object') {
-    return { included: false, confirmations: 0 };
+    return { included: false, failed: false, confirmations: 0 };
   }
   const tx = transaction as Record<string, unknown>;
   const blockNumber = Number(tx.blockNumber);
   if (!Number.isInteger(blockNumber) || blockNumber < 1) {
-    return { included: false, confirmations: 0 };
+    return { included: false, failed: false, confirmations: 0 };
   }
   const headValue = await rpcCall(config.rpcUrl, 'getBlockNumber', []);
   const head = Number(headValue);
@@ -233,6 +239,7 @@ export async function checkFundingConfirmation(
     : 1;
   return {
     included: tx.executionResult !== false,
+    failed: tx.executionResult === false,
     confirmations,
     blockNumber,
     transaction,
@@ -780,15 +787,62 @@ export async function attemptAutomaticRefund(eventId: string) {
       config,
       reward.refundTxHash,
     );
-    if (!confirmation.included) {
+    if (!confirmation.included && !confirmation.failed) {
       return { state: 'submitted' as const, txHash: reward.refundTxHash };
     }
+    if (confirmation.included) {
+      await db
+        .prepare(`UPDATE rewards SET refund_state = 'confirmed',
+          refund_failure_code = NULL, updated_at = ? WHERE id = ?`)
+        .bind(Date.now(), reward.id)
+        .run();
+      return { state: 'confirmed' as const, txHash: reward.refundTxHash };
+    }
+
+    const failedRow = await db
+      .prepare(`SELECT COUNT(*) AS count FROM event_audit
+        WHERE event_id = ? AND action = 'refund_execution_failed'`)
+      .bind(eventId)
+      .first<{ count: number }>();
+    const failedAttempts = Number(failedRow?.count ?? 0) + 1;
     await db
-      .prepare(`UPDATE rewards SET refund_state = 'confirmed',
-        refund_failure_code = NULL, updated_at = ? WHERE id = ?`)
-      .bind(Date.now(), reward.id)
+      .prepare(`INSERT INTO event_audit
+        (id, event_id, actor_hash, action, payload_json, created_at)
+        VALUES (?, ?, 'mimo:chain-monitor', 'refund_execution_failed', ?, ?)`)
+      .bind(
+        crypto.randomUUID(),
+        eventId,
+        JSON.stringify({
+          txHash: reward.refundTxHash,
+          blockNumber: confirmation.blockNumber,
+          attempt: failedAttempts,
+        }),
+        Date.now(),
+      )
       .run();
-    return { state: 'confirmed' as const, txHash: reward.refundTxHash };
+    if (failedAttempts >= MAX_REFUND_EXECUTION_RETRIES) {
+      await db
+        .prepare(`UPDATE rewards SET refund_state = 'failed',
+          refund_failure_code = 'execution_failed', updated_at = ?
+          WHERE id = ?`)
+        .bind(Date.now(), reward.id)
+        .run();
+      return {
+        state: 'failed' as const,
+        txHash: reward.refundTxHash,
+        reason: 'execution_failed' as const,
+      };
+    }
+    await db
+      .prepare(`UPDATE rewards SET refund_state = 'prepared',
+        refund_tx_hash = NULL, refund_serialized_tx = NULL,
+        refund_failure_code = 'execution_failed_retry', updated_at = ?
+        WHERE id = ? AND refund_state = 'submitted' AND refund_tx_hash = ?`)
+      .bind(Date.now(), reward.id, reward.refundTxHash)
+      .run();
+    reward.refundState = 'prepared';
+    reward.refundTxHash = null;
+    reward.refundSerializedTx = null;
   }
 
   let serialized = reward.refundSerializedTx;
@@ -802,9 +856,18 @@ export async function attemptAutomaticRefund(eventId: string) {
     const transactionFeeLuna = BigInt(
       reward.transactionFeeLuna ?? config.transactionFeeLuna.toString(),
     );
+    const failedRow = await db
+      .prepare(`SELECT COUNT(*) AS count FROM event_audit
+        WHERE event_id = ? AND action = 'refund_execution_failed'`)
+      .bind(eventId)
+      .first<{ count: number }>();
+    const spentFailureFees =
+      transactionFeeLuna * BigInt(Number(failedRow?.count ?? 0));
     const refundableLuna =
       BigInt(reward.fundingAmountLuna ?? reward.amountLuna) -
-      transactionFeeLuna;
+      transactionFeeLuna -
+      spentFailureFees -
+      VAULT_ACCOUNT_RESERVE_LUNA;
     if (refundableLuna < BigInt(1)) {
       return { state: 'refund_too_small' as const };
     }

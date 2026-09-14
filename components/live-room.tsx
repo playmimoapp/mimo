@@ -1231,6 +1231,24 @@ function CancelledState({ room }: { room: LiveRoomState }) {
     room.rewardCustody === 'mimo_vault' &&
     room.rewardMode === 'nim' &&
     Boolean(room.fundingTxHash);
+  useEffect(() => {
+    if (
+      !vaultHadFunding ||
+      room.refundState === 'confirmed' ||
+      room.refundState === 'failed'
+    ) {
+      return;
+    }
+    const check = () =>
+      fetch(`/api/rooms/${room.code}/reward/settlement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }).catch(() => undefined);
+    void check();
+    const timer = window.setInterval(() => void check(), 5000);
+    return () => window.clearInterval(timer);
+  }, [room.code, room.refundState, vaultHadFunding]);
   return (
     <div className="mt-8 border-y border-[#d0d6da] py-10 text-center">
       <MimoCharacter mood="thinking" className="mx-auto w-32 grayscale-[.25]" />
@@ -1245,6 +1263,8 @@ function CancelledState({ room }: { room: LiveRoomState }) {
               ? 'Mimo sent the refund back to the funding wallet. Network confirmation is pending.'
               : room.refundState === 'prepared'
                 ? 'Mimo prepared the refund and will retry the same transaction safely.'
+                : room.refundState === 'failed'
+                  ? 'The refund could not complete. The funded NIM is still traceable and Mimo has stopped automatic retries.'
                 : 'Mimo will return the funded NIM automatically after the network confirms the original funding payment.'
           : 'Mimo did not request or move any NIM. Any open wallet prompt can be safely closed.'}
       </p>
@@ -1437,7 +1457,7 @@ function RewardFundingPanel({
       const depositNim = Number(prepared.amountLuna) / 100_000;
       const feeReserveNim = Number(prepared.feeReserveLuna) / 100_000;
       setDetail(
-        `One approval deposits ${depositNim.toFixed(5).replace(/\.?0+$/, '')} NIM: ${room.rewardAmount} NIM reward + ${feeReserveNim.toFixed(5).replace(/\.?0+$/, '')} NIM payout-fee reserve. Nimiq Pay shows its funding fee before you confirm.`,
+        `One approval deposits ${depositNim.toFixed(5).replace(/\.?0+$/, '')} NIM: ${room.rewardAmount} NIM reward + ${feeReserveNim.toFixed(5).replace(/\.?0+$/, '')} NIM settlement reserve. Nimiq Pay shows its funding fee before you confirm.`,
       );
       const payment = await nimiq.sendNim(
         prepared.recipient,
@@ -1552,7 +1572,7 @@ function RewardFundingPanel({
               {funded
                 ? 'The Nimiq network confirmed the vault payment. The reward rules are now fixed.'
                 : room.rewardFundingAmount && room.rewardFeeReserve
-                  ? `One approval deposits ${room.rewardFundingAmount} NIM: ${room.rewardAmount} NIM reward + ${room.rewardFeeReserve} NIM payout-fee reserve. Nimiq Pay shows the final network fee before confirmation.`
+                  ? `One approval deposits ${room.rewardFundingAmount} NIM: ${room.rewardAmount} NIM reward + ${room.rewardFeeReserve} NIM settlement reserve. Nimiq Pay shows the final network fee before confirmation.`
                   : 'One approval funds the reward and its payout fees before play. Mimo will not start on a promise.'}
             </p>
           </div>

@@ -1849,7 +1849,7 @@ function CreateChoice({
               : selectedKind === 'product_launch'
                 ? 'Draft launch with Mimo'
                 : selectedKind === 'onboarding'
-                  ? 'Draft onboarding with Mimo'
+                  ? 'Draft with Mimo'
                   : selectedKind === 'game_night'
                     ? 'Draft game with Mimo'
                     : 'Draft with Mimo'}{' '}
@@ -1941,7 +1941,7 @@ function AssistedCreate({
               placeholder:
                 'Help new members understand Nimiq Pay, community rules and how to participate',
               sourceLabel: 'Add trusted onboarding material',
-              button: 'Draft my onboarding',
+              button: 'Create my draft',
               showAudience: false,
               showDifficulty: true,
             }

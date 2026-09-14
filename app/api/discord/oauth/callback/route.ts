@@ -4,6 +4,7 @@ import {
   discordApi,
   DISCORD_API,
   getDiscordConfig,
+  getDiscordGuildChannels,
   publicOrigin,
 } from '@/lib/discord-integration';
 import { hashToken, makeToken } from '@/lib/live-room';
@@ -98,6 +99,7 @@ export async function GET(request: Request) {
     const token = (await tokenResponse.json().catch(() => null)) as {
       access_token?: string;
       token_type?: string;
+      guild?: { id?: string; name?: string; icon?: string | null };
     } | null;
     if (!tokenResponse.ok || !token?.access_token) {
       throw new Error('token_exchange_failed');
@@ -180,6 +182,20 @@ export async function GET(request: Request) {
           : [],
       )
       .slice(0, 100);
+    const authorizedGuildId =
+      typeof token.guild?.id === 'string'
+        ? token.guild.id
+        : incoming.searchParams.get('guild_id')?.trim() || '';
+    const authorizedGuild = guilds.find(
+      (guild) => guild.id === authorizedGuildId,
+    );
+    const installed =
+      authorizedGuild && discord.botReady
+        ? await getDiscordGuildChannels(
+            authorizedGuild.id,
+            discord.botToken,
+          )
+        : null;
     const setupToken = makeToken();
     const now = Date.now();
     await getD1().batch([
@@ -190,14 +206,17 @@ export async function GET(request: Request) {
       getD1()
         .prepare(`INSERT INTO discord_link_sessions
           (token_hash, account_id, community_id, kind, payload_json, expires_at, used_at, created_at)
-          VALUES (?, ?, ?, 'guild_picker', ?, ?, NULL, ?)`)
+          VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`)
         .bind(
           await hashToken(setupToken),
           row!.accountId,
           row!.communityId,
+          installed ? 'channel_picker' : 'guild_picker',
           JSON.stringify({
             discordUserHash: await hashToken(userResult.body.id),
             guilds,
+            selectedGuild: installed?.guild,
+            channels: installed?.channels,
           }),
           now + 15 * 60_000,
           now,

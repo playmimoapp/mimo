@@ -1,5 +1,13 @@
 export const DISCORD_API = 'https://discord.com/api/v10';
 
+type DiscordChannel = {
+  id?: string;
+  guild_id?: string;
+  name?: string;
+  type?: number;
+  position?: number;
+};
+
 export function getDiscordConfig() {
   const applicationId = process.env.DISCORD_APPLICATION_ID?.trim() ?? '';
   const clientSecret = process.env.DISCORD_CLIENT_SECRET?.trim() ?? '';
@@ -51,4 +59,42 @@ export async function discordApi<T>(
   });
   const body = (await response.json().catch(() => null)) as T | null;
   return { response, body };
+}
+
+export async function getDiscordGuildChannels(
+  guildId: string,
+  botToken: string,
+) {
+  const guild = await discordApi<{
+    id?: string;
+    name?: string;
+    icon?: string | null;
+  }>(`/guilds/${encodeURIComponent(guildId)}`, `Bot ${botToken}`);
+  if (!guild.response.ok || guild.body?.id !== guildId || !guild.body.name) {
+    return null;
+  }
+  const result = await discordApi<DiscordChannel[]>(
+    `/guilds/${encodeURIComponent(guildId)}/channels`,
+    `Bot ${botToken}`,
+  );
+  if (!result.response.ok || !Array.isArray(result.body)) return null;
+  return {
+    guild: {
+      id: guildId,
+      name: guild.body.name.slice(0, 100),
+      icon: guild.body.icon ?? null,
+    },
+    channels: result.body
+      .filter(
+        (channel) =>
+          (channel.type === 0 || channel.type === 5) &&
+          channel.id &&
+          channel.name,
+      )
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((channel) => ({
+        id: channel.id as string,
+        name: (channel.name as string).slice(0, 100),
+      })),
+  };
 }

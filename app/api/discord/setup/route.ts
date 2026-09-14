@@ -1,5 +1,8 @@
 import { getD1 } from '@/db';
-import { discordApi, getDiscordConfig } from '@/lib/discord-integration';
+import {
+  getDiscordConfig,
+  getDiscordGuildChannels,
+} from '@/lib/discord-integration';
 import { hashToken, json, readJson } from '@/lib/live-room';
 import { getAccountBySession } from '@/lib/mimo-account';
 
@@ -8,6 +11,7 @@ type SetupPayload = {
   discordUserHash?: string;
   guilds?: Guild[];
   selectedGuild?: Guild;
+  channels?: Array<{ id: string; name: string }>;
 };
 type SetupRow = {
   accountId: string;
@@ -17,14 +21,6 @@ type SetupRow = {
   payloadJson: string;
   expiresAt: number;
 };
-type DiscordChannel = {
-  id?: string;
-  guild_id?: string;
-  name?: string;
-  type?: number;
-  position?: number;
-};
-
 async function setupSession(request: Request, token: string) {
   const account = await getAccountBySession(request);
   if (!account)
@@ -65,40 +61,6 @@ async function setupSession(request: Request, token: string) {
   }
 }
 
-async function guildChannels(guildId: string, botToken: string) {
-  const guild = await discordApi<{
-    id?: string;
-    name?: string;
-    icon?: string | null;
-  }>(`/guilds/${encodeURIComponent(guildId)}`, `Bot ${botToken}`);
-  if (!guild.response.ok || guild.body?.id !== guildId || !guild.body.name)
-    return null;
-  const result = await discordApi<DiscordChannel[]>(
-    `/guilds/${encodeURIComponent(guildId)}/channels`,
-    `Bot ${botToken}`,
-  );
-  if (!result.response.ok || !Array.isArray(result.body)) return null;
-  return {
-    guild: {
-      id: guildId,
-      name: guild.body.name.slice(0, 100),
-      icon: guild.body.icon ?? null,
-    },
-    channels: result.body
-      .filter(
-        (channel) =>
-          (channel.type === 0 || channel.type === 5) &&
-          channel.id &&
-          channel.name,
-      )
-      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-      .map((channel) => ({
-        id: channel.id as string,
-        name: (channel.name as string).slice(0, 100),
-      })),
-  };
-}
-
 function installUrl(applicationId: string, guildId: string) {
   const authorize = new URL('https://discord.com/oauth2/authorize');
   authorize.searchParams.set('client_id', applicationId);
@@ -119,6 +81,7 @@ export async function GET(request: Request) {
     stage: setup.row.kind,
     guilds: setup.payload.guilds ?? [],
     selectedGuild: setup.payload.selectedGuild ?? null,
+    channels: setup.payload.channels ?? [],
     installUrl:
       setup.row.kind === 'install_pending' &&
       setup.payload.selectedGuild &&
@@ -142,6 +105,28 @@ export async function POST(request: Request) {
     const guildId = typeof body?.guildId === 'string' ? body.guildId : '';
     const guild = setup.payload.guilds?.find((item) => item.id === guildId);
     if (!guild) return json({ error: 'Choose a server you manage.' }, 400);
+    if (discord.botReady) {
+      const installed = await getDiscordGuildChannels(
+        guild.id,
+        discord.botToken,
+      );
+      if (installed) {
+        await getD1()
+          .prepare(`UPDATE discord_link_sessions SET kind = 'channel_picker', payload_json = ?
+            WHERE token_hash = ? AND account_id = ? AND used_at IS NULL`)
+          .bind(
+            JSON.stringify({
+              ...setup.payload,
+              selectedGuild: installed.guild,
+              channels: installed.channels,
+            }),
+            await hashToken(token),
+            setup.row.accountId,
+          )
+          .run();
+        return json(installed);
+      }
+    }
     await getD1()
       .prepare(`UPDATE discord_link_sessions SET kind = 'install_pending', payload_json = ?
         WHERE token_hash = ? AND account_id = ? AND used_at IS NULL`)
@@ -162,7 +147,10 @@ export async function POST(request: Request) {
     return json({ error: 'Choose a Discord server first.' }, 400);
   if (!discord.botReady)
     return json({ error: 'Mimo’s Discord bot is not configured yet.' }, 503);
-  const verified = await guildChannels(selectedGuild.id, discord.botToken);
+  const verified = await getDiscordGuildChannels(
+    selectedGuild.id,
+    discord.botToken,
+  );
   if (!verified) {
     return json(
       {

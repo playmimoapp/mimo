@@ -329,11 +329,20 @@ export function CommunityStudio({
     const current = new URL(window.location.href);
     const setupToken = current.searchParams.get('discordSetup') ?? '';
     const setupError = current.searchParams.get('discordError') ?? '';
+    const discordProfile = current.searchParams.get('discordProfile') ?? '';
     const xError = current.searchParams.get('xError') ?? '';
     const xProfile = current.searchParams.get('xProfile') ?? '';
-    if (!setupToken && !setupError && !xError && !xProfile) return;
+    if (
+      !setupToken &&
+      !setupError &&
+      !discordProfile &&
+      !xError &&
+      !xProfile
+    )
+      return;
     current.searchParams.delete('discordSetup');
     current.searchParams.delete('discordError');
+    current.searchParams.delete('discordProfile');
     current.searchParams.delete('xError');
     current.searchParams.delete('xProfile');
     window.history.replaceState(
@@ -346,8 +355,23 @@ export function CommunityStudio({
         setError(setupError || xError);
         return;
       }
-      if (xProfile) {
-        void loadProfile(session);
+      if (discordProfile || xProfile) {
+        void loadProfile(session)
+          .then(() => {
+            setInviteMessage(
+              discordProfile
+                ? 'Discord is connected to your Mimo profile.'
+                : 'X is connected to your Mimo profile.',
+            );
+            setShowProfile(true);
+          })
+          .catch((cause) =>
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : 'Your connected profile could not be refreshed.',
+            ),
+          );
         return;
       }
       setDiscordSetupToken(setupToken);
@@ -396,6 +420,7 @@ export function CommunityStudio({
         installUrl?: string;
         guild?: { id: string; name: string; icon: string | null };
         channels?: Array<{ id: string; name: string }>;
+        channel?: { id: string; name: string };
         connected?: boolean;
       };
       if (!response.ok)
@@ -428,6 +453,11 @@ export function CommunityStudio({
         );
       } else if (body.connected) {
         await loadCommunities(session);
+        setInviteMessage(
+          body.guild && body.channel
+            ? `Discord connected to ${body.guild.name} in #${body.channel.name}.`
+            : 'Discord is connected to your community.',
+        );
         setDiscordSetupToken('');
         setDiscordSetup(null);
       }
@@ -700,13 +730,18 @@ export function CommunityStudio({
                 ? `@${profile.handle}`
                 : 'Your identity across Mimo'}
             </p>
+            <p className="mt-1 truncate text-xs font-bold text-[#8292a0]">
+              {profile.discord ? 'Discord connected' : 'Discord not connected'}
+              {' · '}
+              {profile.x ? 'X connected' : 'X not connected'}
+            </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
             <button
               onClick={() => setShowProfile((value) => !value)}
               className="text-sm font-extrabold text-[#2577de]"
             >
-              {showProfile ? 'Done' : 'Edit profile'}
+              Profile & accounts
             </button>
             <button
               onClick={() => void signOut()}
@@ -758,11 +793,15 @@ export function CommunityStudio({
         <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-[26px] bg-[#f8f6f1] p-6 sm:max-w-lg sm:p-8">
           <DialogHeader>
             <DialogTitle className="font-display text-3xl font-extrabold tracking-[-.04em]">
-              Bring Mimo into Discord
+              {discordSetup?.stage === 'channel_picker'
+                ? 'One last choice'
+                : 'Connect Discord'}
             </DialogTitle>
             <DialogDescription>
-              {discordSetup?.communityName
-                ? `Connect one server to ${discordSetup.communityName}.`
+              {discordSetup?.stage === 'channel_picker'
+                ? `Mimo is installed. Choose where ${discordSetup.communityName} should receive event updates.`
+                : discordSetup?.communityName
+                  ? `Choose the server for ${discordSetup.communityName}. Mimo will bring you straight back.`
                 : 'Checking your Discord connection…'}
             </DialogDescription>
           </DialogHeader>

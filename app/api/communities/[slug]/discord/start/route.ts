@@ -43,7 +43,12 @@ export async function POST(
   authorize.searchParams.set('client_id', discord.applicationId);
   authorize.searchParams.set('response_type', 'code');
   authorize.searchParams.set('redirect_uri', redirectUri);
-  authorize.searchParams.set('scope', 'identify guilds');
+  authorize.searchParams.set(
+    'scope',
+    'identify guilds bot applications.commands',
+  );
+  authorize.searchParams.set('permissions', '19456');
+  authorize.searchParams.set('integration_type', '0');
   authorize.searchParams.set('state', state);
   authorize.searchParams.set('prompt', 'consent');
   return json({ authorizeUrl: authorize.toString() });

@@ -113,7 +113,10 @@ function readRoomRecovery(code: string): RoomRecovery | null {
     const stored = window.localStorage.getItem(key);
     if (!stored) return null;
     const recovery = JSON.parse(stored) as RoomRecovery;
-    if (!Number.isFinite(recovery.expiresAt) || recovery.expiresAt <= Date.now()) {
+    if (
+      !Number.isFinite(recovery.expiresAt) ||
+      recovery.expiresAt <= Date.now()
+    ) {
       window.localStorage.removeItem(key);
       return null;
     }
@@ -562,8 +565,7 @@ export function MimoApp() {
     const key = `mimo:${code}:visit`;
     try {
       const existing =
-        window.localStorage.getItem(key) ??
-        window.sessionStorage.getItem(key);
+        window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
       if (existing) return existing;
       const token = crypto.randomUUID() + crypto.randomUUID();
       window.localStorage.setItem(key, token);
@@ -1774,14 +1776,30 @@ function CreateChoice({
             onClick={assisted}
             className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-6 font-extrabold"
           >
-            Draft with Mimo <Sparkles />
+            {selectedKind === 'community_vote'
+              ? 'Draft poll with Mimo'
+              : selectedKind === 'product_launch'
+                ? 'Draft launch with Mimo'
+                : selectedKind === 'onboarding'
+                  ? 'Draft onboarding with Mimo'
+                  : selectedKind === 'game_night'
+                    ? 'Draft game with Mimo'
+                    : 'Draft with Mimo'}{' '}
+            <Sparkles />
           </Button>
           <Button
             onClick={manual}
             variant="outline"
             className="h-14 rounded-full border-[#aebbc5] bg-white px-5 font-extrabold"
           >
-            <PenLine /> <span className="hidden sm:inline">Start </span>manual
+            <PenLine />{' '}
+            {selectedKind === 'community_vote' ? (
+              'Write poll'
+            ) : (
+              <>
+                <span className="hidden sm:inline">Start </span>manual
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -1814,6 +1832,80 @@ function AssistedCreate({
   const ready =
     brief.topic.trim().length > 5 &&
     (brief.hostingMode === 'one_time' || brief.community.trim().length > 1);
+  const copy =
+    brief.eventKind === 'community_vote'
+      ? {
+          eyebrow: 'Create a live poll',
+          heading: 'What should the room decide?',
+          description:
+            'Write the decision once. Mimo will suggest clear, neutral choices for you to approve.',
+          cue: 'Give me the decision. I’ll keep the choices fair and easy to understand.',
+          topicLabel: 'Question or decision',
+          placeholder: 'Which project should our community support next?',
+          sourceLabel: 'Add candidate details or context',
+          button: 'Draft my poll',
+          showAudience: false,
+          showDifficulty: false,
+        }
+      : brief.eventKind === 'product_launch'
+        ? {
+            eyebrow: 'Create a launch room',
+            heading: 'What are you bringing to the community?',
+            description:
+              'Tell Mimo what is launching and what the audience should discover or influence.',
+            cue: 'Share the product and the moment you want people to remember.',
+            topicLabel: 'Launch brief',
+            placeholder:
+              'Introduce our new community tool, then let members vote on what we build next',
+            sourceLabel: 'Add approved product facts',
+            button: 'Draft my launch',
+            showAudience: true,
+            showDifficulty: false,
+          }
+        : brief.eventKind === 'onboarding'
+          ? {
+              eyebrow: 'Create an onboarding room',
+              heading: 'What should newcomers understand?',
+              description:
+                'Give Mimo the essentials. It will turn them into a welcoming learn-by-doing experience.',
+              cue: 'Tell me what a newcomer should know before they leave.',
+              topicLabel: 'Onboarding goal',
+              placeholder:
+                'Help new members understand Nimiq Pay, community rules and how to participate',
+              sourceLabel: 'Add trusted onboarding material',
+              button: 'Draft my onboarding',
+              showAudience: false,
+              showDifficulty: true,
+            }
+          : brief.eventKind === 'custom'
+            ? {
+                eyebrow: 'Create an open-format room',
+                heading: 'How should this room work?',
+                description:
+                  'Mix polls, scored questions and shared challenges only where they serve your idea.',
+                cue: 'Describe the flow. I’ll turn it into moments you can rearrange.',
+                topicLabel: 'Room brief',
+                placeholder:
+                  'Start with a vote, run three scored questions, then finish with a shared challenge',
+                sourceLabel: 'Add source material',
+                button: 'Draft my room',
+                showAudience: true,
+                showDifficulty: true,
+              }
+            : {
+                eyebrow: 'Create a game night',
+                heading: 'What should everyone play?',
+                description:
+                  'Give Mimo the topic and crowd. It will draft a fast game you can edit completely.',
+                cue: 'Topic, crowd and difficulty. That’s enough for me to start.',
+                topicLabel: 'Game topic',
+                placeholder:
+                  'A fast game night about Nimiq basics for new community members',
+                sourceLabel: 'Add trusted question material',
+                button: 'Draft my game',
+                showAudience: true,
+                showDifficulty: true,
+              };
 
   useEffect(() => {
     if (!autoStart || !ready || working || autoStarted.current) return;
@@ -1825,19 +1917,19 @@ function AssistedCreate({
     <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div>
         <p className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
-          <Bot size={17} /> Make it with Mimo
+          <Bot size={17} /> {copy.eyebrow}
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-[680px] text-[clamp(2.8rem,7vw,5.2rem)] font-extrabold leading-[.92] tracking-[-.065em]">
-          Tell Mimo what you’re hosting.
+          {copy.heading}
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#5d7182]">
-          A short brief is enough. Add trusted source text when facts matter.
+          {copy.description}
         </p>
 
         <MimoCue
           className="mobile-only mt-5"
           mood="thinking"
-          message="Topic, crowd, vibe. That’s enough for me to start."
+          message={copy.cue}
         />
 
         <div className="creator-form-shell mt-8 grid gap-7">
@@ -1854,55 +1946,63 @@ function AssistedCreate({
             </span>
           </div>
           <label className="grid gap-2 text-sm font-extrabold">
-            Topic or idea
+            {copy.topicLabel}
             <textarea
               value={brief.topic}
               onChange={(event) => update('topic', event.target.value)}
               maxLength={500}
-              placeholder="A fast game night about Nimiq basics for new community members"
+              placeholder={copy.placeholder}
               className="min-h-28 resize-none border-2 border-[#cbd3d8] bg-white p-4 text-lg font-bold leading-7 outline-none focus:border-[#1f72d2]"
             />
           </label>
 
-          <div className="creator-segments grid gap-6 sm:grid-cols-2">
-            <fieldset>
-              <legend className="text-sm font-extrabold">Audience</legend>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(['newcomers', 'community', 'experts'] as const).map(
-                  (item) => (
-                    <button
-                      type="button"
-                      key={item}
-                      onClick={() => update('audience', item)}
-                      className={`min-h-11 rounded-full border px-4 text-sm font-extrabold capitalize ${brief.audience === item ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
-                    >
-                      {item}
-                    </button>
-                  ),
-                )}
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend className="text-sm font-extrabold">Difficulty</legend>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(['easy', 'balanced', 'hard'] as const).map((item) => (
-                  <button
-                    type="button"
-                    key={item}
-                    onClick={() => update('difficulty', item)}
-                    className={`min-h-11 rounded-full border px-4 text-sm font-extrabold capitalize ${brief.difficulty === item ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          </div>
+          {(copy.showAudience || copy.showDifficulty) && (
+            <div
+              className={`creator-segments grid gap-6 ${copy.showAudience && copy.showDifficulty ? 'sm:grid-cols-2' : ''}`}
+            >
+              {copy.showAudience && (
+                <fieldset>
+                  <legend className="text-sm font-extrabold">Audience</legend>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(['newcomers', 'community', 'experts'] as const).map(
+                      (item) => (
+                        <button
+                          type="button"
+                          key={item}
+                          onClick={() => update('audience', item)}
+                          className={`min-h-11 rounded-full border px-4 text-sm font-extrabold capitalize ${brief.audience === item ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
+                        >
+                          {item}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </fieldset>
+              )}
+              {copy.showDifficulty && (
+                <fieldset>
+                  <legend className="text-sm font-extrabold">Difficulty</legend>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(['easy', 'balanced', 'hard'] as const).map((item) => (
+                      <button
+                        type="button"
+                        key={item}
+                        onClick={() => update('difficulty', item)}
+                        className={`min-h-11 rounded-full border px-4 text-sm font-extrabold capitalize ${brief.difficulty === item ? 'border-[#1f72d2] bg-[#eaf4ff] text-[#175da8]' : 'border-[#cbd3d8] bg-white text-[#53697b]'}`}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+            </div>
+          )}
 
           <details className="creator-source rounded-[20px] border border-[#cbd3d8] bg-white p-4">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-extrabold">
               <span className="flex items-center gap-2">
-                <FileText size={17} /> Add source material
+                <FileText size={17} /> {copy.sourceLabel}
               </span>
               <span className="font-medium text-[#758592]">Optional</span>
             </summary>
@@ -1938,8 +2038,7 @@ function AssistedCreate({
             disabled={!ready || working}
             className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 font-extrabold"
           >
-            {working ? 'Mimo is building…' : 'Build my first draft'}{' '}
-            <Sparkles />
+            {working ? 'Mimo is building…' : copy.button} <Sparkles />
           </Button>
         </div>
       </div>
@@ -2014,8 +2113,7 @@ function CreateEvent({
   ) =>
     updateRound(roundIndex, {
       type,
-      correctChoice:
-        type === 'pulse' ? null : (round.correctChoice ?? 0),
+      correctChoice: type === 'pulse' ? null : (round.correctChoice ?? 0),
       durationSeconds:
         type === 'finale'
           ? Math.max(30, round.durationSeconds)

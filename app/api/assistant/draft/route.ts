@@ -21,42 +21,44 @@ type GeneratedDraft = {
   }>;
 };
 
-const responseSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['title', 'rounds'],
-  properties: {
-    title: { type: 'string', minLength: 3, maxLength: 80 },
-    rounds: {
-      type: 'array',
-      minItems: 3,
-      maxItems: 5,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['type', 'question', 'choices', 'correctChoice'],
-        properties: {
-          type: {
-            type: 'string',
-            enum: ['pulse', 'multiple_choice', 'finale'],
-          },
-          question: { type: 'string', minLength: 8, maxLength: 180 },
-          choices: {
-            type: 'array',
-            minItems: 2,
-            maxItems: 4,
-            items: { type: 'string', minLength: 1, maxLength: 80 },
-          },
-          correctChoice: {
-            type: ['integer', 'null'],
-            minimum: 0,
-            maximum: 3,
+function responseSchema(minItems: number, maxItems: number) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'rounds'],
+    properties: {
+      title: { type: 'string', minLength: 3, maxLength: 80 },
+      rounds: {
+        type: 'array',
+        minItems,
+        maxItems,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['type', 'question', 'choices', 'correctChoice'],
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['pulse', 'multiple_choice', 'finale'],
+            },
+            question: { type: 'string', minLength: 8, maxLength: 180 },
+            choices: {
+              type: 'array',
+              minItems: 2,
+              maxItems: 4,
+              items: { type: 'string', minLength: 1, maxLength: 80 },
+            },
+            correctChoice: {
+              type: ['integer', 'null'],
+              minimum: 0,
+              maximum: 3,
+            },
           },
         },
       },
     },
-  },
-} as const;
+  } as const;
+}
 
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -67,6 +69,29 @@ function json(value: unknown, status = 200) {
 
 function clean(value: unknown, max: number) {
   return (typeof value === 'string' ? value : '').trim().slice(0, max);
+}
+
+function requestedMomentCount(brief: string) {
+  const numeric = brief.match(
+    /\b(\d{1,2})\s+(?:questions?|polls?|votes?|moments?|rounds?|challenges?)\b/i,
+  );
+  if (numeric) return Number(numeric[1]);
+  const words: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+  };
+  const written = brief.match(
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:questions?|polls?|votes?|moments?|rounds?|challenges?)\b/i,
+  );
+  return written ? words[written[1].toLowerCase()] : null;
 }
 
 function extractText(payload: {
@@ -86,15 +111,19 @@ function extractText(payload: {
     .join('');
 }
 
-function validDraft(value: unknown): value is GeneratedDraft {
+function validDraft(
+  value: unknown,
+  minimumMoments: number,
+  maximumMoments: number,
+): value is GeneratedDraft {
   if (!value || typeof value !== 'object') return false;
   const draft = value as Partial<GeneratedDraft>;
   return Boolean(
     typeof draft.title === 'string' &&
     draft.title.trim().length >= 3 &&
     Array.isArray(draft.rounds) &&
-    draft.rounds.length >= 3 &&
-    draft.rounds.length <= 5 &&
+    draft.rounds.length >= minimumMoments &&
+    draft.rounds.length <= maximumMoments &&
     draft.rounds.every(
       (round) =>
         ['pulse', 'multiple_choice', 'finale'].includes(round.type) &&
@@ -149,6 +178,22 @@ export async function POST(request: Request) {
   ].includes(String(body?.eventKind))
     ? String(body?.eventKind)
     : 'game_night';
+  const requestedCount = requestedMomentCount(topic);
+  if (requestedCount !== null && (requestedCount < 1 || requestedCount > 20)) {
+    return json(
+      { error: 'Choose between 1 and 20 questions or live moments.' },
+      400,
+    );
+  }
+  const defaultMomentRange =
+    eventKind === 'community_vote'
+      ? { minimum: 1, maximum: 1 }
+      : eventKind === 'product_launch'
+        ? { minimum: 2, maximum: 4 }
+        : { minimum: 3, maximum: 5 };
+  const momentRange = requestedCount
+    ? { minimum: requestedCount, maximum: requestedCount }
+    : defaultMomentRange;
   const hostingMode =
     body?.hostingMode === 'community' ? 'community' : 'one_time';
   const recurrence = ['weekly', 'fortnightly', 'monthly'].includes(
@@ -174,7 +219,7 @@ export async function POST(request: Request) {
 
   const formatInstruction =
     eventKind === 'community_vote'
-      ? 'Create 3 to 5 neutral pulse polls. They have no correct answer and use null for correctChoice. Present choices fairly without steering voters.'
+      ? 'Create neutral pulse polls. They have no correct answer and use null for correctChoice. Present choices fairly without steering voters.'
       : eventKind === 'product_launch'
         ? 'Create a product launch show using objective questions grounded in the supplied product information. Add a pulse poll only when the host explicitly asks for audience opinion. Add a shared finale only when the brief asks for one.'
         : eventKind === 'onboarding'
@@ -184,7 +229,7 @@ export async function POST(request: Request) {
             : 'Create a game night using objectively scored skill questions. Do not begin with a pulse poll unless the host explicitly asks for a poll or audience opinion. Do not add a shared finale unless the brief asks for one.';
 
   const instructions = `You are Mimo, a careful live community-event editor.
-Create a short live show with 3 to 5 moments for an event host to review.
+Create a short live experience ${requestedCount ? `with exactly ${requestedCount} moments` : `with ${momentRange.minimum} to ${momentRange.maximum} moments`} for an event host to review.
 ${formatInstruction}
 Every moment has two to four distinct choices. Pulse polls use null for correctChoice;
 scored moments must have exactly one correct answer.
@@ -230,7 +275,7 @@ Return only the requested JSON.`;
           response_format: {
             type: 'text',
             mime_type: 'application/json',
-            schema: responseSchema,
+            schema: responseSchema(momentRange.minimum, momentRange.maximum),
           },
         }),
       },
@@ -250,7 +295,9 @@ Return only the requested JSON.`;
       typeof extractText
     >[0];
     const draft = JSON.parse(extractText(payload)) as unknown;
-    if (!validDraft(draft)) throw new Error('invalid_draft');
+    if (!validDraft(draft, momentRange.minimum, momentRange.maximum)) {
+      throw new Error('invalid_draft');
+    }
 
     const approvedRounds = draft.rounds.filter(
       (round) => round.type !== 'pulse' || hostRequestedPoll,

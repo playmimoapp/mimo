@@ -2,6 +2,10 @@ const applicationId = process.env.DISCORD_APPLICATION_ID?.trim();
 const botToken = process.env.DISCORD_BOT_TOKEN?.trim();
 const guildId = process.env.DISCORD_TEST_GUILD_ID?.trim();
 if (!applicationId || !botToken) {
+  if (process.argv.includes('--if-configured')) {
+    console.log('Discord command registration skipped: credentials are not configured.');
+    process.exit(0);
+  }
   throw new Error(
     'Set DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN before registering commands.',
   );

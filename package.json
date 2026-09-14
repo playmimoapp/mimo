@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
-    "vercel-build": "node scripts/migrate.mjs && next build --webpack",
+    "vercel-build": "node scripts/migrate.mjs && node scripts/register-discord-command.mjs --if-configured && next build --webpack",
     "start": "next start",
     "lint": "oxlint",
     "format": "oxfmt",

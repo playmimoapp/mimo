@@ -1,6 +1,10 @@
 import { getD1 } from '@/db';
 import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
-import { getVaultConfig } from '@/lib/reward-vault';
+import {
+  encryptVaultAddress,
+  getVaultConfig,
+  normalizeNimiqAddress,
+} from '@/lib/reward-vault';
 
 export async function POST(
   request: Request,
@@ -15,11 +19,15 @@ export async function POST(
     typeof body?.transactionHash === 'string'
       ? body.transactionHash.trim().toLowerCase()
       : '';
+  const refundAddress = normalizeNimiqAddress(body?.refundAddress);
   if (!hostKey || (await hashToken(hostKey)) !== room.hostKeyHash) {
     return json({ error: 'Host access was rejected.' }, 403);
   }
   if (!/^[0-9a-f]{64}$/.test(transactionHash)) {
     return json({ error: 'The funding proof is incomplete.' }, 400);
+  }
+  if (!refundAddress) {
+    return json({ error: 'Reconnect Nimiq Pay and try the funding payment again.' }, 400);
   }
   if (room.status !== 'lobby') {
     return json({ error: 'This reward can no longer be changed.' }, 409);
@@ -62,11 +70,23 @@ export async function POST(
       );
     }
     const now = Date.now();
+    const encryptedRefundAddress = await encryptVaultAddress(
+      room.id,
+      'refund',
+      refundAddress,
+    );
     await db.batch([
       db
         .prepare(`UPDATE rewards SET state = 'funding_submitted',
-          funding_tx_hash = ?, updated_at = ? WHERE id = ?`)
-        .bind(transactionHash, now, reward.id),
+          funding_tx_hash = ?, funding_sender_ciphertext = ?,
+          funding_sender_iv = ?, updated_at = ? WHERE id = ?`)
+        .bind(
+          transactionHash,
+          encryptedRefundAddress.ciphertext,
+          encryptedRefundAddress.iv,
+          now,
+          reward.id,
+        ),
       db
         .prepare(`INSERT INTO event_audit
           (id, event_id, actor_hash, action, payload_json, created_at)

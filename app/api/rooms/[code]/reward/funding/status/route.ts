@@ -2,6 +2,7 @@ import { getD1 } from '@/db';
 import { getRoom, hashToken, json, readJson } from '@/lib/live-room';
 import {
   checkFundingConfirmation,
+  decryptVaultAddress,
   encryptVaultAddress,
   fundingMemo,
   getVaultConfig,
@@ -29,7 +30,9 @@ export async function POST(
     .prepare(`SELECT id, state, amount_luna AS amountLuna,
       funding_amount_luna AS fundingAmountLuna,
       fee_slots AS feeSlots, vault_address AS vaultAddress,
-      vault_network AS vaultNetwork, funding_tx_hash AS fundingTxHash
+      vault_network AS vaultNetwork, funding_tx_hash AS fundingTxHash,
+      funding_sender_ciphertext AS senderCiphertext,
+      funding_sender_iv AS senderIv
       FROM rewards WHERE event_id = ? LIMIT 1`)
     .bind(room.id)
     .first<{
@@ -41,6 +44,8 @@ export async function POST(
       vaultAddress: string | null;
       vaultNetwork: string | null;
       fundingTxHash: string | null;
+      senderCiphertext: string | null;
+      senderIv: string | null;
     }>();
   if (
     reward &&
@@ -71,6 +76,15 @@ export async function POST(
         confirmations: 0,
       });
     }
+    const registeredRefundAddress =
+      reward.senderCiphertext && reward.senderIv
+        ? await decryptVaultAddress(
+            room.id,
+            'refund',
+            reward.senderCiphertext,
+            reward.senderIv,
+          )
+        : undefined;
     const proof = await verifyFundingTransaction(confirmation.transaction, {
       txHash: reward.fundingTxHash,
       address: vault.address,
@@ -82,6 +96,7 @@ export async function POST(
         ).toString(),
       memo: fundingMemo(room.roomCode),
       networkId: vault.networkId,
+      refundAddress: registeredRefundAddress,
     });
     const encryptedSender = await encryptVaultAddress(
       room.id,

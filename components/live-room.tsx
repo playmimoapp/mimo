@@ -1482,6 +1482,7 @@ function RewardFundingPanel({
           body: JSON.stringify({
             hostKey,
             transactionHash: payment.transactionHash,
+            refundAddress: connection.account,
           }),
         },
       );

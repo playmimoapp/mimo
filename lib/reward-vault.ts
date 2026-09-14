@@ -27,7 +27,7 @@ const LUNA_PER_NIM = BigInt(100_000);
 // Keep one luna as an operational reserve so the final settlement never
 // attempts an exact-balance drain.
 const VAULT_ACCOUNT_RESERVE_LUNA = BigInt(1);
-const MAX_REFUND_EXECUTION_RETRIES = 2;
+const MAX_REFUND_EXECUTION_RETRIES = 3;
 
 export function normalizeNimiqAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -140,6 +140,7 @@ export async function verifyFundingTransaction(
     amountLuna: string;
     memo: string;
     networkId: number;
+    refundAddress?: string;
   },
 ) {
   if (!transactionValue || typeof transactionValue !== 'object') {
@@ -166,6 +167,10 @@ export async function verifyFundingTransaction(
       memo = '';
     }
   }
+  const refundAddress = normalizeNimiqAddress(expected.refundAddress);
+  const relatedAddresses = Array.isArray(transaction.relatedAddresses)
+    ? transaction.relatedAddresses.map(normalizeNimiqAddress)
+    : [];
   if (
     !sender ||
     hash !== expected.txHash.toLowerCase() ||
@@ -173,16 +178,49 @@ export async function verifyFundingTransaction(
     String(transaction.value) !== expected.amountLuna ||
     Number(transaction.networkId) !== expected.networkId ||
     transaction.executionResult === false ||
-    memo !== expected.memo
+    memo !== expected.memo ||
+    (refundAddress && !relatedAddresses.includes(refundAddress))
   ) {
     throw new Error('funding_mismatch');
   }
   return {
     txHash: hash,
-    sender,
+    sender: refundAddress || sender,
     recipient,
     networkId: Number(transaction.networkId),
   };
+}
+
+async function verifiedFundingAccount(
+  config: VaultConfig,
+  fundingTxHash: string | null,
+) {
+  if (!fundingTxHash) return null;
+  const transaction = await rpcCall(config.rpcUrl, 'getTransactionByHash', [
+    fundingTxHash,
+  ]).catch(() => null);
+  if (!transaction || typeof transaction !== 'object') return null;
+  const related = Array.isArray(
+    (transaction as Record<string, unknown>).relatedAddresses,
+  )
+    ? ((transaction as Record<string, unknown>).relatedAddresses as unknown[])
+        .map(normalizeNimiqAddress)
+        .filter((address) => address && address !== normalizeNimiqAddress(config.address))
+    : [];
+  const matches: string[] = [];
+  for (const address of new Set(related)) {
+    const bytes = new TextEncoder().encode(address);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const walletHash = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, '0'),
+    ).join('');
+    const account = await getD1()
+      .prepare(`SELECT id FROM accounts WHERE wallet_hash = ? LIMIT 1`)
+      .bind(walletHash)
+      .first<{ id: string }>();
+    if (account) matches.push(address);
+  }
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function unwrapRpcData(value: unknown) {
@@ -749,6 +787,7 @@ export async function attemptAutomaticRefund(eventId: string) {
       r.funding_amount_luna AS fundingAmountLuna,
       r.transaction_fee_luna AS transactionFeeLuna,
       r.vault_address AS vaultAddress, r.vault_network AS vaultNetwork,
+      r.funding_tx_hash AS fundingTxHash,
       r.funding_sender_ciphertext AS senderCiphertext,
       r.funding_sender_iv AS senderIv,
       r.refund_state AS refundState, r.refund_tx_hash AS refundTxHash,
@@ -764,6 +803,7 @@ export async function attemptAutomaticRefund(eventId: string) {
       transactionFeeLuna: string | null;
       vaultAddress: string | null;
       vaultNetwork: string | null;
+      fundingTxHash: string | null;
       senderCiphertext: string | null;
       senderIv: string | null;
       refundState: string | null;
@@ -805,6 +845,28 @@ export async function attemptAutomaticRefund(eventId: string) {
       .bind(eventId)
       .first<{ count: number }>();
     const failedAttempts = Number(failedRow?.count ?? 0) + 1;
+    const correctedRecipient = await verifiedFundingAccount(
+      config,
+      reward.fundingTxHash,
+    );
+    if (correctedRecipient) {
+      const encryptedRecipient = await encryptSecret(
+        correctedRecipient,
+        vaultAddressContext(eventId, 'refund'),
+      );
+      await db
+        .prepare(`UPDATE rewards SET funding_sender_ciphertext = ?,
+          funding_sender_iv = ?, updated_at = ? WHERE id = ?`)
+        .bind(
+          encryptedRecipient.ciphertext,
+          encryptedRecipient.iv,
+          Date.now(),
+          reward.id,
+        )
+        .run();
+      reward.senderCiphertext = encryptedRecipient.ciphertext;
+      reward.senderIv = encryptedRecipient.iv;
+    }
     await db
       .prepare(`INSERT INTO event_audit
         (id, event_id, actor_hash, action, payload_json, created_at)

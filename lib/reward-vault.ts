@@ -70,17 +70,22 @@ export async function getVaultConfig(): Promise<VaultConfig | null> {
     getRuntimeVariable('MIMO_MAINNET_VAULT_ENABLED') === 'true';
   const testnetEnabled =
     getRuntimeVariable('MIMO_TESTNET_VAULT_ENABLED') === 'true';
+  const rpcUrl =
+    network === 'MainAlbatross'
+      ? getRuntimeVariable('MIMO_MAINNET_RPC_URL') ||
+        getRuntimeVariable('NIMIQ_RPC_URL')
+      : getRuntimeVariable('NIMIQ_RPC_URL');
   try {
     const address = Address.fromUserFriendlyAddress(rawAddress);
     return {
       address: address.toUserFriendlyAddress(),
       network,
       networkId: network === 'TestAlbatross' ? 5 : 24,
-      rpcUrl: getRuntimeVariable('NIMIQ_RPC_URL'),
+      rpcUrl,
       ready: Boolean(
         ((network === 'TestAlbatross' && testnetEnabled) ||
           (network === 'MainAlbatross' && mainnetEnabled)) &&
-        getRuntimeVariable('NIMIQ_RPC_URL') &&
+        rpcUrl &&
         getRuntimeVariable('MIMO_VAULT_KEYPAIR_HEX') &&
         hasDataEncryptionKey(),
       ),

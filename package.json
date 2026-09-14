@@ -19,7 +19,8 @@
     "test:identity": "node scripts/simulate-identity.mjs",
     "test:wallet-entry": "node scripts/simulate-wallet-entry.mjs",
     "discord:register": "node scripts/register-discord-command.mjs",
-    "vault:create:test": "node scripts/create-test-vault.mjs"
+    "vault:create:test": "node scripts/create-test-vault.mjs",
+    "vault:create:mainnet": "node scripts/create-mainnet-vault.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

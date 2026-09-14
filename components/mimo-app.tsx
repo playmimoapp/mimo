@@ -96,6 +96,52 @@ const HOME_LINES = [
   'One last question. Can the room beat me?',
 ] as const;
 
+const ROOM_RECOVERY_TTL_MS = 7 * 24 * 60 * 60_000;
+
+type RoomRecovery = {
+  hostKey?: string;
+  participantToken?: string;
+  nickname?: string;
+  profileStyle?: MimoProfileStyle;
+  inviteToken?: string;
+  expiresAt: number;
+};
+
+function readRoomRecovery(code: string): RoomRecovery | null {
+  try {
+    const key = `mimo:${code}:recovery`;
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return null;
+    const recovery = JSON.parse(stored) as RoomRecovery;
+    if (!Number.isFinite(recovery.expiresAt) || recovery.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return recovery;
+  } catch {
+    return null;
+  }
+}
+
+function saveRoomRecovery(
+  code: string,
+  values: Omit<Partial<RoomRecovery>, 'expiresAt'>,
+) {
+  try {
+    const current = readRoomRecovery(code);
+    window.localStorage.setItem(
+      `mimo:${code}:recovery`,
+      JSON.stringify({
+        ...current,
+        ...values,
+        expiresAt: Date.now() + ROOM_RECOVERY_TTL_MS,
+      } satisfies RoomRecovery),
+    );
+  } catch {
+    // Private browsing may reject persistent storage. The live tab still works.
+  }
+}
+
 const EVENT_FORMATS: ReadonlyArray<{
   id: EventKind;
   label: string;
@@ -514,11 +560,21 @@ export function MimoApp() {
 
   const getRoomVisitToken = (code: string) => {
     const key = `mimo:${code}:visit`;
-    const existing = window.sessionStorage.getItem(key);
-    if (existing) return existing;
-    const token = crypto.randomUUID() + crypto.randomUUID();
-    window.sessionStorage.setItem(key, token);
-    return token;
+    try {
+      const existing =
+        window.localStorage.getItem(key) ??
+        window.sessionStorage.getItem(key);
+      if (existing) return existing;
+      const token = crypto.randomUUID() + crypto.randomUUID();
+      window.localStorage.setItem(key, token);
+      return token;
+    } catch {
+      const existing = window.sessionStorage.getItem(key);
+      if (existing) return existing;
+      const token = crypto.randomUUID() + crypto.randomUUID();
+      window.sessionStorage.setItem(key, token);
+      return token;
+    }
   };
 
   useEffect(() => {
@@ -675,14 +731,18 @@ export function MimoApp() {
           .slice(0, 8) ?? '';
       if (!code) return;
       setRoomCode(code);
+      const recovery = readRoomRecovery(code);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
       const linkedInvite = fragment.get('invite') ?? '';
       const savedInvite =
-        window.sessionStorage.getItem(`mimo:${code}:invite`) ?? '';
+        recovery?.inviteToken ??
+        window.sessionStorage.getItem(`mimo:${code}:invite`) ??
+        '';
       const resolvedInvite = linkedInvite || savedInvite;
       if (resolvedInvite) {
         setInviteToken(resolvedInvite);
         window.sessionStorage.setItem(`mimo:${code}:invite`, resolvedInvite);
+        saveRoomRecovery(code, { inviteToken: resolvedInvite });
       }
       setJoinRequirementsLoading(true);
       void fetch(`/api/rooms/${code}`, {
@@ -710,7 +770,9 @@ export function MimoApp() {
       }
       if (query.get('host') === '1') {
         const savedHostKey =
-          window.sessionStorage.getItem(`mimo:${code}:host`) ?? '';
+          recovery?.hostKey ??
+          window.sessionStorage.getItem(`mimo:${code}:host`) ??
+          '';
         if (savedHostKey) {
           setHostKey(savedHostKey);
           setScreen('live_host');
@@ -718,12 +780,18 @@ export function MimoApp() {
         }
       }
       const savedToken =
-        window.sessionStorage.getItem(`mimo:${code}:token`) ?? '';
+        recovery?.participantToken ??
+        window.sessionStorage.getItem(`mimo:${code}:token`) ??
+        '';
       const savedName =
-        window.sessionStorage.getItem(`mimo:${code}:name`) ?? '';
-      const savedProfile = window.sessionStorage.getItem(
-        `mimo:${code}:profile`,
-      ) as MimoProfileStyle | null;
+        recovery?.nickname ??
+        window.sessionStorage.getItem(`mimo:${code}:name`) ??
+        '';
+      const savedProfile =
+        recovery?.profileStyle ??
+        (window.sessionStorage.getItem(
+          `mimo:${code}:profile`,
+        ) as MimoProfileStyle | null);
       if (savedProfile && MIMO_PROFILES.some(({ id }) => id === savedProfile)) {
         setProfileStyle(savedProfile);
       }
@@ -906,6 +974,10 @@ export function MimoApp() {
       setHostKey(body.hostKey);
       setInviteToken(body.inviteToken ?? '');
       window.sessionStorage.setItem(`mimo:${body.code}:host`, body.hostKey);
+      saveRoomRecovery(body.code, {
+        hostKey: body.hostKey,
+        inviteToken: body.inviteToken ?? undefined,
+      });
       if (body.inviteToken) {
         window.sessionStorage.setItem(
           `mimo:${body.code}:invite`,
@@ -1015,6 +1087,12 @@ export function MimoApp() {
       );
       window.sessionStorage.setItem(`mimo:${roomCode}:name`, name.trim());
       window.sessionStorage.setItem(`mimo:${roomCode}:profile`, profileStyle);
+      saveRoomRecovery(roomCode, {
+        participantToken: body.participantToken,
+        nickname: name.trim(),
+        profileStyle,
+        inviteToken: inviteToken || undefined,
+      });
       setScreen('live_player');
     } catch (cause) {
       setRoomError(

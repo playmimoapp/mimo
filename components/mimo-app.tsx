@@ -478,7 +478,7 @@ export function MimoApp() {
     mimoFundingAvailable: false,
     network: null,
     mainnetCreatorPayoutsAvailable: false,
-    mainnetMaximumRewardNim: 5,
+    mainnetMaximumRewardNim: 200,
   });
   const [assistantBrief, setAssistantBrief] = useState<AssistantBrief>({
     eventKind: 'game_night',
@@ -552,7 +552,7 @@ export function MimoApp() {
           mainnetCreatorPayoutsAvailable: Boolean(
             capabilities.mainnetCreatorPayoutsAvailable,
           ),
-          mainnetMaximumRewardNim: capabilities.mainnetMaximumRewardNim ?? 5,
+          mainnetMaximumRewardNim: capabilities.mainnetMaximumRewardNim ?? 200,
         });
       })
       .catch(() => undefined);
@@ -1282,7 +1282,7 @@ export function MimoApp() {
           )}
         </motion.div>
       </AnimatePresence>
-      {!['live_host', 'live_player'].includes(screen) && <ProductFooter />}
+      {dockVisible && <ProductFooter />}
       {dockVisible && (
         <MobileDock
           screen={screen}
@@ -2344,7 +2344,10 @@ function CreateEvent({
                 </p>
               </div>
               <span className="font-display text-2xl font-extrabold text-[#84919b]">
-                {event.rounds.length}/8
+                {event.rounds.length}{' '}
+                <span className="text-sm">
+                  {event.rounds.length === 1 ? 'question' : 'questions'}
+                </span>
               </span>
             </div>
 
@@ -2665,7 +2668,9 @@ function CreateEvent({
               </button>
             </div>
             <p className="mt-3 text-sm font-bold text-[#617486]">
-              One question is enough. Add more only when the event needs them.
+              {event.rounds.length >= 8
+                ? 'Eight-question limit reached.'
+                : 'One question is enough. Add more only when the event needs them.'}
             </p>
           </div>
           <div className={`grid gap-7 ${sectionClass('access')}`}>
@@ -2926,11 +2931,7 @@ function CreateEvent({
                     <input
                       inputMode="decimal"
                       maxLength={9}
-                      max={
-                        event.custodyMode === 'host_wallet'
-                          ? mainnetMaximumRewardNim
-                          : undefined
-                      }
+                      max={200}
                       value={event.rewardAmount}
                       onChange={(input) =>
                         update(
@@ -2949,7 +2950,7 @@ function CreateEvent({
                   </div>
                   <span className="text-sm font-medium text-[#6f7e8b]">
                     {event.custodyMode === 'mimo_vault'
-                      ? 'Confirmed on Nimiq before play.'
+                      ? 'Up to 200 NIM, confirmed on Nimiq before play.'
                       : `Paid from your wallet after verified results. Maximum ${mainnetMaximumRewardNim} NIM during the pilot.`}
                   </span>
                 </label>
@@ -3033,7 +3034,7 @@ function CreateEvent({
                         type="number"
                         inputMode="numeric"
                         min={1}
-                        max={20}
+                        max={100}
                         value={event.rewardWinnerCount}
                         onChange={(input) =>
                           update(
@@ -3041,7 +3042,7 @@ function CreateEvent({
                             Math.max(
                               1,
                               Math.min(
-                                20,
+                                100,
                                 Math.floor(Number(input.target.value) || 1),
                               ),
                             ),
@@ -3052,11 +3053,11 @@ function CreateEvent({
                       <button
                         type="button"
                         aria-label="Add one winner"
-                        disabled={event.rewardWinnerCount >= 20}
+                        disabled={event.rewardWinnerCount >= 100}
                         onClick={() =>
                           update(
                             'rewardWinnerCount',
-                            Math.min(20, event.rewardWinnerCount + 1),
+                            Math.min(100, event.rewardWinnerCount + 1),
                           )
                         }
                         className="grid h-12 w-12 place-items-center text-xl font-extrabold disabled:opacity-30"
@@ -3065,7 +3066,7 @@ function CreateEvent({
                       </button>
                     </div>
                     <p className="mt-2 text-xs font-bold text-[#607486]">
-                      Choose between 1 and 20 verified winners.
+                      Choose between 1 and 100 verified winners.
                     </p>
                     {event.rewardWinnerCount > 1 && (
                       <div className="mt-4">

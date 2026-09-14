@@ -6,7 +6,10 @@ import {
   makeToken,
   readJson,
 } from '@/lib/live-room';
-import { getVaultConfig } from '@/lib/reward-vault';
+import {
+  getVaultConfig,
+  getVaultFundingQuote,
+} from '@/lib/reward-vault';
 import {
   cleanCommunitySlug,
   getAccountBySession,
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
     rewardRule === 'skill'
       ? Math.max(
           1,
-          Math.min(20, Math.floor(Number(body.rewardWinnerCount) || 1)),
+          Math.min(100, Math.floor(Number(body.rewardWinnerCount) || 1)),
         )
       : 1;
   const rewardSplit = body.rewardSplit === 'ranked' ? 'ranked' : 'equal';
@@ -118,6 +121,29 @@ export async function POST(request: Request) {
       : '0';
   const rewardAmountLuna =
     rewardMode === 'nim' ? nimToLuna(rewardAmount) : BigInt(0);
+  let vaultQuote: ReturnType<typeof getVaultFundingQuote> | null = null;
+  if (
+    rewardCustody === 'mimo_vault' &&
+    vault &&
+    rewardAmountLuna !== null
+  ) {
+    try {
+      vaultQuote = getVaultFundingQuote(
+        vault,
+        rewardAmountLuna,
+        rewardRule === 'community_unlock'
+          ? vault.maxPayouts
+          : rewardWinnerCount,
+      );
+    } catch {
+      return json(
+        {
+          error: `This funded-reward pilot supports up to ${Number(vault.maxRewardLuna / BigInt(100_000))} NIM per event.`,
+        },
+        400,
+      );
+    }
+  }
   const mainnetReward = getMainnetRewardConfig();
   const rawRounds = Array.isArray(body.rounds)
     ? body.rounds
@@ -363,8 +389,11 @@ export async function POST(request: Request) {
         ? [
             db
               .prepare(`INSERT INTO rewards
-              (id, event_id, state, amount_luna, funding_tx_hash, rules_json, updated_at)
-              VALUES (?, ?, ?, ?, NULL, ?, ?)`)
+              (id, event_id, state, amount_luna, funding_amount_luna,
+                fee_reserve_luna, transaction_fee_luna, fee_slots,
+                vault_address, vault_network, funding_tx_hash, rules_json,
+                updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`)
               .bind(
                 rewardId,
                 eventId,
@@ -372,6 +401,12 @@ export async function POST(request: Request) {
                   ? 'funding_required'
                   : 'proposed',
                 rewardAmountLuna!.toString(),
+                vaultQuote?.fundingAmountLuna.toString() ?? null,
+                vaultQuote?.feeReserveLuna.toString() ?? null,
+                vaultQuote?.transactionFeeLuna.toString() ?? null,
+                vaultQuote?.feeSlots ?? null,
+                rewardCustody === 'mimo_vault' ? (vault?.address ?? null) : null,
+                rewardCustody === 'mimo_vault' ? (vault?.network ?? null) : null,
                 JSON.stringify({
                   type: rewardRule,
                   winners:

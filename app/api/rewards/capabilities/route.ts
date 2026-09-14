@@ -9,7 +9,11 @@ export async function GET() {
     {
       mimoFundingAvailable: Boolean(vault?.ready),
       automaticSettlementAvailable: Boolean(vault?.ready),
-      network: vault?.network ?? null,
+      network: vault?.ready ? vault.network : null,
+      maximumVaultRewardNim: vault
+        ? Number(vault.maxRewardLuna / BigInt(100_000))
+        : 200,
+      maximumAutomaticPayouts: vault?.maxPayouts ?? 100,
       mainnetCreatorPayoutsAvailable: mainnet.enabled,
       mainnetMaximumRewardNim: mainnet.maxRewardNim,
     },

@@ -25,7 +25,7 @@ Run this once on an iPhone-sized device and once on an Android-sized device insi
 
 ## NIM journey
 
-- Only run this section when the production capability screen reports genuine TestAlbatross funding as available.
+- Only run this section when the production capability endpoint reports genuine mainnet vault funding as available.
 - Fund the declared reward in Nimiq Pay and record the transaction hash.
 - Confirm that the room cannot start before funding is verified.
 - Complete the event with a wallet-verified eligible participant.

@@ -30,16 +30,29 @@ export async function POST(
     return json({ error: 'The Mimo vault is unavailable.' }, 503);
   const db = getD1();
   const reward = await db
-    .prepare(`SELECT id, state, amount_luna AS amountLuna, funding_tx_hash AS fundingTxHash
+    .prepare(`SELECT id, state, amount_luna AS amountLuna,
+      vault_address AS vaultAddress, vault_network AS vaultNetwork,
+      funding_tx_hash AS fundingTxHash
       FROM rewards WHERE event_id = ? LIMIT 1`)
     .bind(room.id)
     .first<{
       id: string;
       state: string;
       amountLuna: string;
+      vaultAddress: string | null;
+      vaultNetwork: string | null;
       fundingTxHash: string | null;
     }>();
   if (!reward) return json({ error: 'This room has no NIM reward.' }, 404);
+  if (
+    (reward.vaultAddress && reward.vaultAddress !== vault.address) ||
+    (reward.vaultNetwork && reward.vaultNetwork !== vault.network)
+  ) {
+    return json(
+      { error: 'This room belongs to a different reward vault.' },
+      409,
+    );
+  }
 
   try {
     if (reward.fundingTxHash && reward.fundingTxHash !== transactionHash) {

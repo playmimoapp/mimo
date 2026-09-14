@@ -516,7 +516,7 @@ export function getRoomConfig(value: string | null) {
           : ('skill' as const),
       rewardWinnerCount: Math.max(
         1,
-        Math.min(20, Math.floor(Number(config.rewardWinnerCount) || 1)),
+        Math.min(100, Math.floor(Number(config.rewardWinnerCount) || 1)),
       ),
       rewardSplit:
         config.rewardSplit === 'ranked'

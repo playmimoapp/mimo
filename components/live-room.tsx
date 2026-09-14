@@ -92,6 +92,17 @@ type HostAction =
   | 'pause_auto'
   | 'resume_auto';
 
+function nimiqProofUrl(
+  network: LiveRoomState['vaultNetwork'],
+  transactionHash: string,
+) {
+  const explorer =
+    network === 'MainAlbatross'
+      ? 'https://nimiq.watch'
+      : 'https://test.nimiq.watch';
+  return `${explorer}/#${transactionHash}`;
+}
+
 const CHOICE_TONES = [
   {
     surface: 'border-[#c9d2d9] bg-white',
@@ -1223,7 +1234,7 @@ function CancelledState({ room }: { room: LiveRoomState }) {
       <p className="mx-auto mt-3 max-w-md text-[#607486]">
         {vaultHadFunding
           ? room.refundState === 'confirmed'
-            ? 'The Nimiq network confirmed the automatic refund to the funding wallet.'
+            ? 'The Nimiq network confirmed the automatic refund to the funding wallet, minus the refund network fee.'
             : room.refundState === 'submitted'
               ? 'Mimo sent the refund back to the funding wallet. Network confirmation is pending.'
               : room.refundState === 'prepared'
@@ -1233,7 +1244,7 @@ function CancelledState({ room }: { room: LiveRoomState }) {
       </p>
       {room.refundTxHash && (
         <a
-          href={`https://test.nimiq.watch/#${room.refundTxHash}`}
+          href={nimiqProofUrl(room.vaultNetwork, room.refundTxHash)}
           target="_blank"
           rel="noreferrer"
           className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#2577de] underline decoration-[#9dc3ec] underline-offset-4"
@@ -1393,6 +1404,9 @@ function RewardFundingPanel({
       }
       const prepared = (await preparedResponse.json()) as {
         amountLuna: string;
+        rewardAmountLuna: string;
+        feeReserveLuna: string;
+        transactionFeeLuna: string;
         recipient: string;
         memo: string;
         network: 'MainAlbatross' | 'TestAlbatross';
@@ -1414,8 +1428,10 @@ function RewardFundingPanel({
         );
         return;
       }
+      const depositNim = Number(prepared.amountLuna) / 100_000;
+      const feeReserveNim = Number(prepared.feeReserveLuna) / 100_000;
       setDetail(
-        `Nimiq Pay will ask you to approve exactly ${room.rewardAmount} NIM.`,
+        `One approval deposits ${depositNim.toFixed(5).replace(/\.?0+$/, '')} NIM: ${room.rewardAmount} NIM reward + ${feeReserveNim.toFixed(5).replace(/\.?0+$/, '')} NIM payout-fee reserve. Nimiq Pay shows its funding fee before you confirm.`,
       );
       const payment = await nimiq.sendNim(
         prepared.recipient,
@@ -1529,7 +1545,9 @@ function RewardFundingPanel({
             <p className="mt-1 text-sm leading-5 text-[#675e3e]">
               {funded
                 ? 'The Nimiq network confirmed the vault payment. The reward rules are now fixed.'
-                : `One payment funds the event before play. Mimo will not start on a promise.`}
+                : room.rewardFundingAmount && room.rewardFeeReserve
+                  ? `One approval deposits ${room.rewardFundingAmount} NIM: ${room.rewardAmount} NIM reward + ${room.rewardFeeReserve} NIM payout-fee reserve. Nimiq Pay shows the final network fee before confirmation.`
+                  : 'One approval funds the reward and its payout fees before play. Mimo will not start on a promise.'}
             </p>
           </div>
         </div>
@@ -1542,7 +1560,7 @@ function RewardFundingPanel({
 
       {room.fundingTxHash && (
         <a
-          href={`https://test.nimiq.watch/#${room.fundingTxHash}`}
+          href={nimiqProofUrl(room.vaultNetwork, room.fundingTxHash)}
           target="_blank"
           rel="noreferrer"
           className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#746334] underline decoration-[#c7a838] underline-offset-4"
@@ -1566,7 +1584,9 @@ function RewardFundingPanel({
               disabled={busy || !room.vaultAddress}
               className="h-11 rounded-full bg-[#203752] px-5 font-extrabold"
             >
-              {busy ? 'Preparing…' : `Fund ${room.rewardAmount} NIM`}
+              {busy
+                ? 'Preparing…'
+                : `Approve ${room.rewardFundingAmount ?? room.rewardAmount} NIM`}
             </Button>
           )}
         </div>
@@ -2967,7 +2987,7 @@ function RewardSettlement({
         </div>
         {room.fundingTxHash && (
           <a
-            href={`https://test.nimiq.watch/#${room.fundingTxHash}`}
+            href={nimiqProofUrl(room.vaultNetwork, room.fundingTxHash)}
             target="_blank"
             rel="noreferrer"
             className="mt-4 flex items-center gap-1.5 border-t border-[#dfcb83] pt-4 font-mono text-xs font-bold text-[#675e3e] underline decoration-[#c7a838] underline-offset-4"
@@ -3020,7 +3040,7 @@ function RewardSettlement({
         )}
         {room.payoutTxHash && (
           <a
-            href={`${room.rewardCustody === 'mimo_vault' ? 'https://test.nimiq.watch' : 'https://nimiq.watch'}/#${room.payoutTxHash}`}
+            href={nimiqProofUrl(room.vaultNetwork, room.payoutTxHash)}
             target="_blank"
             rel="noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#675e3e] underline decoration-[#c7a838] underline-offset-4"

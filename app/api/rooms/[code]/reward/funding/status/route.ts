@@ -26,10 +26,32 @@ export async function POST(
   }
   const db = getD1();
   const reward = await db
-    .prepare(`SELECT id, state, funding_tx_hash AS fundingTxHash
+    .prepare(`SELECT id, state, amount_luna AS amountLuna,
+      funding_amount_luna AS fundingAmountLuna,
+      fee_slots AS feeSlots, vault_address AS vaultAddress,
+      vault_network AS vaultNetwork, funding_tx_hash AS fundingTxHash
       FROM rewards WHERE event_id = ? LIMIT 1`)
     .bind(room.id)
-    .first<{ id: string; state: string; fundingTxHash: string | null }>();
+    .first<{
+      id: string;
+      state: string;
+      amountLuna: string;
+      fundingAmountLuna: string | null;
+      feeSlots: number | null;
+      vaultAddress: string | null;
+      vaultNetwork: string | null;
+      fundingTxHash: string | null;
+    }>();
+  if (
+    reward &&
+    ((reward.vaultAddress && reward.vaultAddress !== vault.address) ||
+      (reward.vaultNetwork && reward.vaultNetwork !== vault.network))
+  ) {
+    return json(
+      { error: 'This room belongs to a different reward vault.' },
+      409,
+    );
+  }
   if (!reward?.fundingTxHash) {
     return json({ error: 'No funding transaction has been submitted.' }, 409);
   }
@@ -53,14 +75,11 @@ export async function POST(
       txHash: reward.fundingTxHash,
       address: vault.address,
       amountLuna:
+        reward.fundingAmountLuna ??
         (
-          await db
-            .prepare(
-              `SELECT amount_luna AS amountLuna FROM rewards WHERE id = ?`,
-            )
-            .bind(reward.id)
-            .first<{ amountLuna: string }>()
-        )?.amountLuna ?? '0',
+          BigInt(reward.amountLuna) +
+          vault.transactionFeeLuna * BigInt(reward.feeSlots ?? 1)
+        ).toString(),
       memo: fundingMemo(room.roomCode),
       networkId: vault.networkId,
     });

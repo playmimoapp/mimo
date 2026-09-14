@@ -28,7 +28,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Server-side Nimiq signature and address verification
 - Replay protection and one verified wallet per event
 - Creator-held NIM rewards with verified-winner payout preparation
-- Live fail-closed TestAlbatross vault with encrypted payout registration, automatic payout and refund logic
+- Fail-closed mainnet vault architecture with encrypted payout registration, automatic payouts, refunds and network-fee accounting
 - Funded Community Unlocks that split NIM exactly between verified finishers after a shared finale target is cleared
 - A visible locked room promise: creators can cancel before play, but cannot cancel or rewrite a room after it starts
 - Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
@@ -36,7 +36,7 @@ Online communities already run game nights, onboarding sessions, votes, launches
 - Wallet-owned Community Studio profiles with real pictures and durable public links
 - Permanent community pages that collect their live events in one place
 
-Mimo does not claim that proposed rewards are escrowed or funded. Creator-held mainnet rewards remain in the creator's wallet, require explicit Nimiq Pay approval after the verified result, and are independently checked on-chain against the winner, amount and room memo. This pilot is capped at 5 NIM per room. The production competition build also has a valueless TestAlbatross vault with automatic settlement enabled; automatic mainnet custody remains deliberately disabled until it has separate production key management and operational safeguards.
+Mimo does not claim that proposed rewards are escrowed or funded. Creator-held mainnet rewards remain in the creator's wallet, require explicit Nimiq Pay approval after the verified result, and are independently checked on-chain against the winner, amount and room memo. Rewards are capped at 200 NIM per room. Automatic mainnet custody is fail-closed: it appears only when a dedicated production vault, encryption key, RPC connection and explicit mainnet switch are all configured.
 
 ## Nimiq Pay flow
 
@@ -95,10 +95,9 @@ npm run lint
 npm run build
 npm run test:room -- http://localhost:3000
 npm run test:community -- http://localhost:3000
-node scripts/test-real-testnet-reward.mjs https://playmimo.xyz
 ```
 
-The local automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. The production testnet check performs real TestAlbatross funding and automatic payout transactions. Native Nimiq Pay dialogs must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
+The automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. Native Nimiq Pay dialogs and mainnet transaction states must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
 
 ## Discord app
 

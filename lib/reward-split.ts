@@ -12,7 +12,7 @@ export function getRewardShares(
   winnerCount: number,
   split: RewardSplit,
 ) {
-  const count = Math.max(1, Math.min(20, Math.floor(winnerCount) || 1));
+  const count = Math.max(1, Math.min(100, Math.floor(winnerCount) || 1));
   if (split === 'equal' || count === 1) {
     const base = totalLuna / BigInt(count);
     const remainder = totalLuna % BigInt(count);

@@ -2,8 +2,8 @@ import { Address } from '@nimiq/core';
 import { getRuntimeVariable } from '@/lib/runtime-env';
 import { rpcCall, verifyFundingTransaction } from '@/lib/reward-vault';
 
-const DEFAULT_MAX_REWARD_NIM = 5;
-const ABSOLUTE_MAX_REWARD_NIM = 25;
+const DEFAULT_MAX_REWARD_NIM = 200;
+const ABSOLUTE_MAX_REWARD_NIM = 200;
 
 export function getMainnetRewardConfig() {
   const requestedMaximum = Number(

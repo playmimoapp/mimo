@@ -10,6 +10,17 @@ import {
 import { getVaultConfig } from '@/lib/reward-vault';
 import { detectLivingRoomSignal } from '@/lib/living-room-engine';
 
+function formatLuna(value: string | null | undefined) {
+  if (!value) return null;
+  const luna = BigInt(value);
+  const whole = luna / BigInt(100_000);
+  const fraction = (luna % BigInt(100_000))
+    .toString()
+    .padStart(5, '0')
+    .replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ code: string }> },
@@ -102,6 +113,9 @@ export async function GET(
     db
       .prepare(
         `SELECT r.state, r.funding_tx_hash AS fundingTxHash, r.rules_json AS rulesJson,
+          r.funding_amount_luna AS fundingAmountLuna,
+          r.fee_reserve_luna AS feeReserveLuna,
+          r.vault_address AS vaultAddress, r.vault_network AS vaultNetwork,
           r.refund_state AS refundState, r.refund_tx_hash AS refundTxHash,
           p.tx_hash AS payoutTxHash
            FROM rewards r LEFT JOIN payouts p ON p.reward_id = r.id
@@ -110,6 +124,10 @@ export async function GET(
       .bind(room.id)
       .first<{
         state: string;
+        fundingAmountLuna: string | null;
+        feeReserveLuna: string | null;
+        vaultAddress: string | null;
+        vaultNetwork: 'MainAlbatross' | 'TestAlbatross' | null;
         fundingTxHash: string | null;
         payoutTxHash: string | null;
         refundState: string | null;
@@ -224,14 +242,22 @@ export async function GET(
     status: room.status,
     rewardMode: reward.mode,
     rewardAmount: reward.amount,
+    rewardFundingAmount: formatLuna(rewardRow?.fundingAmountLuna),
+    rewardFeeReserve: formatLuna(rewardRow?.feeReserveLuna),
     rewardRule,
     rewardWinnerCount: reward.rewardWinnerCount,
     rewardSplit: reward.rewardSplit,
     rewardState: rewardRow?.state ?? 'none',
     rewardCustody: reward.custody,
     fundingTxHash: rewardRow?.fundingTxHash ?? null,
-    vaultAddress: vault?.address ?? null,
-    vaultNetwork: vault?.network ?? null,
+    vaultAddress:
+      reward.custody === 'mimo_vault'
+        ? (rewardRow?.vaultAddress ?? vault?.address ?? null)
+        : null,
+    vaultNetwork:
+      reward.custody === 'mimo_vault'
+        ? (rewardRow?.vaultNetwork ?? vault?.network ?? null)
+        : null,
     payoutTxHash: rewardRow?.payoutTxHash ?? null,
     refundState: rewardRow?.refundState ?? null,
     refundTxHash: rewardRow?.refundTxHash ?? null,

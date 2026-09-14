@@ -32,6 +32,8 @@ export type LiveRoomState = {
   status: 'lobby' | 'live' | 'verifying' | 'complete' | 'cancelled';
   rewardMode: 'free' | 'nim';
   rewardAmount: string;
+  rewardFundingAmount: string | null;
+  rewardFeeReserve: string | null;
   rewardRule: 'skill' | 'community_unlock';
   rewardWinnerCount: number;
   rewardSplit: 'equal' | 'ranked';

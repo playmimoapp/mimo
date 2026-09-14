@@ -16,7 +16,14 @@ export type VaultConfig = {
   networkId: 24 | 5;
   rpcUrl: string;
   ready: boolean;
+  feePerByteLuna: bigint;
+  transactionFeeLuna: bigint;
+  maxRewardLuna: bigint;
+  maxPayouts: number;
 };
+
+const BASIC_SIGNED_TRANSACTION_BYTES = BigInt(139);
+const LUNA_PER_NIM = BigInt(100_000);
 
 export function normalizeNimiqAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -31,6 +38,38 @@ export async function getVaultConfig(): Promise<VaultConfig | null> {
     getRuntimeVariable('MIMO_VAULT_NETWORK') === 'TestAlbatross'
       ? 'TestAlbatross'
       : 'MainAlbatross';
+  const feePerByte = Number(
+    getRuntimeVariable('MIMO_VAULT_FEE_PER_BYTE_LUNA') || '1',
+  );
+  const feePerByteLuna = BigInt(
+    Number.isSafeInteger(feePerByte) && feePerByte > 0
+      ? Math.min(feePerByte, 1_000)
+      : 1,
+  );
+  const requestedMaximum = Number(
+    getRuntimeVariable('MIMO_MAINNET_VAULT_MAX_REWARD_NIM') || '200',
+  );
+  const maxRewardNim = Math.max(
+    1,
+    Math.min(
+      200,
+      Number.isFinite(requestedMaximum) ? Math.floor(requestedMaximum) : 200,
+    ),
+  );
+  const requestedPayouts = Number(
+    getRuntimeVariable('MIMO_MAINNET_VAULT_MAX_PAYOUTS') || '100',
+  );
+  const maxPayouts = Math.max(
+    1,
+    Math.min(
+      100,
+      Number.isFinite(requestedPayouts) ? Math.floor(requestedPayouts) : 100,
+    ),
+  );
+  const mainnetEnabled =
+    getRuntimeVariable('MIMO_MAINNET_VAULT_ENABLED') === 'true';
+  const testnetEnabled =
+    getRuntimeVariable('MIMO_TESTNET_VAULT_ENABLED') === 'true';
   try {
     const address = Address.fromUserFriendlyAddress(rawAddress);
     return {
@@ -39,16 +78,43 @@ export async function getVaultConfig(): Promise<VaultConfig | null> {
       networkId: network === 'TestAlbatross' ? 5 : 24,
       rpcUrl: getRuntimeVariable('NIMIQ_RPC_URL'),
       ready: Boolean(
-        network === 'TestAlbatross' &&
+        ((network === 'TestAlbatross' && testnetEnabled) ||
+          (network === 'MainAlbatross' && mainnetEnabled)) &&
         getRuntimeVariable('NIMIQ_RPC_URL') &&
         getRuntimeVariable('MIMO_VAULT_KEYPAIR_HEX') &&
         hasDataEncryptionKey(),
       ),
+      feePerByteLuna,
+      transactionFeeLuna: feePerByteLuna * BASIC_SIGNED_TRANSACTION_BYTES,
+      maxRewardLuna: BigInt(maxRewardNim) * LUNA_PER_NIM,
+      maxPayouts,
     };
   } catch {
     console.error('mimo_vault_invalid_address');
     return null;
   }
+}
+
+export function getVaultFundingQuote(
+  config: VaultConfig,
+  rewardAmountLuna: bigint,
+  requestedPayoutSlots: number,
+) {
+  if (rewardAmountLuna < BigInt(1) || rewardAmountLuna > config.maxRewardLuna) {
+    throw new Error('vault_reward_out_of_range');
+  }
+  const feeSlots = Math.max(
+    1,
+    Math.min(config.maxPayouts, Math.floor(requestedPayoutSlots) || 1),
+  );
+  const feeReserveLuna = config.transactionFeeLuna * BigInt(feeSlots);
+  return {
+    rewardAmountLuna,
+    transactionFeeLuna: config.transactionFeeLuna,
+    feeReserveLuna,
+    fundingAmountLuna: rewardAmountLuna + feeReserveLuna,
+    feeSlots,
+  };
 }
 
 export function fundingMemo(roomCode: string) {
@@ -173,7 +239,7 @@ function vaultAddressContext(eventId: string, purpose: 'payout' | 'refund') {
 }
 
 async function vaultKeyPair(config: VaultConfig) {
-  if (!config.ready || config.network !== 'TestAlbatross') {
+  if (!config.ready) {
     throw new Error('automatic_settlement_unavailable');
   }
   const raw = getRuntimeVariable('MIMO_VAULT_KEYPAIR_HEX');
@@ -191,6 +257,7 @@ async function prepareVaultTransaction(
   config: VaultConfig,
   recipientValue: string,
   amountLuna: string,
+  feeLuna: bigint = config.transactionFeeLuna,
 ) {
   const keyPair = await vaultKeyPair(config);
   const height = Number(await rpcCall(config.rpcUrl, 'getBlockNumber', []));
@@ -202,7 +269,7 @@ async function prepareVaultTransaction(
     keyPair.toAddress(),
     recipient,
     BigInt(amountLuna),
-    BigInt(0),
+    feeLuna,
     height,
     config.networkId,
   );
@@ -240,10 +307,28 @@ export async function getRewardEligibility(eventId: string) {
         .bind(eventId)
         .first<{ status: string }>(),
       db
-        .prepare(`SELECT id, amount_luna AS amountLuna, rules_json AS rulesJson
+        .prepare(`SELECT id, state, amount_luna AS amountLuna,
+          funding_amount_luna AS fundingAmountLuna,
+          fee_reserve_luna AS feeReserveLuna,
+          transaction_fee_luna AS transactionFeeLuna,
+          fee_slots AS feeSlots, vault_address AS vaultAddress,
+          vault_network AS vaultNetwork, funding_tx_hash AS fundingTxHash,
+          rules_json AS rulesJson
           FROM rewards WHERE event_id = ? LIMIT 1`)
         .bind(eventId)
-        .first<{ id: string; amountLuna: string; rulesJson: string }>(),
+        .first<{
+          id: string;
+          state: string;
+          amountLuna: string;
+          fundingAmountLuna: string | null;
+          feeReserveLuna: string | null;
+          transactionFeeLuna: string | null;
+          feeSlots: number | null;
+          vaultAddress: string | null;
+          vaultNetwork: string | null;
+          fundingTxHash: string | null;
+          rulesJson: string;
+        }>(),
       db
         .prepare(`SELECT COUNT(*) AS total FROM rounds WHERE event_id = ?`)
         .bind(eventId)
@@ -290,7 +375,7 @@ export async function getRewardEligibility(eventId: string) {
     if (rule === 'skill') {
       winnerCount = Math.max(
         1,
-        Math.min(20, Math.floor(Number(rules.winners) || 1)),
+        Math.min(100, Math.floor(Number(rules.winners) || 1)),
       );
       if (rules.distribution === 'ranked_split') split = 'ranked';
     }
@@ -379,12 +464,24 @@ export async function attemptAutomaticPayout(eventId: string) {
   const eligibility = await getRewardEligibility(eventId);
   const reward = eligibility.reward;
   if (!reward) return { state: 'not_ready' as const };
-  const rewardState = await db
-    .prepare(`SELECT state FROM rewards WHERE id = ? LIMIT 1`)
-    .bind(reward.id)
-    .first<{ state: string }>();
-  if (rewardState?.state === 'cancelled') {
+  if (
+    ![
+      'funded',
+      'event_live',
+      'results_under_verification',
+      'payout_submitted',
+      'partially_paid',
+      'payout_confirmed',
+    ].includes(reward.state) ||
+    !reward.fundingTxHash
+  ) {
     return { state: 'not_ready' as const };
+  }
+  if (
+    (reward.vaultAddress && reward.vaultAddress !== config.address) ||
+    (reward.vaultNetwork && reward.vaultNetwork !== config.network)
+  ) {
+    return { state: 'vault_mismatch' as const };
   }
   if (!eligibility.unlocked) {
     return {
@@ -397,8 +494,31 @@ export async function attemptAutomaticPayout(eventId: string) {
   if (eligibility.eligible.length < 1) {
     return { state: 'awaiting_verified_eligibility' as const };
   }
+  if (
+    reward.feeSlots !== null &&
+    eligibility.eligible.length > reward.feeSlots
+  ) {
+    return {
+      state: 'payout_limit_exceeded' as const,
+      eligible: eligibility.eligible.length,
+      limit: reward.feeSlots,
+    };
+  }
 
   const totalLuna = BigInt(reward.amountLuna);
+  if (totalLuna < BigInt(1) || totalLuna > config.maxRewardLuna) {
+    return { state: 'reward_limit_exceeded' as const };
+  }
+  if (eligibility.eligible.length > config.maxPayouts) {
+    return {
+      state: 'payout_limit_exceeded' as const,
+      eligible: eligibility.eligible.length,
+      limit: config.maxPayouts,
+    };
+  }
+  const transactionFeeLuna = BigInt(
+    reward.transactionFeeLuna ?? config.transactionFeeLuna.toString(),
+  );
   const shares = getRewardShares(
     totalLuna,
     eligibility.eligible.length,
@@ -487,6 +607,7 @@ export async function attemptAutomaticPayout(eventId: string) {
         config,
         recipient,
         amountLuna,
+        transactionFeeLuna,
       );
       const payoutId = payout?.id ?? crypto.randomUUID();
       await db
@@ -600,6 +721,9 @@ export async function attemptAutomaticRefund(eventId: string) {
   const db = getD1();
   const reward = await db
     .prepare(`SELECT r.id, r.state, r.amount_luna AS amountLuna,
+      r.funding_amount_luna AS fundingAmountLuna,
+      r.transaction_fee_luna AS transactionFeeLuna,
+      r.vault_address AS vaultAddress, r.vault_network AS vaultNetwork,
       r.funding_sender_ciphertext AS senderCiphertext,
       r.funding_sender_iv AS senderIv,
       r.refund_state AS refundState, r.refund_tx_hash AS refundTxHash,
@@ -611,6 +735,10 @@ export async function attemptAutomaticRefund(eventId: string) {
       id: string;
       state: string;
       amountLuna: string;
+      fundingAmountLuna: string | null;
+      transactionFeeLuna: string | null;
+      vaultAddress: string | null;
+      vaultNetwork: string | null;
       senderCiphertext: string | null;
       senderIv: string | null;
       refundState: string | null;
@@ -619,6 +747,12 @@ export async function attemptAutomaticRefund(eventId: string) {
     }>();
   if (!reward?.senderCiphertext || !reward.senderIv) {
     return { state: 'awaiting_funding_confirmation' as const };
+  }
+  if (
+    (reward.vaultAddress && reward.vaultAddress !== config.address) ||
+    (reward.vaultNetwork && reward.vaultNetwork !== config.network)
+  ) {
+    return { state: 'vault_mismatch' as const };
   }
   if (reward.refundState === 'confirmed') {
     return { state: 'confirmed' as const, txHash: reward.refundTxHash };
@@ -647,10 +781,20 @@ export async function attemptAutomaticRefund(eventId: string) {
       reward.senderIv,
       vaultAddressContext(eventId, 'refund'),
     );
+    const transactionFeeLuna = BigInt(
+      reward.transactionFeeLuna ?? config.transactionFeeLuna.toString(),
+    );
+    const refundableLuna =
+      BigInt(reward.fundingAmountLuna ?? reward.amountLuna) -
+      transactionFeeLuna;
+    if (refundableLuna < BigInt(1)) {
+      return { state: 'refund_too_small' as const };
+    }
     const prepared = await prepareVaultTransaction(
       config,
       sender,
-      reward.amountLuna,
+      refundableLuna.toString(),
+      transactionFeeLuna,
     );
     serialized = prepared.serialized;
     txHash = prepared.txHash;

@@ -2780,13 +2780,13 @@ function CreateEvent({
                 className="mt-4 flex w-full items-center justify-between gap-5 border-t border-[#d8e0e5] pt-4 text-left"
               >
                 <span>
-                  <strong className="block">
-                    Require a verified Nimiq wallet
-                  </strong>
+                  <strong className="block">Verified wallet entry</strong>
                   <span className="mt-1 block text-sm leading-5 text-[#617486]">
                     {event.rewardRule === 'community_unlock'
                       ? 'Required automatically for fair Community Unlock payouts.'
-                      : 'Players verify before entering. Signing moves no NIM.'}
+                      : event.walletRequired
+                        ? 'One verified wallet can enter once. Signing moves no NIM.'
+                        : 'Off. Guests can still verify voluntarily in the lobby.'}
                   </span>
                 </span>
                 <span

@@ -927,18 +927,18 @@ export function LiveRoom({
             />
           )}
 
-          {room.rewardMode === 'nim' &&
-            mode === 'player' &&
-            room.status === 'lobby' && (
-              <WalletProofCard
-                verified={Boolean(me?.walletVerified)}
-                automaticPayout={room.rewardCustody === 'mimo_vault'}
-                payoutReady={Boolean(me?.payoutAddressRegistered)}
-                canChange={room.status === 'lobby'}
-                state={walletProof}
-                onVerify={() => void verifyWallet()}
-              />
-            )}
+          {mode === 'player' && room.status === 'lobby' && (
+            <WalletProofCard
+              verified={Boolean(me?.walletVerified)}
+              automaticPayout={room.rewardCustody === 'mimo_vault'}
+              payoutReady={Boolean(me?.payoutAddressRegistered)}
+              canChange={room.status === 'lobby'}
+              required={room.walletRequired}
+              hasReward={room.rewardMode === 'nim'}
+              state={walletProof}
+              onVerify={() => void verifyWallet()}
+            />
+          )}
 
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -1250,6 +1250,8 @@ function WalletProofCard({
   automaticPayout,
   payoutReady,
   canChange,
+  required,
+  hasReward,
   state,
   onVerify,
 }: {
@@ -1257,14 +1259,41 @@ function WalletProofCard({
   automaticPayout: boolean;
   payoutReady: boolean;
   canChange: boolean;
+  required: boolean;
+  hasReward: boolean;
   state: WalletProofUi;
   onVerify: () => void;
 }) {
   const working = state.status === 'connecting' || state.status === 'signing';
   const done = verified || state.status === 'verified';
+  if (!done && !required && !hasReward) {
+    return (
+      <div className="mt-4 flex items-center justify-between gap-3 border-y border-[#cbd6dd] py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#eaf4ff] text-[#1f72d2]">
+            <ShieldCheck size={17} />
+          </span>
+          <span className="min-w-0">
+            <strong className="block text-sm">Get a verified badge</strong>
+            <span className="block text-xs text-[#607486]">
+              Optional Nimiq signature. No payment.
+            </span>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onVerify}
+          disabled={working}
+          className="min-h-10 shrink-0 px-2 text-sm font-extrabold text-[#1f72d2]"
+        >
+          {working ? 'Opening…' : 'Verify'}
+        </button>
+      </div>
+    );
+  }
   return (
     <div
-      className={`mt-5 flex flex-col gap-4 border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${done ? 'border-[#9cd6b2] bg-[#edf9f1]' : 'border-[#e2c564] bg-[#fff8dd]'}`}
+      className={`mt-5 flex flex-col gap-4 border-y px-1 py-4 sm:flex-row sm:items-center sm:justify-between ${done ? 'border-[#9cd6b2] bg-[#edf9f1]' : hasReward || required ? 'border-[#e2c564] bg-[#fff8dd]' : 'border-[#cbd6dd] bg-[#f4f7f9]'}`}
     >
       <div className="flex items-start gap-3">
         <span
@@ -1278,7 +1307,11 @@ function WalletProofCard({
               ? payoutReady
                 ? 'Wallet confirmed for play and rewards'
                 : 'Wallet ownership confirmed'
-              : 'Confirm your wallet for NIM rewards'}
+              : hasReward
+                ? 'Confirm your wallet for NIM rewards'
+                : required
+                  ? 'Verified wallet required'
+                  : 'Add a verified wallet badge'}
           </strong>
           <p className="mt-1 text-sm leading-5 text-[#5b7082]">
             {done
@@ -1286,7 +1319,9 @@ function WalletProofCard({
               : state.detail ||
                 (automaticPayout
                   ? 'Sign once to join with this wallet and receive any NIM you earn. This sends no money.'
-                  : 'Nimiq Pay will ask you to connect and sign. This sends no money.')}
+                  : required
+                    ? 'Nimiq Pay asks for one signature. One wallet can enter once, and no NIM moves.'
+                    : 'Optional: prove this is your wallet and receive a verified badge. No NIM moves.')}
           </p>
         </div>
       </div>

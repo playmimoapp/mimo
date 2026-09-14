@@ -109,9 +109,26 @@ export async function POST(
         503,
       );
     }
-    const encryptedPayout = roomConfig.mode === 'nim'
-      ? await encryptVaultAddress(room.id, 'payout', derivedAccount)
-      : null;
+    const encryptedPayout =
+      roomConfig.mode === 'nim'
+        ? await encryptVaultAddress(room.id, 'payout', derivedAccount)
+        : null;
+
+    const walletHash = await hashToken(derivedAccount);
+    const duplicateWallet = await getD1()
+      .prepare(`SELECT id FROM participants
+        WHERE event_id = ? AND wallet_hash = ? AND id <> ? LIMIT 1`)
+      .bind(room.id, walletHash, participant.id)
+      .first<{ id: string }>();
+    if (duplicateWallet) {
+      return json(
+        {
+          error:
+            'This wallet is already verified for another player in this room.',
+        },
+        409,
+      );
+    }
 
     const consumed = await getD1()
       .prepare(
@@ -124,7 +141,6 @@ export async function POST(
       return json({ error: 'That wallet request was already used.' }, 409);
     }
 
-    const walletHash = await hashToken(derivedAccount);
     const now = Date.now();
     await getD1().batch([
       getD1()

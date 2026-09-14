@@ -687,11 +687,14 @@ export function CommunityStudio({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <span className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
-            Community Studio
+            You
           </span>
           <h1 className="font-display mt-1 text-4xl font-extrabold tracking-[-.045em]">
-            Your rooms start here.
+            Your Mimo.
           </h1>
+          <p className="mt-2 text-sm font-semibold text-[#607486]">
+            One personal profile. Separate community spaces.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -715,13 +718,16 @@ export function CommunityStudio({
         </div>
       </div>
       {profile && (
-        <section className="mt-7 flex items-center gap-4 border-y border-[#d9e1e6] py-5">
+        <section className="mt-7 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 border-y border-[#d9e1e6] py-5 sm:flex sm:gap-4">
           <MimoProfileAvatar
             profile={profile.profileStyle}
             nickname={profile.displayName || 'Your Mimo'}
             className="h-14 w-14"
           />
           <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-black uppercase tracking-[.13em] text-[#1f72d2]">
+              Personal profile
+            </p>
             <p className="truncate text-lg font-extrabold">
               {profile.displayName || 'Create your Mimo profile'}
             </p>
@@ -736,10 +742,10 @@ export function CommunityStudio({
               {profile.x ? 'X connected' : 'X not connected'}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
+          <div className="col-span-2 flex min-w-0 items-center justify-between gap-4 border-t border-[#e3e8eb] pt-3 sm:ml-auto sm:border-0 sm:pt-0">
             <button
               onClick={() => setShowProfile((value) => !value)}
-              className="text-sm font-extrabold text-[#2577de]"
+              className="min-h-10 text-sm font-extrabold text-[#2577de]"
             >
               Profile & accounts
             </button>
@@ -758,26 +764,28 @@ export function CommunityStudio({
         </p>
       )}
       <Dialog open={showProfile} onOpenChange={setShowProfile}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-[26px] bg-[#f8f6f1] p-6 sm:max-w-2xl sm:p-8">
-          <DialogHeader>
+        <DialogContent className="bottom-0 left-0 top-auto flex max-h-[calc(100dvh-.75rem)] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-b-none rounded-t-[28px] bg-[#f8f6f1] p-0 sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[92dvh] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[26px]">
+          <DialogHeader className="shrink-0 border-b border-[#d9e1e6] px-5 pb-4 pt-6 sm:px-8 sm:pt-8">
             <DialogTitle className="font-display text-3xl font-extrabold tracking-[-.04em]">
-              Edit your profile
+              Personal profile
             </DialogTitle>
             <DialogDescription>
-              This identity follows you across Mimo.
+              Your name, Mimo character and connected accounts.
             </DialogDescription>
           </DialogHeader>
-          {profile && (
-            <ProfileEditor
-              profile={profile}
-              session={session}
-              standalone
-              onSaved={(saved) => {
-                setProfile(saved);
-                setShowProfile(false);
-              }}
-            />
-          )}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-8 sm:pb-8">
+            {profile && (
+              <ProfileEditor
+                profile={profile}
+                session={session}
+                standalone
+                onSaved={(saved) => {
+                  setProfile(saved);
+                  setShowProfile(false);
+                }}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
       <Dialog
@@ -917,6 +925,21 @@ export function CommunityStudio({
       )}
       <div className="mt-8">
         <section className="space-y-4">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.13em] text-[#19805b]">
+                Community spaces
+              </p>
+              <h2 className="mt-1 text-2xl font-extrabold tracking-[-.03em]">
+                Communities you manage
+              </h2>
+            </div>
+            {communities.length > 0 && (
+              <span className="pb-1 text-sm font-bold text-[#718295]">
+                {communities.length}
+              </span>
+            )}
+          </div>
           {communities.length ? (
             communities.map((community) => (
               <CommunityCard
@@ -1023,7 +1046,7 @@ export function CommunityStudio({
                 setSlug(value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
               }
               placeholder="nimiq-africa"
-              prefix="playmimo.app/c/"
+              prefix="playmimo.xyz/@"
             />
             <label className="mt-4 block text-sm font-extrabold">
               Short description
@@ -1320,19 +1343,19 @@ function ProfileEditor({
           className={
             onboarding
               ? 'mt-3 grid grid-cols-4 gap-2'
-              : 'mt-3 flex flex-wrap gap-3'
+              : 'mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4'
           }
         >
           {MIMO_PROFILES.map((choice) => (
             <button
               key={choice.id}
               onClick={() => setDraft({ ...draft, profileStyle: choice.id })}
-              className={`${onboarding ? 'flex min-w-0 flex-col justify-center rounded-2xl px-1 py-3 text-xs' : 'flex items-center gap-2 rounded-full px-3 py-2 text-sm'} border font-extrabold ${draft.profileStyle === choice.id ? 'border-[#2577de] bg-[#edf6ff] text-[#1f72d2]' : 'border-[#d3dde4] bg-white'}`}
+              className={`${onboarding ? 'flex min-w-0 flex-col justify-center rounded-2xl px-1 py-3 text-xs' : 'flex min-w-0 flex-col items-center justify-center rounded-2xl px-2 py-3 text-xs sm:text-sm'} border font-extrabold ${draft.profileStyle === choice.id ? 'border-[#2577de] bg-[#edf6ff] text-[#1f72d2]' : 'border-[#d3dde4] bg-white'}`}
             >
               <MimoProfileAvatar
                 profile={choice.id}
                 nickname={choice.label}
-                className={onboarding ? 'mb-1 h-12 w-12' : undefined}
+                className="mb-1 h-12 w-12"
               />
               {choice.label}
             </button>
@@ -1740,6 +1763,10 @@ function CommunityCard({
         <div className="flex items-start gap-4">
           <CommunityAvatar community={community} />
           <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[.12em] text-[#19805b]">
+              Community{' '}
+              <span className="capitalize">{community.role ?? 'host'}</span>
+            </p>
             <h2 className="truncate text-xl font-extrabold">
               {community.name}
             </h2>

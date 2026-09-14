@@ -140,22 +140,22 @@ export async function POST(request: Request) {
 
   const configuredOrigin = process.env.MIMO_PUBLIC_URL?.trim();
   const origin = configuredOrigin || new URL(request.url).origin;
+  const discordUserId =
+    typeof interaction.member?.user?.id === 'string'
+      ? interaction.member.user.id
+      : typeof interaction.user?.id === 'string'
+        ? interaction.user.id
+        : '';
+  const account = discordUserId
+    ? await getD1()
+        .prepare(`SELECT a.id, a.display_name AS displayName
+          FROM account_discord_connections d
+          JOIN accounts a ON a.id = d.account_id
+          WHERE d.discord_user_hash = ? LIMIT 1`)
+        .bind(await hashToken(discordUserId))
+        .first<{ id: string; displayName: string }>()
+    : null;
   if (subcommand(interaction) === 'points') {
-    const discordUserId =
-      typeof interaction.member?.user?.id === 'string'
-        ? interaction.member.user.id
-        : typeof interaction.user?.id === 'string'
-          ? interaction.user.id
-          : '';
-    const account = discordUserId
-      ? await getD1()
-          .prepare(`SELECT a.id, a.display_name AS displayName
-            FROM account_discord_connections d
-            JOIN accounts a ON a.id = d.account_id
-            WHERE d.discord_user_hash = ? LIMIT 1`)
-          .bind(await hashToken(discordUserId))
-          .first<{ id: string; displayName: string }>()
-      : null;
     if (!account) {
       return json({
         type: 4,
@@ -241,6 +241,45 @@ export async function POST(request: Request) {
     });
   }
 
+  if (!account) {
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        content:
+          'Connect Discord to your wallet-backed Mimo profile before creating for this community.',
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: 5,
+                label: 'Connect my profile',
+                url: `${origin}/?studio=1`,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  }
+  const creatorRole = await getD1()
+    .prepare(`SELECT role FROM community_members
+      WHERE community_id = ? AND account_id = ? LIMIT 1`)
+    .bind(connection.communityId, account.id)
+    .first<{ role: string }>();
+  if (!creatorRole || !['owner', 'admin'].includes(creatorRole.role)) {
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        content:
+          'Only a Mimo community owner or admin can create from Discord. Ask an admin to approve or build this room.',
+      },
+    });
+  }
+
   const topic = optionValue(interaction, 'topic').trim().slice(0, 300);
   const requestedKind = optionValue(interaction, 'format');
   const kind = [
@@ -264,6 +303,7 @@ export async function POST(request: Request) {
   const creatorUrl = new URL('/', origin);
   creatorUrl.searchParams.set('create', '1');
   creatorUrl.searchParams.set('source', 'discord');
+  creatorUrl.searchParams.set('autodraft', '1');
   creatorUrl.searchParams.set('kind', kind);
   creatorUrl.searchParams.set('topic', topic);
   creatorUrl.searchParams.set('communitySlug', connection.slug);
@@ -274,7 +314,26 @@ export async function POST(request: Request) {
     type: 4,
     data: {
       flags: 64,
-      content: `Your ${connection.name} draft is ready. A Mimo community host must sign in, review every moment and approve any funding before it goes live.`,
+      embeds: [
+        {
+          color: 0x2577de,
+          title: `Good brief, ${account.displayName}.`,
+          description: `I’ll turn “${topic}” into a complete, editable ${kind.replaceAll('_', ' ')} for ${connection.name}.`,
+          fields: [
+            {
+              name: 'What happens next',
+              value:
+                'Open the private draft. I’ll generate the rounds, answers and pacing there, then wait for your approval.',
+            },
+            {
+              name: 'Control',
+              value:
+                'Nothing publishes and no NIM moves until an owner or admin approves it.',
+            },
+          ],
+          footer: { text: 'Mimo · Community owner/admin verified' },
+        },
+      ],
       components: [
         {
           type: 1,
@@ -282,7 +341,7 @@ export async function POST(request: Request) {
             {
               type: 2,
               style: 5,
-              label: 'Build this Mimo',
+              label: 'Open the full draft',
               url: creatorUrl.toString(),
             },
           ],

@@ -24,14 +24,14 @@ const response = await fetch(endpoint, {
     {
       name: 'mimo',
       type: 1,
-      description: 'Create live events and check community points.',
+      description: 'Build community events and check verified season points.',
       integration_types: [0],
       contexts: [0],
       options: [
         {
           type: 1,
           name: 'create',
-          description: 'Prepare a live Mimo for this community.',
+          description: 'Ask Mimo to build an editable event for this community.',
           options: [
             {
               type: 3,

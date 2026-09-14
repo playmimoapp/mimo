@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
@@ -490,6 +490,7 @@ export function MimoApp() {
     difficulty: 'balanced',
     source: '',
   });
+  const [assistantAutoStart, setAssistantAutoStart] = useState(false);
   const [event, setEvent] = useState<EventDraft>({
     eventKind: 'game_night',
     title: '',
@@ -652,6 +653,7 @@ export function MimoApp() {
           community: linkedCommunityName,
           topic,
         }));
+        setAssistantAutoStart(query.get('autodraft') === '1');
         setScreen('create_assisted');
         return;
       }
@@ -1161,7 +1163,11 @@ export function MimoApp() {
             <AssistedCreate
               brief={assistantBrief}
               setBrief={setAssistantBrief}
-              makeDraft={() => void makeDraftWithMimo()}
+              makeDraft={() => {
+                setAssistantAutoStart(false);
+                void makeDraftWithMimo();
+              }}
+              autoStart={assistantAutoStart}
               manual={() => setScreen('create')}
               working={working}
               error={roomError}
@@ -1707,6 +1713,7 @@ function AssistedCreate({
   brief,
   setBrief,
   makeDraft,
+  autoStart,
   manual,
   working,
   error,
@@ -1714,10 +1721,12 @@ function AssistedCreate({
   brief: AssistantBrief;
   setBrief: (brief: AssistantBrief) => void;
   makeDraft: () => void;
+  autoStart?: boolean;
   manual: () => void;
   working: boolean;
   error: string;
 }) {
+  const autoStarted = useRef(false);
   const update = <K extends keyof AssistantBrief>(
     key: K,
     value: AssistantBrief[K],
@@ -1725,6 +1734,12 @@ function AssistedCreate({
   const ready =
     brief.topic.trim().length > 5 &&
     (brief.hostingMode === 'one_time' || brief.community.trim().length > 1);
+
+  useEffect(() => {
+    if (!autoStart || !ready || working || autoStarted.current) return;
+    autoStarted.current = true;
+    makeDraft();
+  }, [autoStart, makeDraft, ready, working]);
 
   return (
     <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_320px]">

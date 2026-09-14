@@ -9,9 +9,19 @@ const interfaceFont = Geist({
 const displayFont = Manrope({ variable: '--font-display', subsets: ['latin'] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://playmimo.xyz'),
   title: 'Mimo — Live community play, powered by Nimiq',
   description:
     'Turn passive audiences into players with live games, community votes, skill challenges and trusted NIM rewards inside Nimiq Pay.',
+  alternates: { canonical: '/' },
+  openGraph: {
+    title: 'Mimo — Live community play, powered by Nimiq',
+    description:
+      'Turn passive audiences into players with live games, community votes, skill challenges and trusted NIM rewards inside Nimiq Pay.',
+    url: '/',
+    siteName: 'Mimo',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({

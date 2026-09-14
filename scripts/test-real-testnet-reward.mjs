@@ -1,6 +1,6 @@
 import { Address, Hash, KeyPair, TransactionBuilder } from '@nimiq/core';
 
-const base = (process.argv[2] || 'https://mimo-flax.vercel.app').replace(
+const base = (process.argv[2] || 'https://playmimo.xyz').replace(
   /\/$/,
   '',
 );

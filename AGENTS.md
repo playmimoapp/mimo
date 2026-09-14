@@ -45,7 +45,8 @@ stale.
 
 ## Verified build status — 12 September 2026
 
-- Production: `https://mimo-flax.vercel.app`
+- Production: `https://playmimo.xyz` (the Vercel fallback remains available
+  while the custom domain finishes global DNS propagation)
 - Repository: `https://github.com/playmimoapp/mimo`
 - Real TestAlbatross funding, automatic payout and refund paths have completed
   successfully with transaction evidence. Mainnet remains a separate guarded

@@ -1,6 +1,6 @@
 # Nimiq Pay real-phone release check
 
-Use the production Mini App URL: `https://mimo-flax.vercel.app`.
+Use the production Mini App URL: `https://playmimo.xyz`.
 
 Run this once on an iPhone-sized device and once on an Android-sized device inside Nimiq Pay. Use two additional phones or browsers as participants.
 

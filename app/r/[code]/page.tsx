@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getRoom, getRoomConfig } from '@/lib/live-room';
 
-const publicOrigin = 'https://mimo-flax.vercel.app';
+const publicOrigin = 'https://playmimo.xyz';
 
 export async function generateMetadata({
   params,

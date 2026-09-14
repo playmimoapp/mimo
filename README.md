@@ -2,7 +2,7 @@
 
 **Live community games and interactive NIM rewards, built for Nimiq Pay.**
 
-[Open Mimo](https://mimo-flax.vercel.app)
+[Open Mimo](https://playmimo.xyz)
 
 Mimo gives communities one place to host a live game, vote together, react in real time, verify participation with Nimiq Pay, and reward declared skill with NIM.
 
@@ -95,7 +95,7 @@ npm run lint
 npm run build
 npm run test:room -- http://localhost:3000
 npm run test:community -- http://localhost:3000
-node scripts/test-real-testnet-reward.mjs https://mimo-flax.vercel.app
+node scripts/test-real-testnet-reward.mjs https://playmimo.xyz
 ```
 
 The local automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. The production testnet check performs real TestAlbatross funding and automatic payout transactions. Native Nimiq Pay dialogs must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
@@ -105,7 +105,7 @@ The local automated room check creates multiple test participants and verifies t
 Mimo accepts Discord HTTP interactions at:
 
 ```text
-https://mimo-flax.vercel.app/api/discord/interactions
+https://playmimo.xyz/api/discord/interactions
 ```
 
 Create the app in the Discord Developer Portal, set that Interactions Endpoint

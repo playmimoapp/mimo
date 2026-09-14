@@ -114,9 +114,9 @@ export async function GET(request: Request) {
     if (!userResult.response.ok || !userResult.body?.id) {
       throw new Error('guild_lookup_failed');
     }
+    const discordUserHash = await hashToken(userResult.body.id);
     if (profileRow) {
       const now = Date.now();
-      const discordUserHash = await hashToken(userResult.body.id);
       try {
         await getD1().batch([
           getD1()
@@ -154,6 +154,19 @@ export async function GET(request: Request) {
         );
       }
       return studioRedirect(origin, 'discordProfile', 'connected');
+    }
+
+    const existingIdentity = await getD1()
+      .prepare(`SELECT account_id AS accountId FROM account_discord_connections
+        WHERE discord_user_hash = ? LIMIT 1`)
+      .bind(discordUserHash)
+      .first<{ accountId: string }>();
+    if (existingIdentity && existingIdentity.accountId !== row!.accountId) {
+      return studioRedirect(
+        origin,
+        'discordError',
+        'That Discord identity is already linked to another Mimo profile.',
+      );
     }
 
     const guildResult = await discordApi<
@@ -200,6 +213,28 @@ export async function GET(request: Request) {
     const now = Date.now();
     await getD1().batch([
       getD1()
+        .prepare(`INSERT INTO account_discord_connections
+          (account_id, discord_user_hash, username, display_name, avatar_hash,
+            connected_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(account_id) DO UPDATE SET
+            discord_user_hash = excluded.discord_user_hash,
+            username = excluded.username, display_name = excluded.display_name,
+            avatar_hash = excluded.avatar_hash, updated_at = excluded.updated_at`)
+        .bind(
+          row!.accountId,
+          discordUserHash,
+          (userResult.body.username ?? 'Discord member').slice(0, 40),
+          (
+            userResult.body.global_name ||
+            userResult.body.username ||
+            'Discord member'
+          ).slice(0, 60),
+          userResult.body.avatar ?? null,
+          now,
+          now,
+        ),
+      getD1()
         .prepare(`UPDATE discord_link_sessions SET used_at = ?
           WHERE token_hash = ? AND used_at IS NULL`)
         .bind(now, stateHash),
@@ -213,7 +248,7 @@ export async function GET(request: Request) {
           row!.communityId,
           installed ? 'channel_picker' : 'guild_picker',
           JSON.stringify({
-            discordUserHash: await hashToken(userResult.body.id),
+            discordUserHash,
             guilds,
             selectedGuild: installed?.guild,
             channels: installed?.channels,

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
+  ArrowLeft,
   ArrowRight,
   Bell,
   CalendarDays,
@@ -16,6 +17,7 @@ import {
   Plus,
   Repeat2,
   Search,
+  Settings2,
   ShieldCheck,
   Trophy,
   Users,
@@ -221,6 +223,7 @@ export function CommunityStudio({
   const [showCreate, setShowCreate] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [activeCommunitySlug, setActiveCommunitySlug] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
   const [discordSetupToken, setDiscordSetupToken] = useState('');
   const [discordSetup, setDiscordSetup] = useState<DiscordSetup | null>(null);
@@ -925,45 +928,76 @@ export function CommunityStudio({
       )}
       <div className="mt-8">
         <section className="space-y-4">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[.13em] text-[#19805b]">
-                Community spaces
-              </p>
-              <h2 className="mt-1 text-2xl font-extrabold tracking-[-.03em]">
-                Communities you manage
-              </h2>
-            </div>
-            {communities.length > 0 && (
-              <span className="pb-1 text-sm font-bold text-[#718295]">
-                {communities.length}
-              </span>
-            )}
-          </div>
-          {communities.length ? (
-            communities.map((community) => (
-              <CommunityCard
-                key={community.slug}
-                community={community}
-                createEvent={createEvent}
-                session={session}
-                onSaved={() => void loadCommunities(session)}
-              />
-            ))
+          {activeCommunitySlug ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveCommunitySlug('')}
+                className="inline-flex min-h-11 items-center gap-2 text-sm font-extrabold text-[#53687c] transition hover:text-[#172f49]"
+              >
+                <ArrowLeft size={18} /> Back to your communities
+              </button>
+              {communities
+                .filter(
+                  (community) => community.slug === activeCommunitySlug,
+                )
+                .map((community) => (
+                  <CommunityCard
+                    key={community.slug}
+                    community={community}
+                    createEvent={createEvent}
+                    session={session}
+                    initiallyManaging
+                    onSaved={() => void loadCommunities(session)}
+                  />
+                ))}
+            </>
           ) : (
-            <div className="rounded-[24px] border border-dashed border-[#bdcbd7] bg-[#f0f6fb] p-6">
-              <Users className="text-[#2577de]" />
-              <h2 className="mt-3 text-xl font-extrabold">
-                Create your first community home
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-[#5a7084]">
-                Its name, picture and public link stay the same across every
-                event.
-              </p>
-            </div>
+            <>
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[.13em] text-[#19805b]">
+                    Community spaces
+                  </p>
+                  <h2 className="mt-1 text-xl font-extrabold tracking-[-.03em]">
+                    Communities you manage
+                  </h2>
+                </div>
+                {communities.length > 0 && (
+                  <span className="pb-1 text-sm font-bold text-[#718295]">
+                    {communities.length}
+                  </span>
+                )}
+              </div>
+              {communities.length ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {communities.map((community) => (
+                    <CommunityTile
+                      key={community.slug}
+                      community={community}
+                      onManage={() => {
+                        setActiveCommunitySlug(community.slug);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-[#bdcbd7] bg-[#f0f6fb] p-6">
+                  <Users className="text-[#2577de]" />
+                  <h2 className="mt-3 text-xl font-extrabold">
+                    Create your first community home
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-[#5a7084]">
+                    Its name, picture and public link stay the same across every
+                    event.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </section>
-        {followed.length > 0 && (
+        {!activeCommunitySlug && followed.length > 0 && (
           <section className="mt-10 border-t border-[#d9e1e6] pt-7">
             <p className="text-xs font-black uppercase tracking-[.13em] text-[#19805b]">
               Following
@@ -1466,10 +1500,44 @@ function Field({
   );
 }
 
+function CommunityTile({
+  community,
+  onManage,
+}: {
+  community: Community;
+  onManage: () => void;
+}) {
+  return (
+    <article className="flex min-w-0 items-center gap-3 rounded-[20px] border border-[#d9e1e6] bg-white p-3.5 shadow-[0_8px_24px_rgba(27,48,72,.045)]">
+      <CommunityAvatar community={community} size="small" />
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate font-extrabold text-[#172f49]">
+          {community.name}
+        </h3>
+        <p className="truncate text-xs font-bold text-[#718295]">
+          <span className="capitalize">{community.role ?? 'host'}</span>
+          {community.nextEventAt
+            ? ` / Next ${new Date(community.nextEventAt).toLocaleDateString()}`
+            : ' / No event scheduled'}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onManage}
+        aria-label={`Open settings for ${community.name}`}
+        className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-[#eaf4ff] px-3 text-xs font-extrabold text-[#1f72d2] transition hover:bg-[#dceeff]"
+      >
+        <Settings2 size={15} /> Settings
+      </button>
+    </article>
+  );
+}
+
 function CommunityCard({
   community,
   createEvent,
   session,
+  initiallyManaging = false,
   onSaved,
 }: {
   community: Community;
@@ -1480,6 +1548,7 @@ function CommunityCard({
     nextEventAt: number | null;
   }) => void;
   session: string;
+  initiallyManaging?: boolean;
   onSaved: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -1488,7 +1557,7 @@ function CommunityCard({
   const [scheduleError, setScheduleError] = useState('');
   const [editingSeason, setEditingSeason] = useState(false);
   const [seasonName, setSeasonName] = useState(community.seasonName);
-  const [managing, setManaging] = useState(false);
+  const [managing, setManaging] = useState(initiallyManaging);
   const existingSocial = communityPrimarySocial(community);
   const [socialPlatform, setSocialPlatform] = useState<CommunitySocial>(
     existingSocial?.id ?? 'discord',
@@ -1512,6 +1581,36 @@ function CommunityCard({
     return toLocalDateTime(community.nextEventAt ?? defaultTime.getTime());
   });
   const path = `/?community=${community.slug}`;
+  useEffect(() => {
+    if (!initiallyManaging || community.role === 'host') return;
+    const controller = new AbortController();
+    void fetch(`/api/communities/${community.slug}?manage=1`, {
+      headers: { 'x-mimo-account': session },
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as {
+          events?: CommunityEventSummary[];
+          error?: string;
+        };
+        if (!response.ok || !body.events)
+          throw new Error(body.error || 'Event history could not load.');
+        setManagedEvents(
+          body.events.filter((event) => event.status === 'complete'),
+        );
+        setHistoryLoaded(true);
+      })
+      .catch((cause) => {
+        if (controller.signal.aborted) return;
+        setScheduleError(
+          cause instanceof Error
+            ? cause.message
+            : 'Event history could not load.',
+        );
+      });
+    return () => controller.abort();
+  }, [community.role, community.slug, initiallyManaging, session]);
   async function copyLink() {
     await navigator.clipboard.writeText(`${window.location.origin}${path}`);
     setCopied(true);
@@ -1756,10 +1855,17 @@ function CommunityCard({
   return (
     <motion.article
       layout
-      className="overflow-hidden rounded-[26px] border border-[#d9dee3] bg-white shadow-[0_18px_50px_rgba(26,47,80,.07)]"
+      className={
+        initiallyManaging
+          ? 'overflow-hidden border-t border-[#d9e1e6] bg-transparent'
+          : 'overflow-hidden rounded-[26px] border border-[#d9dee3] bg-white shadow-[0_18px_50px_rgba(26,47,80,.07)]'
+      }
     >
-      <div className="h-2" style={{ background: community.accentColor }} />
-      <div className="p-5 sm:p-6">
+      <div
+        className={initiallyManaging ? 'h-1' : 'h-2'}
+        style={{ background: community.accentColor }}
+      />
+      <div className={initiallyManaging ? 'py-5 sm:py-6' : 'p-5 sm:p-6'}>
         <div className="flex items-start gap-4">
           <CommunityAvatar community={community} />
           <div className="min-w-0">
@@ -1905,12 +2011,15 @@ function CommunityCard({
           >
             View page <ArrowRight size={16} />
           </a>
-          <button
-            onClick={() => void openSettings()}
-            className="inline-flex h-11 items-center px-3 text-sm font-extrabold text-[#53687c]"
-          >
-            {managing ? 'Close settings' : 'Community settings'}
-          </button>
+          {!initiallyManaging && (
+            <button
+              onClick={() => void openSettings()}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-[#eaf4ff] px-4 text-sm font-extrabold text-[#1f72d2]"
+            >
+              <Settings2 size={16} />
+              {managing ? 'Close settings' : 'Community settings'}
+            </button>
+          )}
         </div>
         {managing && (
           <div className="mt-5 border-t border-[#dfe5e9] pt-5">

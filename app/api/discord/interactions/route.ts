@@ -14,8 +14,10 @@ type DiscordInteraction = {
   id?: unknown;
   type?: unknown;
   guild_id?: unknown;
-  user?: { id?: unknown };
-  member?: { user?: { id?: unknown } };
+  user?: { id?: unknown; username?: unknown; global_name?: unknown };
+  member?: {
+    user?: { id?: unknown; username?: unknown; global_name?: unknown };
+  };
   data?: { name?: unknown; options?: DiscordOption[] };
 };
 
@@ -114,7 +116,8 @@ export async function POST(request: Request) {
 
   const connection = await getD1()
     .prepare(`SELECT c.id AS communityId, c.slug, c.name, c.recurrence,
-      c.season_name AS seasonName, c.season_started_at AS seasonStartedAt
+      c.season_name AS seasonName, c.season_started_at AS seasonStartedAt,
+      dc.connected_by_account_id AS connectedByAccountId
       FROM discord_community_connections dc
       JOIN communities c ON c.id = dc.community_id
       WHERE dc.guild_id = ? LIMIT 1`)
@@ -126,6 +129,7 @@ export async function POST(request: Request) {
       recurrence: string;
       seasonName: string;
       seasonStartedAt: number;
+      connectedByAccountId: string;
     }>();
   if (!connection) {
     return json({
@@ -140,21 +144,74 @@ export async function POST(request: Request) {
 
   const configuredOrigin = process.env.MIMO_PUBLIC_URL?.trim();
   const origin = configuredOrigin || new URL(request.url).origin;
+  const discordActor = interaction.member?.user ?? interaction.user;
   const discordUserId =
-    typeof interaction.member?.user?.id === 'string'
-      ? interaction.member.user.id
-      : typeof interaction.user?.id === 'string'
-        ? interaction.user.id
-        : '';
-  const account = discordUserId
+    typeof discordActor?.id === 'string' ? discordActor.id : '';
+  const discordUserHash = discordUserId
+    ? await hashToken(discordUserId)
+    : '';
+  let account = discordUserHash
     ? await getD1()
         .prepare(`SELECT a.id, a.display_name AS displayName
           FROM account_discord_connections d
           JOIN accounts a ON a.id = d.account_id
           WHERE d.discord_user_hash = ? LIMIT 1`)
-        .bind(await hashToken(discordUserId))
+        .bind(discordUserHash)
         .first<{ id: string; displayName: string }>()
     : null;
+  if (!account && discordUserHash) {
+    const previousLinks = await getD1()
+      .prepare(`SELECT payload_json AS payloadJson FROM discord_link_sessions
+        WHERE community_id = ? AND account_id = ?
+        ORDER BY created_at DESC LIMIT 10`)
+      .bind(connection.communityId, connection.connectedByAccountId)
+      .all<{ payloadJson: string }>();
+    const verifiedPreviousLink = previousLinks.results.some((link) => {
+      try {
+        const payload = JSON.parse(link.payloadJson) as {
+          discordUserHash?: unknown;
+        };
+        return payload.discordUserHash === discordUserHash;
+      } catch {
+        return false;
+      }
+    });
+    if (verifiedPreviousLink) {
+      const recovered = await getD1()
+        .prepare(`SELECT id, display_name AS displayName FROM accounts
+          WHERE id = ? LIMIT 1`)
+        .bind(connection.connectedByAccountId)
+        .first<{ id: string; displayName: string }>();
+      if (recovered) {
+        const now = Date.now();
+        await getD1()
+          .prepare(`INSERT INTO account_discord_connections
+            (account_id, discord_user_hash, username, display_name, avatar_hash,
+              connected_at, updated_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+              discord_user_hash = excluded.discord_user_hash,
+              username = excluded.username, display_name = excluded.display_name,
+              updated_at = excluded.updated_at`)
+          .bind(
+            recovered.id,
+            discordUserHash,
+            typeof discordActor?.username === 'string'
+              ? discordActor.username.slice(0, 40)
+              : 'Discord member',
+            typeof discordActor?.global_name === 'string'
+              ? discordActor.global_name.slice(0, 60)
+              : typeof discordActor?.username === 'string'
+                ? discordActor.username.slice(0, 60)
+                : 'Discord member',
+            now,
+            now,
+          )
+          .run();
+        account = recovered;
+      }
+    }
+  }
   if (subcommand(interaction) === 'points') {
     if (!account) {
       return json({

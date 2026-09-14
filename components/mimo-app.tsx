@@ -1328,21 +1328,22 @@ function ProductHome({
     <section className="mobile-page home-page mx-auto grid max-w-[1240px] gap-6 px-5 pb-8 pt-2 sm:px-8 lg:min-h-[calc(100dvh-72px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:items-center lg:gap-12 lg:py-8 xl:gap-16">
       <div className="order-2 pb-3 lg:order-1">
         <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
-          Live inside Nimiq Pay
+          AI host · powered by Nimiq Pay
         </p>
         <h1 className="mobile-flow-title font-display mt-3 max-w-[650px] text-[clamp(3rem,8vw,6.5rem)] font-extrabold leading-[.9] tracking-[-.066em] lg:text-[clamp(4rem,5vw,5rem)]">
-          Bring your community. Mimo makes it live.
+          What if your community had its own AI host?
         </h1>
         <p className="mt-4 max-w-xl text-base font-medium leading-7 text-[#53697c] sm:text-lg">
-          Turn passive audiences into players with live games, community votes
-          and skill challenges—then reward meaningful participation in NIM.
+          Describe the gathering. Mimo helps create it, runs every player live
+          and uses Nimiq Pay to verify participation and reward earned results
+          in NIM.
         </p>
         <div className="mt-6 grid gap-3 sm:flex sm:items-center">
           <Button
             onClick={host}
             className="mobile-primary h-14 rounded-full bg-[#1f72d2] px-7 text-base font-extrabold"
           >
-            Create a live room <ArrowRight />
+            Create with Mimo <ArrowRight />
           </Button>
           <div className="flex h-14 overflow-hidden rounded-[18px] border border-[#bdc9d1] bg-white sm:rounded-full">
             <input
@@ -1375,13 +1376,14 @@ function ProductHome({
           </p>
         )}
         <p className="mt-5 flex items-center gap-2 text-sm font-bold leading-5 text-[#627687]">
-          <ShieldCheck className="shrink-0" size={17} /> Join free rooms in
-          seconds. Nimiq Pay confirms wallets and funded rewards when needed.
+          <ShieldCheck className="shrink-0" size={17} /> Free rooms open in
+          seconds. Rewarded rooms use Nimiq Pay to verify players and funded
+          NIM.
         </p>
       </div>
       <div className="mimo-stage relative order-1 mx-auto h-[250px] w-full max-w-[560px] overflow-hidden rounded-[28px] bg-[#e8f3ff] sm:h-[440px] sm:rounded-[36px] lg:order-2 lg:h-[500px] xl:h-[520px]">
         <div className="absolute left-4 top-4 z-20 rounded-full bg-white px-3 py-2 text-xs font-extrabold text-[#31506b] shadow-[0_6px_20px_rgba(39,77,111,.1)] sm:left-6 sm:top-6">
-          MIMO IS READY
+          YOUR AI HOST
         </div>
         <motion.div
           className="absolute -bottom-7 left-1/2 z-10 w-[230px] -translate-x-1/2 sm:-bottom-10 sm:w-[370px] lg:bottom-0 lg:w-[350px] xl:w-[380px]"

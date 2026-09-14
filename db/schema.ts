@@ -129,6 +129,68 @@ export const discordCommunityConnections = sqliteTable(
   (t) => [uniqueIndex('idx_discord_connections_guild').on(t.guildId)],
 );
 
+export const discordProfileLinkSessions = sqliteTable(
+  'discord_profile_link_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    payloadJson: text('payload_json').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    usedAt: integer('used_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_discord_profile_link_expiry').on(t.expiresAt)],
+);
+
+export const accountDiscordConnections = sqliteTable(
+  'account_discord_connections',
+  {
+    accountId: text('account_id')
+      .primaryKey()
+      .references(() => accounts.id),
+    discordUserHash: text('discord_user_hash').notNull(),
+    username: text('username').notNull(),
+    displayName: text('display_name').notNull(),
+    avatarHash: text('avatar_hash'),
+    connectedAt: integer('connected_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [uniqueIndex('idx_account_discord_user').on(t.discordUserHash)],
+);
+
+export const xProfileLinkSessions = sqliteTable(
+  'x_profile_link_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    payloadJson: text('payload_json').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    usedAt: integer('used_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_x_profile_link_expiry').on(t.expiresAt)],
+);
+
+export const accountXConnections = sqliteTable(
+  'account_x_connections',
+  {
+    accountId: text('account_id')
+      .primaryKey()
+      .references(() => accounts.id),
+    xUserHash: text('x_user_hash').notNull(),
+    username: text('username').notNull(),
+    displayName: text('display_name').notNull(),
+    profileImageUrl: text('profile_image_url'),
+    connectedAt: integer('connected_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [uniqueIndex('idx_account_x_user').on(t.xUserHash)],
+);
+
 export const events = sqliteTable(
   'events',
   {
@@ -210,11 +272,7 @@ export const eventMetricCounters = sqliteTable(
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
-    uniqueIndex('idx_event_metric_key').on(
-      t.eventId,
-      t.metric,
-      t.reasonCode,
-    ),
+    uniqueIndex('idx_event_metric_key').on(t.eventId, t.metric, t.reasonCode),
   ],
 );
 

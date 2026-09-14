@@ -4,11 +4,18 @@ import { hashToken, json } from '@/lib/live-room';
 
 export const runtime = 'nodejs';
 
-type DiscordOption = { name?: unknown; value?: unknown };
+type DiscordOption = {
+  name?: unknown;
+  type?: unknown;
+  value?: unknown;
+  options?: DiscordOption[];
+};
 type DiscordInteraction = {
   id?: unknown;
   type?: unknown;
   guild_id?: unknown;
+  user?: { id?: unknown };
+  member?: { user?: { id?: unknown } };
   data?: { name?: unknown; options?: DiscordOption[] };
 };
 
@@ -50,8 +57,17 @@ function verifyDiscordSignature(
 }
 
 function optionValue(interaction: DiscordInteraction, name: string) {
-  const option = interaction.data?.options?.find((item) => item.name === name);
+  const root = interaction.data?.options ?? [];
+  const options = root[0]?.type === 1 ? (root[0].options ?? []) : root;
+  const option = options.find((item) => item.name === name);
   return typeof option?.value === 'string' ? option.value : '';
+}
+
+function subcommand(interaction: DiscordInteraction) {
+  const first = interaction.data?.options?.[0];
+  return first?.type === 1 && typeof first.name === 'string'
+    ? first.name
+    : 'create';
 }
 
 export async function POST(request: Request) {
@@ -96,6 +112,135 @@ export async function POST(request: Request) {
     .bind(await hashToken(interactionId), Date.now())
     .run();
 
+  const connection = await getD1()
+    .prepare(`SELECT c.id AS communityId, c.slug, c.name, c.recurrence,
+      c.season_name AS seasonName, c.season_started_at AS seasonStartedAt
+      FROM discord_community_connections dc
+      JOIN communities c ON c.id = dc.community_id
+      WHERE dc.guild_id = ? LIMIT 1`)
+    .bind(guildId)
+    .first<{
+      communityId: string;
+      slug: string;
+      name: string;
+      recurrence: string;
+      seasonName: string;
+      seasonStartedAt: number;
+    }>();
+  if (!connection) {
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        content:
+          'This server is not linked to a Mimo community yet. An owner or admin can connect it from Community settings in Mimo.',
+      },
+    });
+  }
+
+  const configuredOrigin = process.env.MIMO_PUBLIC_URL?.trim();
+  const origin = configuredOrigin || new URL(request.url).origin;
+  if (subcommand(interaction) === 'points') {
+    const discordUserId =
+      typeof interaction.member?.user?.id === 'string'
+        ? interaction.member.user.id
+        : typeof interaction.user?.id === 'string'
+          ? interaction.user.id
+          : '';
+    const account = discordUserId
+      ? await getD1()
+          .prepare(`SELECT a.id, a.display_name AS displayName
+            FROM account_discord_connections d
+            JOIN accounts a ON a.id = d.account_id
+            WHERE d.discord_user_hash = ? LIMIT 1`)
+          .bind(await hashToken(discordUserId))
+          .first<{ id: string; displayName: string }>()
+      : null;
+    if (!account) {
+      return json({
+        type: 4,
+        data: {
+          flags: 64,
+          content:
+            'Link Discord to your wallet-backed Mimo profile first. Mimo never receives permission to read your messages.',
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: 5,
+                  label: 'Link my Mimo profile',
+                  url: `${origin}/?studio=1`,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+    const standings = await getD1()
+      .prepare(`SELECT a.id AS accountId, a.display_name AS displayName,
+        COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN p.score ELSE 0 END), 0) AS points,
+        COUNT(DISTINCT e.id) AS eventsPlayed,
+        SUM(CASE WHEN p.score = (
+          SELECT MAX(p2.score) FROM participants p2 WHERE p2.event_id = e.id
+        ) THEN 1 ELSE 0 END) AS wins
+        FROM accounts a
+        LEFT JOIN participants p ON p.wallet_hash = a.wallet_hash
+        LEFT JOIN events e ON e.id = p.event_id
+          AND e.community_id = ? AND e.status = 'complete'
+          AND COALESCE(e.completed_at, e.created_at) >= ?
+        GROUP BY a.id
+        HAVING points > 0 OR a.id = ?
+        ORDER BY points DESC, wins DESC, eventsPlayed DESC, a.updated_at ASC`)
+      .bind(connection.communityId, connection.seasonStartedAt, account.id)
+      .all<{
+        accountId: string;
+        displayName: string;
+        points: number;
+        eventsPlayed: number;
+        wins: number;
+      }>();
+    const rankIndex = standings.results.findIndex(
+      (entry) => entry.accountId === account.id,
+    );
+    const result = standings.results[rankIndex] ?? {
+      points: 0,
+      eventsPlayed: 0,
+      wins: 0,
+    };
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        embeds: [
+          {
+            color: 0x2577de,
+            title: `${account.displayName} in ${connection.seasonName}`,
+            description: `${Number(result.points).toLocaleString()} community points`,
+            fields: [
+              {
+                name: 'Rank',
+                value: rankIndex >= 0 ? `#${rankIndex + 1}` : 'Not ranked yet',
+                inline: true,
+              },
+              {
+                name: 'Events',
+                value: String(result.eventsPlayed),
+                inline: true,
+              },
+              { name: 'Wins', value: String(result.wins), inline: true },
+            ],
+            footer: {
+              text: `${connection.name} · Verified through your Mimo profile`,
+            },
+          },
+        ],
+      },
+    });
+  }
+
   const topic = optionValue(interaction, 'topic').trim().slice(0, 300);
   const requestedKind = optionValue(interaction, 'format');
   const kind = [
@@ -116,27 +261,6 @@ export async function POST(request: Request) {
       },
     });
   }
-
-  const connection = await getD1()
-    .prepare(`SELECT c.slug, c.name, c.recurrence
-      FROM discord_community_connections dc
-      JOIN communities c ON c.id = dc.community_id
-      WHERE dc.guild_id = ? LIMIT 1`)
-    .bind(guildId)
-    .first<{ slug: string; name: string; recurrence: string }>();
-  if (!connection) {
-    return json({
-      type: 4,
-      data: {
-        flags: 64,
-        content:
-          'This server is not linked to a Mimo community yet. An owner or admin can connect it from Community settings in Mimo.',
-      },
-    });
-  }
-
-  const configuredOrigin = process.env.MIMO_PUBLIC_URL?.trim();
-  const origin = configuredOrigin || new URL(request.url).origin;
   const creatorUrl = new URL('/', origin);
   creatorUrl.searchParams.set('create', '1');
   creatorUrl.searchParams.set('source', 'discord');

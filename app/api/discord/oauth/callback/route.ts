@@ -14,6 +14,11 @@ type LinkRow = {
   payloadJson: string;
   expiresAt: number;
 };
+type ProfileLinkRow = {
+  accountId: string;
+  payloadJson: string;
+  expiresAt: number;
+};
 
 function studioRedirect(origin: string, key: string, value: string) {
   const target = new URL('/', origin);
@@ -42,7 +47,16 @@ export async function GET(request: Request) {
       AND used_at IS NULL LIMIT 1`)
     .bind(stateHash)
     .first<LinkRow>();
-  if (!row || row.expiresAt < Date.now()) {
+  const profileRow = row
+    ? null
+    : await getD1()
+        .prepare(`SELECT account_id AS accountId, payload_json AS payloadJson,
+          expires_at AS expiresAt FROM discord_profile_link_sessions
+          WHERE token_hash = ? AND used_at IS NULL LIMIT 1`)
+        .bind(stateHash)
+        .first<ProfileLinkRow>();
+  const activeRow = row ?? profileRow;
+  if (!activeRow || activeRow.expiresAt < Date.now()) {
     return studioRedirect(
       fallbackOrigin,
       'discordError',
@@ -51,8 +65,9 @@ export async function GET(request: Request) {
   }
   let redirectUri = '';
   try {
-    const saved = (JSON.parse(row.payloadJson) as { redirectUri?: unknown })
-      .redirectUri;
+    const saved = (
+      JSON.parse(activeRow.payloadJson) as { redirectUri?: unknown }
+    ).redirectUri;
     redirectUri = typeof saved === 'string' ? saved : '';
   } catch {
     // Rejected below.
@@ -88,24 +103,67 @@ export async function GET(request: Request) {
       throw new Error('token_exchange_failed');
     }
     const authorization = `${token.token_type || 'Bearer'} ${token.access_token}`;
-    const [userResult, guildResult] = await Promise.all([
-      discordApi<{ id?: string }>('/users/@me', authorization),
-      discordApi<
-        Array<{
-          id?: string;
-          name?: string;
-          icon?: string | null;
-          owner?: boolean;
-          permissions?: string;
-        }>
-      >('/users/@me/guilds', authorization),
-    ]);
-    if (
-      !userResult.response.ok ||
-      !userResult.body?.id ||
-      !guildResult.response.ok ||
-      !Array.isArray(guildResult.body)
-    ) {
+    const userResult = await discordApi<{
+      id?: string;
+      username?: string;
+      global_name?: string | null;
+      avatar?: string | null;
+    }>('/users/@me', authorization);
+    if (!userResult.response.ok || !userResult.body?.id) {
+      throw new Error('guild_lookup_failed');
+    }
+    if (profileRow) {
+      const now = Date.now();
+      const discordUserHash = await hashToken(userResult.body.id);
+      try {
+        await getD1().batch([
+          getD1()
+            .prepare(`INSERT INTO account_discord_connections
+              (account_id, discord_user_hash, username, display_name, avatar_hash,
+                connected_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(account_id) DO UPDATE SET
+                discord_user_hash = excluded.discord_user_hash,
+                username = excluded.username, display_name = excluded.display_name,
+                avatar_hash = excluded.avatar_hash, updated_at = excluded.updated_at`)
+            .bind(
+              profileRow.accountId,
+              discordUserHash,
+              (userResult.body.username ?? 'Discord member').slice(0, 40),
+              (
+                userResult.body.global_name ||
+                userResult.body.username ||
+                'Discord member'
+              ).slice(0, 60),
+              userResult.body.avatar ?? null,
+              now,
+              now,
+            ),
+          getD1()
+            .prepare(`UPDATE discord_profile_link_sessions SET used_at = ?
+              WHERE token_hash = ? AND used_at IS NULL`)
+            .bind(now, stateHash),
+        ]);
+      } catch {
+        return studioRedirect(
+          origin,
+          'discordError',
+          'That Discord account is already linked to another Mimo profile.',
+        );
+      }
+      return studioRedirect(origin, 'discordProfile', 'connected');
+    }
+
+    const guildResult = await discordApi<
+      Array<{
+        id?: string;
+        name?: string;
+        icon?: string | null;
+        owner?: boolean;
+        permissions?: string;
+      }>
+    >('/users/@me/guilds', authorization);
+    if (!guildResult.response.ok || !Array.isArray(guildResult.body)) {
       throw new Error('guild_lookup_failed');
     }
     const guilds = guildResult.body
@@ -135,8 +193,8 @@ export async function GET(request: Request) {
           VALUES (?, ?, ?, 'guild_picker', ?, ?, NULL, ?)`)
         .bind(
           await hashToken(setupToken),
-          row.accountId,
-          row.communityId,
+          row!.accountId,
+          row!.communityId,
           JSON.stringify({
             discordUserHash: await hashToken(userResult.body.id),
             guilds,

@@ -59,6 +59,8 @@ type PersonalProfile = {
   handle: string | null;
   bio: string;
   profileStyle: MimoProfileStyle;
+  discord: { username: string; displayName: string } | null;
+  x: { username: string; displayName: string } | null;
 };
 
 type MimoNotification = {
@@ -327,17 +329,25 @@ export function CommunityStudio({
     const current = new URL(window.location.href);
     const setupToken = current.searchParams.get('discordSetup') ?? '';
     const setupError = current.searchParams.get('discordError') ?? '';
-    if (!setupToken && !setupError) return;
+    const xError = current.searchParams.get('xError') ?? '';
+    const xProfile = current.searchParams.get('xProfile') ?? '';
+    if (!setupToken && !setupError && !xError && !xProfile) return;
     current.searchParams.delete('discordSetup');
     current.searchParams.delete('discordError');
+    current.searchParams.delete('xError');
+    current.searchParams.delete('xProfile');
     window.history.replaceState(
       {},
       '',
       `${current.pathname}${current.search}${current.hash}`,
     );
     void Promise.resolve().then(() => {
-      if (setupError) {
-        setError(setupError);
+      if (setupError || xError) {
+        setError(setupError || xError);
+        return;
+      }
+      if (xProfile) {
+        void loadProfile(session);
         return;
       }
       setDiscordSetupToken(setupToken);
@@ -1043,6 +1053,8 @@ function ProfileEditor({
 }) {
   const [draft, setDraft] = useState(profile);
   const [saving, setSaving] = useState(false);
+  const [discordWorking, setDiscordWorking] = useState(false);
+  const [xWorking, setXWorking] = useState(false);
   const [error, setError] = useState('');
   async function save() {
     setSaving(true);
@@ -1071,6 +1083,104 @@ function ProfileEditor({
       );
     } finally {
       setSaving(false);
+    }
+  }
+  async function connectDiscord() {
+    if (discordWorking) return;
+    setDiscordWorking(true);
+    setError('');
+    try {
+      const response = await fetch('/api/account/discord/start', {
+        method: 'POST',
+        headers: { 'x-mimo-account': session },
+      });
+      const body = (await response.json()) as {
+        authorizeUrl?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.authorizeUrl)
+        throw new Error(body.error || 'Discord connection could not start.');
+      window.location.assign(body.authorizeUrl);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Discord connection could not start.',
+      );
+      setDiscordWorking(false);
+    }
+  }
+  async function disconnectDiscord() {
+    if (discordWorking) return;
+    setDiscordWorking(true);
+    setError('');
+    try {
+      const response = await fetch('/api/account/discord', {
+        method: 'DELETE',
+        headers: { 'x-mimo-account': session },
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'Discord could not be disconnected.');
+      const saved = { ...draft, discord: null };
+      setDraft(saved);
+      onSaved(saved);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Discord could not be disconnected.',
+      );
+    } finally {
+      setDiscordWorking(false);
+    }
+  }
+  async function connectX() {
+    if (xWorking) return;
+    setXWorking(true);
+    setError('');
+    try {
+      const response = await fetch('/api/account/x/start', {
+        method: 'POST',
+        headers: { 'x-mimo-account': session },
+      });
+      const body = (await response.json()) as {
+        authorizeUrl?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.authorizeUrl)
+        throw new Error(body.error || 'X connection could not start.');
+      window.location.assign(body.authorizeUrl);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'X connection could not start.',
+      );
+      setXWorking(false);
+    }
+  }
+  async function disconnectX() {
+    if (xWorking) return;
+    setXWorking(true);
+    setError('');
+    try {
+      const response = await fetch('/api/account/x', {
+        method: 'DELETE',
+        headers: { 'x-mimo-account': session },
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(body.error || 'X could not be disconnected.');
+      const saved = { ...draft, x: null };
+      setDraft(saved);
+      onSaved(saved);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : 'X could not be disconnected.',
+      );
+    } finally {
+      setXWorking(false);
     }
   }
   return (
@@ -1108,6 +1218,62 @@ function ProfileEditor({
             className="mt-2 h-12 w-full rounded-xl border border-[#cad4dd] bg-white px-4 font-medium outline-none focus:border-[#2577de]"
           />
         </label>
+      )}
+      {!onboarding && (
+        <div className="mt-5 flex items-center justify-between gap-4 border-y border-[#d7e0e6] py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#5865f2] text-white">
+              <MessagesSquare size={18} />
+            </span>
+            <span className="min-w-0">
+              <strong className="block">Discord identity</strong>
+              <span className="block truncate text-sm text-[#607486]">
+                {draft.discord
+                  ? `${draft.discord.displayName} · @${draft.discord.username}`
+                  : 'Link once to use Mimo commands and community points.'}
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              void (draft.discord ? disconnectDiscord() : connectDiscord())
+            }
+            disabled={discordWorking}
+            className="min-h-10 shrink-0 px-2 text-sm font-extrabold text-[#1f72d2] disabled:opacity-50"
+          >
+            {discordWorking
+              ? 'Working…'
+              : draft.discord
+                ? 'Disconnect'
+                : 'Connect'}
+          </button>
+        </div>
+      )}
+      {!onboarding && (
+        <div className="flex items-center justify-between gap-4 border-b border-[#d7e0e6] py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black font-display font-extrabold text-white">
+              X
+            </span>
+            <span className="min-w-0">
+              <strong className="block">X identity</strong>
+              <span className="block truncate text-sm text-[#607486]">
+                {draft.x
+                  ? `${draft.x.displayName} · @${draft.x.username}`
+                  : 'Optional identity for the private X beta.'}
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void (draft.x ? disconnectX() : connectX())}
+            disabled={xWorking}
+            className="min-h-10 shrink-0 px-2 text-sm font-extrabold text-[#1f72d2] disabled:opacity-50"
+          >
+            {xWorking ? 'Working…' : draft.x ? 'Disconnect' : 'Connect'}
+          </button>
+        </div>
       )}
       <div className="mt-5">
         <p className="text-sm font-extrabold">Choose your Mimo</p>

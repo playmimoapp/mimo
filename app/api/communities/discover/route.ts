@@ -17,6 +17,7 @@ export async function GET(request: Request) {
         COALESCE(e.starts_at, e.created_at) ASC LIMIT 1) AS activeStatus
       FROM communities c
       WHERE c.slug NOT LIKE 'room-%'
+        AND c.slug NOT LIKE 'mimo-qa-%'
         AND (? = '%%' OR c.name LIKE ? OR c.slug LIKE ? OR c.description LIKE ?)
       ORDER BY CASE WHEN activeStatus = 'live' THEN 0 WHEN activeStatus = 'lobby' THEN 1 ELSE 2 END,
         c.next_event_at IS NULL, c.next_event_at ASC, followerCount DESC, c.created_at DESC
@@ -29,7 +30,8 @@ export async function GET(request: Request) {
       r.amount_luna AS rewardAmountLuna
       FROM events e JOIN communities c ON c.id = e.community_id
       LEFT JOIN rewards r ON r.event_id = e.id
-      WHERE c.slug NOT LIKE 'room-%' AND e.public_visible = 1
+      WHERE c.slug NOT LIKE 'room-%' AND c.slug NOT LIKE 'mimo-qa-%'
+        AND e.analytics_class = 'real' AND e.public_visible = 1
         AND e.status IN ('live', 'lobby', 'scheduled')
         AND (? = '%%' OR e.title LIKE ? OR c.name LIKE ? OR c.slug LIKE ?)
       ORDER BY CASE e.status WHEN 'live' THEN 0 WHEN 'lobby' THEN 1 ELSE 2 END,

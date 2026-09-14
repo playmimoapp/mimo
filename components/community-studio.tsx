@@ -9,6 +9,7 @@ import {
   Bell,
   CalendarDays,
   Camera,
+  ChevronDown,
   Clock3,
   Copy,
   ExternalLink,
@@ -2793,6 +2794,7 @@ export function CommunityDirectory({
   const [query, setQuery] = useState('');
   const [communities, setCommunities] = useState<Community[]>([]);
   const [events, setEvents] = useState<DiscoverEvent[]>([]);
+  const [showEvents, setShowEvents] = useState(false);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
@@ -2823,14 +2825,16 @@ export function CommunityDirectory({
   }, [query]);
   return (
     <StudioShell>
-      <p className="text-xs font-black uppercase tracking-[.15em] text-[#c94f3b]">
-        Find your people
-      </p>
-      <div className="mt-2 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <h1 className="font-display max-w-2xl text-4xl font-extrabold tracking-[-.045em] sm:text-5xl">
-          Communities that play here.
-        </h1>
-        <label className="flex h-12 w-full items-center gap-3 border-b-2 border-[#9eb0be] sm:max-w-sm">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="font-display text-4xl font-extrabold tracking-[-.045em] sm:text-5xl">
+            Discover
+          </h1>
+          <p className="mt-1 text-sm font-medium text-[#60758a]">
+            Find a community or join a public room
+          </p>
+        </div>
+        <label className="flex h-12 w-full items-center gap-3 rounded-full bg-white px-4 shadow-[0_6px_22px_rgba(27,48,72,.05)] sm:max-w-sm">
           <Search size={19} className="text-[#60758a]" />
           <input
             value={query}
@@ -2841,26 +2845,33 @@ export function CommunityDirectory({
         </label>
       </div>
       {events.length > 0 && (
-        <section className="mt-8 border-y border-[#d7dfe4] py-5">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[.13em] text-[#c94f3b]">
-                Open rooms
-              </p>
-              <h2 className="font-display mt-1 text-2xl font-extrabold">
-                Play now or save the date.
-              </h2>
-            </div>
-            <span className="text-xs font-bold text-[#718295]">
-              Public events
+        <button
+          type="button"
+          aria-expanded={showEvents}
+          onClick={() => setShowEvents((visible) => !visible)}
+          className="mt-6 flex min-h-14 w-full items-center gap-3 rounded-[20px] bg-[#eaf4ff] px-5 text-left"
+        >
+          <span className="relative h-3 w-3 shrink-0 rounded-full bg-[#d95643] after:absolute after:inset-0 after:animate-ping after:rounded-full after:bg-[#d95643]/40" />
+          <span className="min-w-0 flex-1">
+            <strong className="block text-sm">Live and upcoming</strong>
+            <span className="text-xs font-bold text-[#60758a]">
+              {events.length} public {events.length === 1 ? 'room' : 'rooms'}
             </span>
-          </div>
-          <div className="mt-3 grid gap-x-7 md:grid-cols-2">
+          </span>
+          <ChevronDown
+            size={19}
+            className={`text-[#2577de] transition ${showEvents ? 'rotate-180' : ''}`}
+          />
+        </button>
+      )}
+      {events.length > 0 && showEvents && (
+        <section className="mt-2 rounded-[20px] bg-white/55 p-3">
+          <div className="grid gap-2 md:grid-cols-2">
             {events.map((event) => (
               <a
                 key={event.id}
                 href={`/?room=${event.roomCode}`}
-                className="group flex min-w-0 items-center gap-4 border-t border-[#e0e6ea] py-4"
+                className="group flex min-w-0 items-center gap-4 rounded-[16px] bg-white px-4 py-3"
               >
                 <span
                   className={`h-2.5 w-2.5 shrink-0 rounded-full ${event.status === 'live' ? 'animate-pulse bg-[#d95643]' : 'bg-[#f0bd22]'}`}
@@ -2887,12 +2898,18 @@ export function CommunityDirectory({
           </div>
         </section>
       )}
-      <div className="mt-8 space-y-1">
+      <div className="mt-8 flex items-center justify-between">
+        <h2 className="font-display text-xl font-extrabold">Communities</h2>
+        <span className="text-xs font-bold text-[#718295]">
+          {communities.length}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
         {communities.map((community) => (
           <button
             key={community.slug}
             onClick={() => openCommunity(community.slug)}
-            className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-[22px] px-1 py-4 text-left transition hover:bg-white sm:gap-6 sm:px-3"
+            className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-[20px] bg-white/55 p-3 text-left transition hover:bg-white"
           >
             <CommunityAvatar community={community} />
             <span className="min-w-0">
@@ -2914,7 +2931,6 @@ export function CommunityDirectory({
               </span>
             </span>
             <span className="flex items-center gap-2 text-sm font-extrabold text-[#2577de]">
-              <span className="hidden sm:inline">View</span>{' '}
               <ArrowRight size={18} />
             </span>
           </button>

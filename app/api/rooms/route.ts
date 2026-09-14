@@ -14,6 +14,7 @@ import {
 } from '@/lib/mimo-account';
 import { analyticsClassForRequest } from '@/lib/usage-evidence';
 import { getMainnetRewardConfig } from '@/lib/mainnet-reward';
+import { nimToLuna } from '@/lib/reward-split';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -40,8 +41,12 @@ export async function POST(request: Request) {
     body.rewardRule === 'community_unlock' ? 'community_unlock' : 'skill';
   const rewardWinnerCount =
     rewardRule === 'skill'
-      ? Math.max(1, Math.min(5, Math.floor(Number(body.rewardWinnerCount) || 1)))
+      ? Math.max(
+          1,
+          Math.min(20, Math.floor(Number(body.rewardWinnerCount) || 1)),
+        )
       : 1;
+  const rewardSplit = body.rewardSplit === 'ranked' ? 'ranked' : 'equal';
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
   if (
     rewardMode === 'nim' &&
@@ -108,9 +113,11 @@ export async function POST(request: Request) {
           ? `${body.rewardAmount}`
           : ''
         )
-          .replace(/[^0-9]/g, '')
-          .slice(0, 8)
+          .replace(/[^0-9.]/g, '')
+          .slice(0, 14)
       : '0';
+  const rewardAmountLuna =
+    rewardMode === 'nim' ? nimToLuna(rewardAmount) : BigInt(0);
   const mainnetReward = getMainnetRewardConfig();
   const rawRounds = Array.isArray(body.rounds)
     ? body.rounds
@@ -173,7 +180,10 @@ export async function POST(request: Request) {
   if (title.length < 3) {
     return json({ error: 'Add an event name.' }, 400);
   }
-  if (rewardMode === 'nim' && (!rewardAmount || Number(rewardAmount) < 1)) {
+  if (
+    rewardMode === 'nim' &&
+    (rewardAmountLuna === null || rewardAmountLuna < BigInt(1))
+  ) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
   }
   if (
@@ -274,6 +284,7 @@ export async function POST(request: Request) {
         : (vault?.network ?? null),
     rewardRule,
     rewardWinnerCount,
+    rewardSplit,
     eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,
     adaptiveMode: ['auto', 'ask', 'off'].includes(String(body.adaptiveMode))
@@ -360,7 +371,7 @@ export async function POST(request: Request) {
                 rewardCustody === 'mimo_vault'
                   ? 'funding_required'
                   : 'proposed',
-                (BigInt(rewardAmount) * BigInt(100000)).toString(),
+                rewardAmountLuna!.toString(),
                 JSON.stringify({
                   type: rewardRule,
                   winners:
@@ -370,7 +381,9 @@ export async function POST(request: Request) {
                   distribution:
                     rewardRule === 'skill' && rewardWinnerCount === 1
                       ? 'winner_takes_all'
-                      : 'equal_split',
+                      : rewardRule === 'skill' && rewardSplit === 'ranked'
+                        ? 'ranked_split'
+                        : 'equal_split',
                   custody: rewardCustody,
                 }),
                 now,
@@ -407,7 +420,7 @@ export async function POST(request: Request) {
       code,
       hostKey,
       inviteToken: inviteToken || undefined,
-      sharePath: `/?room=${code}`,
+      sharePath: `/r/${code}`,
     },
     201,
   );

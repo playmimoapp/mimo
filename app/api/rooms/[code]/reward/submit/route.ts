@@ -8,6 +8,7 @@ import {
 } from '@/lib/live-room';
 import { verifyMainnetPayout } from '@/lib/mainnet-reward';
 import { normalizeNimiqAddress } from '@/lib/reward-vault';
+import { getRewardShares } from '@/lib/reward-split';
 
 export async function POST(
   request: Request,
@@ -29,9 +30,7 @@ export async function POST(
       409,
     );
   }
-  if (
-    roomConfig.rewardNetwork !== 'MainAlbatross'
-  ) {
+  if (roomConfig.rewardNetwork !== 'MainAlbatross') {
     return json(
       { error: 'This room was not locked for a mainnet payout.' },
       409,
@@ -80,12 +79,12 @@ export async function POST(
   const winner = winners.results[winnerIndex];
   if (!winner || !winner.walletHash || !reward)
     return json({ error: 'The reward result could not be verified.' }, 409);
-  const recipientCount = BigInt(winners.results.length);
   const totalLuna = BigInt(reward.amountLuna);
-  const amountLuna = (
-    totalLuna / recipientCount +
-    (BigInt(winnerIndex) < totalLuna % recipientCount ? BigInt(1) : BigInt(0))
-  ).toString();
+  const amountLuna = getRewardShares(
+    totalLuna,
+    winners.results.length,
+    roomConfig.rewardSplit,
+  )[winnerIndex].toString();
   const memo = `MIMO ${room.roomCode} WINNER${winners.results.length > 1 ? ` ${winnerIndex + 1}` : ''}`;
   if (reusedTransaction) {
     if (

@@ -1,6 +1,7 @@
 import { Address, KeyPair, TransactionBuilder } from '@nimiq/core';
 import { getD1 } from '@/db';
 import { getRuntimeVariable } from '@/lib/runtime-env';
+import { getRewardShares, type RewardSplit } from '@/lib/reward-split';
 import {
   decryptSecret,
   encryptSecret,
@@ -278,17 +279,20 @@ export async function getRewardEligibility(eventId: string) {
 
   let rule: 'skill' | 'community_unlock' = 'skill';
   let winnerCount = 1;
+  let split: RewardSplit = 'equal';
   try {
     const rules = JSON.parse(reward?.rulesJson ?? '{}') as {
       type?: unknown;
       winners?: unknown;
+      distribution?: unknown;
     };
     if (rules.type === 'community_unlock') rule = 'community_unlock';
     if (rule === 'skill') {
       winnerCount = Math.max(
         1,
-        Math.min(5, Math.floor(Number(rules.winners) || 1)),
+        Math.min(20, Math.floor(Number(rules.winners) || 1)),
       );
+      if (rules.distribution === 'ranked_split') split = 'ranked';
     }
   } catch {
     // Old rewards retain the skill fallback.
@@ -360,6 +364,7 @@ export async function getRewardEligibility(eventId: string) {
   return {
     reward,
     rule,
+    split,
     unlocked,
     collectiveCleared,
     eligible,
@@ -394,10 +399,13 @@ export async function attemptAutomaticPayout(eventId: string) {
   }
 
   const totalLuna = BigInt(reward.amountLuna);
-  const recipientCount = BigInt(eligibility.eligible.length);
-  const equalShare = totalLuna / recipientCount;
-  const remainder = totalLuna % recipientCount;
-  if (equalShare < BigInt(1)) return { state: 'reward_too_small' as const };
+  const shares = getRewardShares(
+    totalLuna,
+    eligibility.eligible.length,
+    eligibility.rule === 'community_unlock' ? 'equal' : eligibility.split,
+  );
+  if (shares.some((share) => share < BigInt(1)))
+    return { state: 'reward_too_small' as const };
 
   const results: Array<{
     participantId: string;
@@ -407,9 +415,7 @@ export async function attemptAutomaticPayout(eventId: string) {
   }> = [];
 
   for (const [index, participant] of eligibility.eligible.entries()) {
-    const amountLuna = (
-      equalShare + (BigInt(index) < remainder ? BigInt(1) : BigInt(0))
-    ).toString();
+    const amountLuna = shares[index].toString();
     let payout = await db
       .prepare(`SELECT id, state, tx_hash AS txHash,
         serialized_tx AS serializedTx FROM payouts

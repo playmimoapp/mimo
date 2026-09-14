@@ -70,6 +70,7 @@ type Screen =
 type RewardMode = 'free' | 'nim';
 type RewardCustody = 'host_wallet' | 'mimo_vault';
 type RewardRule = 'skill' | 'community_unlock';
+type RewardSplit = 'equal' | 'ranked';
 type RoundType = 'pulse' | 'multiple_choice' | 'finale';
 type EventKind =
   | 'game_night'
@@ -168,6 +169,7 @@ type EventDraft = {
   rewardAmount: string;
   rewardRule: RewardRule;
   rewardWinnerCount: number;
+  rewardSplit: RewardSplit;
   adaptiveMoments: boolean;
   adaptiveMode: AdaptiveMode;
   startsAt: number | null;
@@ -501,6 +503,7 @@ export function MimoApp() {
     rewardAmount: '',
     rewardRule: 'skill',
     rewardWinnerCount: 1,
+    rewardSplit: 'equal',
     adaptiveMoments: true,
     adaptiveMode: 'auto',
     startsAt: null,
@@ -846,6 +849,7 @@ export function MimoApp() {
         recurrence: event.recurrence,
         rewardRule: 'skill',
         rewardWinnerCount: body.draft.rewardWinnerCount ?? 1,
+        rewardSplit: 'equal',
         adaptiveMoments: true,
         adaptiveMode: 'auto',
         custodyMode: rewardCapabilities.mimoFundingAvailable
@@ -1057,48 +1061,50 @@ export function MimoApp() {
     <main
       className={`min-h-dvh overflow-x-hidden bg-[#f6f4ef] text-[#16283d] ${dockVisible ? 'pb-20 sm:pb-0' : ''}`}
     >
-      <Header
-        back={
-          screen === 'create_choice' ||
-          screen === 'host_entry' ||
-          screen === 'create_assisted' ||
-          screen === 'create' ||
-          screen === 'preview' ||
-          screen === 'studio' ||
-          screen === 'directory' ||
-          screen === 'community' ||
-          screen === 'join'
-            ? goBack
-            : undefined
-        }
-        host={screen === 'home' ? () => setScreen('host_entry') : undefined}
-        studio={screen === 'home' ? () => setScreen('studio') : undefined}
-        discover={
-          screen === 'home'
-            ? () => {
-                window.history.replaceState({}, '', '/?discover=1');
-                setScreen('directory');
-              }
-            : undefined
-        }
-        context={
-          ['create_choice', 'create_assisted', 'create', 'preview'].includes(
-            screen,
-          )
-            ? 'Create an event'
-            : screen === 'host_entry'
-              ? 'Host a Mimo'
-              : screen === 'studio'
-                ? 'Community Studio'
-                : screen === 'directory'
-                  ? 'Discover'
-                  : screen === 'community'
-                    ? 'Community home'
-                    : screen === 'join'
-                      ? `Join ${roomCode}`
-                      : undefined
-        }
-      />
+      {!['live_host', 'live_player'].includes(screen) && (
+        <Header
+          back={
+            screen === 'create_choice' ||
+            screen === 'host_entry' ||
+            screen === 'create_assisted' ||
+            screen === 'create' ||
+            screen === 'preview' ||
+            screen === 'studio' ||
+            screen === 'directory' ||
+            screen === 'community' ||
+            screen === 'join'
+              ? goBack
+              : undefined
+          }
+          host={screen === 'home' ? () => setScreen('host_entry') : undefined}
+          studio={screen === 'home' ? () => setScreen('studio') : undefined}
+          discover={
+            screen === 'home'
+              ? () => {
+                  window.history.replaceState({}, '', '/?discover=1');
+                  setScreen('directory');
+                }
+              : undefined
+          }
+          context={
+            ['create_choice', 'create_assisted', 'create', 'preview'].includes(
+              screen,
+            )
+              ? 'Create an event'
+              : screen === 'host_entry'
+                ? 'Host a Mimo'
+                : screen === 'studio'
+                  ? 'Community Studio'
+                  : screen === 'directory'
+                    ? 'Discover'
+                    : screen === 'community'
+                      ? 'Community home'
+                      : screen === 'join'
+                        ? `Join ${roomCode}`
+                        : undefined
+          }
+        />
+      )}
       {['create_choice', 'create_assisted', 'create', 'preview'].includes(
         screen,
       ) && <CreationRail screen={screen} />}
@@ -1991,6 +1997,18 @@ function CreateEvent({
         : event.playMode === 'together'
           ? ['Together', 'The whole room works toward one result.']
           : ['Hybrid', 'Personal scores with team momentum.'];
+  const rewardTotal = Number(event.rewardAmount) || 0;
+  const rewardShares = Array.from(
+    { length: event.rewardWinnerCount },
+    (_, index) => {
+      if (event.rewardSplit === 'equal' || event.rewardWinnerCount === 1) {
+        return rewardTotal / event.rewardWinnerCount;
+      }
+      const totalWeight =
+        (event.rewardWinnerCount * (event.rewardWinnerCount + 1)) / 2;
+      return (rewardTotal * (event.rewardWinnerCount - index)) / totalWeight;
+    },
+  );
   const creationCue =
     mobileSection === 'basics'
       ? basicsReady
@@ -2868,6 +2886,39 @@ function CreateEvent({
             </div>
             {event.rewardMode === 'nim' && (
               <div className="grid gap-6">
+                <label className="grid gap-2 text-sm font-extrabold">
+                  Total NIM reward
+                  <div className="flex max-w-[280px] items-end gap-2 border-b-2 border-[#d0a62d]">
+                    <input
+                      inputMode="decimal"
+                      maxLength={9}
+                      max={
+                        event.custodyMode === 'host_wallet'
+                          ? mainnetMaximumRewardNim
+                          : undefined
+                      }
+                      value={event.rewardAmount}
+                      onChange={(input) =>
+                        update(
+                          'rewardAmount',
+                          input.target.value
+                            .replace(/[^0-9.]/g, '')
+                            .replace(/(\..*)\./g, '$1'),
+                        )
+                      }
+                      placeholder="100"
+                      className="h-14 min-w-0 flex-1 border-0 bg-transparent text-2xl font-extrabold outline-none"
+                    />
+                    <span className="pb-3 font-display text-lg font-extrabold text-[#806200]">
+                      NIM
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-[#6f7e8b]">
+                    {event.custodyMode === 'mimo_vault'
+                      ? 'Confirmed on Nimiq before play.'
+                      : `Paid from your wallet after verified results. Maximum ${mainnetMaximumRewardNim} NIM during the pilot.`}
+                  </span>
+                </label>
                 <fieldset>
                   <legend className="text-sm font-extrabold">
                     How is the NIM earned?
@@ -2885,7 +2936,9 @@ function CreateEvent({
                       <span className="mt-1 block text-sm text-[#617486]">
                         {event.playMode === 'together'
                           ? 'Together mode never creates a hidden individual winner.'
-                          : 'The verified first-place player earns the pool.'}
+                          : event.rewardWinnerCount === 1
+                            ? 'The verified first-place player earns the pool.'
+                            : `The verified top ${event.rewardWinnerCount} earn the declared split.`}
                       </span>
                     </motion.button>
                     <motion.button
@@ -2926,24 +2979,114 @@ function CreateEvent({
                     <legend className="px-1 text-sm font-extrabold">
                       How many winners?
                     </legend>
-                    <div className="mt-2 flex gap-2">
-                      {[1, 2, 3, 5].map((count) => (
-                        <button
-                          key={count}
-                          type="button"
-                          aria-pressed={event.rewardWinnerCount === count}
-                          onClick={() => update('rewardWinnerCount', count)}
-                          className={`h-10 min-w-12 rounded-full px-4 text-sm font-extrabold ${event.rewardWinnerCount === count ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
-                        >
-                          {count}
-                        </button>
-                      ))}
+                    <div className="mt-2 flex max-w-[250px] items-center border-b-2 border-[#9baab5]">
+                      <button
+                        type="button"
+                        aria-label="Remove one winner"
+                        disabled={event.rewardWinnerCount <= 1}
+                        onClick={() =>
+                          update(
+                            'rewardWinnerCount',
+                            Math.max(1, event.rewardWinnerCount - 1),
+                          )
+                        }
+                        className="grid h-12 w-12 place-items-center text-xl font-extrabold disabled:opacity-30"
+                      >
+                        -
+                      </button>
+                      <input
+                        aria-label="Number of winners"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={20}
+                        value={event.rewardWinnerCount}
+                        onChange={(input) =>
+                          update(
+                            'rewardWinnerCount',
+                            Math.max(
+                              1,
+                              Math.min(
+                                20,
+                                Math.floor(Number(input.target.value) || 1),
+                              ),
+                            ),
+                          )
+                        }
+                        className="h-12 min-w-0 flex-1 bg-transparent text-center font-display text-2xl font-extrabold outline-none"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Add one winner"
+                        disabled={event.rewardWinnerCount >= 20}
+                        onClick={() =>
+                          update(
+                            'rewardWinnerCount',
+                            Math.min(20, event.rewardWinnerCount + 1),
+                          )
+                        }
+                        className="grid h-12 w-12 place-items-center text-xl font-extrabold disabled:opacity-30"
+                      >
+                        +
+                      </button>
                     </div>
-                    <p className="mt-2 text-sm font-bold text-[#607486]">
-                      {event.rewardWinnerCount === 1
-                        ? 'First place earns the full reward.'
-                        : `The top ${event.rewardWinnerCount} verified players share the reward equally.`}
+                    <p className="mt-2 text-xs font-bold text-[#607486]">
+                      Choose between 1 and 20 verified winners.
                     </p>
+                    {event.rewardWinnerCount > 1 && (
+                      <div className="mt-4">
+                        <p className="text-sm font-extrabold">
+                          How should it split?
+                        </p>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {(
+                            [
+                              ['equal', 'Equal', 'Same amount each'],
+                              ['ranked', 'By rank', 'Higher places earn more'],
+                            ] as const
+                          ).map(([split, label, detail]) => (
+                            <button
+                              key={split}
+                              type="button"
+                              aria-pressed={event.rewardSplit === split}
+                              onClick={() => update('rewardSplit', split)}
+                              className={`min-h-16 border px-3 py-2 text-left ${event.rewardSplit === split ? 'border-[#1f72d2] bg-[#eaf4ff]' : 'border-[#cbd4da] bg-white'}`}
+                            >
+                              <strong className="block text-sm">{label}</strong>
+                              <span className="text-xs text-[#607486]">
+                                {detail}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {rewardTotal > 0 && (
+                      <div className="mt-4 border-l-4 border-[#d0a62d] bg-[#fff9e6] px-4 py-3">
+                        <strong className="text-sm">Payout plan</strong>
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                          {rewardShares.slice(0, 6).map((amount, index) => (
+                            <span
+                              key={index}
+                              className="flex justify-between gap-2"
+                            >
+                              <span className="text-[#607486]">
+                                #{index + 1}
+                              </span>
+                              <strong>
+                                {amount.toFixed(5).replace(/\.?0+$/, '')} NIM
+                              </strong>
+                            </span>
+                          ))}
+                        </div>
+                        {rewardShares.length > 6 && (
+                          <p className="mt-2 text-xs font-bold text-[#607486]">
+                            Plus {rewardShares.length - 6} more declared
+                            payouts.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </fieldset>
                 )}
                 <fieldset>
@@ -2979,7 +3122,6 @@ function CreateEvent({
                             ...event,
                             custodyMode: 'host_wallet',
                             rewardRule: 'skill',
-                            rewardWinnerCount: 1,
                           });
                         }}
                         className={`min-h-32 border-2 p-5 text-left transition ${event.custodyMode === 'host_wallet' ? 'border-[#8d9ba5] bg-[#f3f5f6]' : 'border-[#d5dade] bg-white'}`}
@@ -3015,33 +3157,6 @@ function CreateEvent({
                     </p>
                   )}
                 </fieldset>
-                <label className="grid gap-2 text-sm font-extrabold">
-                  {event.custodyMode === 'mimo_vault'
-                    ? 'Total reward to fund'
-                    : 'Reward promised by host'}
-                  <input
-                    inputMode="numeric"
-                    maxLength={8}
-                    max={
-                      event.custodyMode === 'host_wallet'
-                        ? mainnetMaximumRewardNim
-                        : undefined
-                    }
-                    value={event.rewardAmount}
-                    onChange={(e) =>
-                      update(
-                        'rewardAmount',
-                        e.target.value.replace(/[^0-9]/g, ''),
-                      )
-                    }
-                    className="h-14 max-w-[260px] border-0 border-b-2 border-[#d0a62d] bg-transparent text-2xl font-extrabold outline-none"
-                  />
-                  <span className="text-sm font-medium text-[#6f7e8b]">
-                    {event.custodyMode === 'mimo_vault'
-                      ? 'NIM · confirmed on the Nimiq network before play'
-                      : `real NIM · mainnet · maximum ${mainnetMaximumRewardNim} NIM`}
-                  </span>
-                </label>
               </div>
             )}
           </div>
@@ -3378,46 +3493,46 @@ function Join({
               placeholder="e.g. River"
               className="mt-2 h-16 w-full border-0 border-b-2 border-[#a9b4bd] bg-transparent text-2xl font-bold outline-none placeholder:text-[#a8afb6] focus:border-[#1f72d2]"
             />
-        <fieldset className="mt-7">
-          <legend className="text-sm font-extrabold">
-            Choose your player pose
-          </legend>
-          <p className="mt-1 text-sm text-[#647789]">
-            Same Mimo, four clear poses. This is your visual identity in the
-            room.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {MIMO_PROFILES.map((profile) => {
-              const active = profileStyle === profile.id;
-              return (
-                <button
-                  key={profile.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setProfileStyle(profile.id)}
-                  className={`flex min-h-24 flex-col items-start gap-2 border p-3 text-left transition ${
-                    active
-                      ? 'border-[#1f72d2] bg-[#e7f2ff] ring-2 ring-[#1f72d2]/15'
-                      : 'border-[#cbd3d9] bg-white hover:border-[#8fa5b7]'
-                  }`}
-                >
-                  <MimoProfileAvatar
-                    profile={profile.id}
-                    nickname={name.trim() || 'You'}
-                    className="h-14 w-14"
-                  />
-                  <span>
-                    <strong className="block font-extrabold">
-                      {profile.label}
-                    </strong>
-                    <span className="mt-0.5 block text-xs font-bold text-[#6a7b89]">
-                      {profile.description}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+            <fieldset className="mt-7">
+              <legend className="text-sm font-extrabold">
+                Choose your player pose
+              </legend>
+              <p className="mt-1 text-sm text-[#647789]">
+                Same Mimo, four clear poses. This is your visual identity in the
+                room.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {MIMO_PROFILES.map((profile) => {
+                  const active = profileStyle === profile.id;
+                  return (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setProfileStyle(profile.id)}
+                      className={`flex min-h-24 flex-col items-start gap-2 border p-3 text-left transition ${
+                        active
+                          ? 'border-[#1f72d2] bg-[#e7f2ff] ring-2 ring-[#1f72d2]/15'
+                          : 'border-[#cbd3d9] bg-white hover:border-[#8fa5b7]'
+                      }`}
+                    >
+                      <MimoProfileAvatar
+                        profile={profile.id}
+                        nickname={name.trim() || 'You'}
+                        className="h-14 w-14"
+                      />
+                      <span>
+                        <strong className="block font-extrabold">
+                          {profile.label}
+                        </strong>
+                        <span className="mt-0.5 block text-xs font-bold text-[#6a7b89]">
+                          {profile.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </fieldset>
             {signedInProfile && (
               <button

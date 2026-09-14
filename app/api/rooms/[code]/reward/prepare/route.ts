@@ -8,6 +8,7 @@ import {
 } from '@/lib/live-room';
 import { assertMainnetRewardAmount } from '@/lib/mainnet-reward';
 import { decryptVaultAddress } from '@/lib/reward-vault';
+import { getRewardShares } from '@/lib/reward-split';
 
 function normalizeAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -40,9 +41,7 @@ export async function POST(
       409,
     );
   }
-  if (
-    roomConfig.rewardNetwork !== 'MainAlbatross'
-  ) {
+  if (roomConfig.rewardNetwork !== 'MainAlbatross') {
     return json(
       { error: 'This room was not locked for a mainnet payout.' },
       409,
@@ -85,10 +84,7 @@ export async function POST(
   );
   const winner = winners.results[winnerIndex];
   if (!winner)
-    return json(
-      { error: 'Only a verified winning result can be paid.' },
-      409,
-    );
+    return json({ error: 'Only a verified winning result can be paid.' }, 409);
   if (!winner.walletHash)
     return json({ error: 'The winner must verify their wallet first.' }, 409);
   if (!payoutAddress) {
@@ -138,12 +134,12 @@ export async function POST(
       503,
     );
   }
-  const recipientCount = BigInt(winners.results.length);
   const totalLuna = BigInt(reward.amountLuna);
-  const amountLuna = (
-    totalLuna / recipientCount +
-    (BigInt(winnerIndex) < totalLuna % recipientCount ? BigInt(1) : BigInt(0))
-  ).toString();
+  const amountLuna = getRewardShares(
+    totalLuna,
+    winners.results.length,
+    roomConfig.rewardSplit,
+  )[winnerIndex].toString();
   return json({
     verified: true,
     amountLuna,

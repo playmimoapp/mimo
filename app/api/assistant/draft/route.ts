@@ -176,12 +176,12 @@ export async function POST(request: Request) {
     eventKind === 'community_vote'
       ? 'Create 3 to 5 neutral pulse polls. They have no correct answer and use null for correctChoice. Present choices fairly without steering voters.'
       : eventKind === 'product_launch'
-        ? 'Create a launch show: begin with an audience pulse, use objective questions grounded in the supplied product information, and finish with one shared challenge.'
+        ? 'Create a product launch show using objective questions grounded in the supplied product information. Add a pulse poll only when the host explicitly asks for audience opinion. Add a shared finale only when the brief asks for one.'
         : eventKind === 'onboarding'
-          ? 'Create a newcomer-friendly learning show: begin with a welcoming pulse, use clear objective knowledge checks, and finish with one shared challenge.'
+          ? 'Create a newcomer-friendly learning show using clear objective knowledge checks. Add a pulse poll or shared finale only when the host explicitly asks for one.'
           : eventKind === 'custom'
-            ? 'Follow the host brief closely. Use unscored pulse polls for opinions and objectively scored questions only when one answer is clearly correct.'
-            : 'Create a game night: start with one unscored pulse poll, follow with objectively scored skill questions, and end with one shared final challenge.';
+            ? 'Follow the host brief exactly. Use unscored pulse polls only when the brief asks for opinions or voting. Use scored questions only when one answer is clearly correct. Do not add a finale unless the brief asks for one.'
+            : 'Create a game night using objectively scored skill questions. Do not begin with a pulse poll unless the host explicitly asks for a poll or audience opinion. Do not add a shared finale unless the brief asks for one.';
 
   const instructions = `You are Mimo, a careful live community-event editor.
 Create a short live show with 3 to 5 moments for an event host to review.
@@ -211,6 +211,9 @@ Return only the requested JSON.`;
   const input = `Format: ${eventKind}\nHosting mode: ${hostingMode}\n${continuityInstruction}\nAudience: ${audience}\nDifficulty: ${difficulty}\nBrief: ${topic}\n${
     source ? `Approved source text:\n${source}` : 'No source text was supplied.'
   }`;
+  const hostRequestedPoll =
+    eventKind === 'community_vote' ||
+    /\b(poll|vote|voting|opinion|choose a side|pulse)\b/i.test(topic);
 
   try {
     const response = await fetch(
@@ -249,6 +252,11 @@ Return only the requested JSON.`;
     const draft = JSON.parse(extractText(payload)) as unknown;
     if (!validDraft(draft)) throw new Error('invalid_draft');
 
+    const approvedRounds = draft.rounds.filter(
+      (round) => round.type !== 'pulse' || hostRequestedPoll,
+    );
+    if (approvedRounds.length === 0) throw new Error('empty_draft');
+
     return json({
       draft: {
         eventKind,
@@ -263,7 +271,7 @@ Return only the requested JSON.`;
         rewardRule: 'skill',
         rewardWinnerCount: 1,
         adaptiveMoments: true,
-        rounds: draft.rounds.map((round) => ({
+        rounds: approvedRounds.map((round) => ({
           id: crypto.randomUUID(),
           type: round.type,
           question: round.question.trim().slice(0, 180),

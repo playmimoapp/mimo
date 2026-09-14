@@ -55,6 +55,7 @@ import {
 } from '@/components/mimo-host';
 import type { LiveRoomState, MimoHostCue } from '@/lib/live-room-types';
 import { MimoNimiq } from '@/lib/nimiq';
+import { getRewardShares, nimToLuna } from '@/lib/reward-split';
 import { useMimoSound } from '@/lib/use-mimo-sound';
 
 type LiveRoomProps = {
@@ -168,7 +169,7 @@ export function LiveRoom({
 
   const inviteUrl = useCallback(
     () =>
-      `${window.location.origin}/?room=${code}${inviteToken ? `#invite=${inviteToken}` : ''}`,
+      `${window.location.origin}/r/${code}${inviteToken ? `#invite=${inviteToken}` : ''}`,
     [code, inviteToken],
   );
 
@@ -712,9 +713,9 @@ export function LiveRoom({
         : 'happy');
 
   return (
-    <section className="mobile-page app-frame relative pb-24 pt-1 sm:pt-3">
+    <section className="live-room-page mobile-page app-frame relative pb-24 pt-1 sm:pt-3">
       {room.status !== 'live' && <ReactionSky reactions={room.reactions} />}
-      <div className="flex items-center justify-between gap-2 border-b border-[#d1d5d5] pb-3">
+      <div className="live-room-header flex items-center justify-between gap-2 border-b border-[#d1d5d5] pb-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-[.14em] text-[#c94f3b]">
             {room.accessMode === 'private' ? (
@@ -1467,7 +1468,8 @@ function RewardFundingPanel({
         <p className="mt-1 text-sm font-bold text-[#675e3e]">
           {room.rewardAmount} NIM stays in your wallet during play. Each player
           verifies a payout wallet before joining. After the final result, the
-          exact {room.rewardWinnerCount === 1 ? 'Pay button' : 'Pay buttons'} appear here.
+          exact {room.rewardWinnerCount === 1 ? 'Pay button' : 'Pay buttons'}{' '}
+          appear here.
         </p>
       </section>
     );
@@ -1625,30 +1627,30 @@ function LobbyState({
           </button>
         </div>
       ) : (
-      <div className="live-lobby-stage mobile-only relative mb-5 min-h-[190px] overflow-hidden rounded-[28px] bg-[#dceeff] px-5 py-4">
-        <span className="pulse-dot absolute left-5 top-5 h-3 w-3 rounded-full bg-[#f4bf1c]" />
-        <span className="pulse-dot absolute right-7 top-9 h-2 w-2 rounded-full bg-[#e66c58] [animation-delay:260ms]" />
-        <div className="relative z-10 max-w-[58%] self-center">
-          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
-            Mimo is warming up
-          </p>
-          <motion.p
-            key={mimoLine}
-            initial={{ opacity: 0, y: 7 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="font-display mt-2 text-2xl font-extrabold leading-[1.02] tracking-[-.04em]"
-          >
-            {mimoLine}
-          </motion.p>
-          <span className="mt-3 inline-flex rounded-full bg-white/85 px-3 py-1.5 text-sm font-extrabold text-[#29445f]">
-            {arrivalLabel}
-          </span>
+        <div className="live-lobby-stage mobile-only relative mb-5 min-h-[190px] overflow-hidden rounded-[28px] bg-[#dceeff] px-5 py-4">
+          <span className="pulse-dot absolute left-5 top-5 h-3 w-3 rounded-full bg-[#f4bf1c]" />
+          <span className="pulse-dot absolute right-7 top-9 h-2 w-2 rounded-full bg-[#e66c58] [animation-delay:260ms]" />
+          <div className="relative z-10 max-w-[58%] self-center">
+            <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
+              Mimo is warming up
+            </p>
+            <motion.p
+              key={mimoLine}
+              initial={{ opacity: 0, y: 7 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="font-display mt-2 text-2xl font-extrabold leading-[1.02] tracking-[-.04em]"
+            >
+              {mimoLine}
+            </motion.p>
+            <span className="mt-3 inline-flex rounded-full bg-white/85 px-3 py-1.5 text-sm font-extrabold text-[#29445f]">
+              {arrivalLabel}
+            </span>
+          </div>
+          <MimoCharacter
+            mood="happy"
+            className="mimo-happy absolute -bottom-4 -right-4 w-[148px]"
+          />
         </div>
-        <MimoCharacter
-          mood="happy"
-          className="mimo-happy absolute -bottom-4 -right-4 w-[148px]"
-        />
-      </div>
       )}
       <div className="flex items-center justify-between gap-3 border-b border-[#d1d5d5] pb-3">
         <p className="flex items-center gap-2 font-extrabold">
@@ -1663,74 +1665,76 @@ function LobbyState({
           <span>{arrivalLabel}</span>
         </div>
       </div>
-      {!isHost && (usesTeams ? (
-        <>
-          <div className="mt-4 grid border-y border-[#d1d8dc] sm:grid-cols-2">
-            <div className="py-4 sm:pr-5">
-              <div className="flex items-center justify-between gap-3">
-                <strong className="font-display flex items-center gap-2 text-lg text-[#175fa9]">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#1f72d2]" />
-                  Signal
-                </strong>
-                <span className="text-sm font-extrabold text-[#175fa9]">
-                  {
-                    room.players.filter((player) => player.teamId === 'signal')
-                      .length
-                  }
-                </span>
+      {!isHost &&
+        (usesTeams ? (
+          <>
+            <div className="mt-4 grid border-y border-[#d1d8dc] sm:grid-cols-2">
+              <div className="py-4 sm:pr-5">
+                <div className="flex items-center justify-between gap-3">
+                  <strong className="font-display flex items-center gap-2 text-lg text-[#175fa9]">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#1f72d2]" />
+                    Signal
+                  </strong>
+                  <span className="text-sm font-extrabold text-[#175fa9]">
+                    {
+                      room.players.filter(
+                        (player) => player.teamId === 'signal',
+                      ).length
+                    }
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-medium text-[#526a7e]">
+                  Blue team
+                </p>
               </div>
-              <p className="mt-1 text-sm font-medium text-[#526a7e]">
-                Blue team
-              </p>
-            </div>
-            <div className="border-t border-[#d1d8dc] py-4 sm:border-l sm:border-t-0 sm:pl-5">
-              <div className="flex items-center justify-between gap-3">
-                <strong className="font-display flex items-center gap-2 text-lg text-[#b64c39]">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#d56552]" />
-                  Spark
-                </strong>
-                <span className="text-sm font-extrabold text-[#b64c39]">
-                  {
-                    room.players.filter((player) => player.teamId === 'spark')
-                      .length
-                  }
-                </span>
+              <div className="border-t border-[#d1d8dc] py-4 sm:border-l sm:border-t-0 sm:pl-5">
+                <div className="flex items-center justify-between gap-3">
+                  <strong className="font-display flex items-center gap-2 text-lg text-[#b64c39]">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#d56552]" />
+                    Spark
+                  </strong>
+                  <span className="text-sm font-extrabold text-[#b64c39]">
+                    {
+                      room.players.filter((player) => player.teamId === 'spark')
+                        .length
+                    }
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-medium text-[#526a7e]">
+                  Coral team
+                </p>
               </div>
-              <p className="mt-1 text-sm font-medium text-[#526a7e]">
-                Coral team
-              </p>
             </div>
-          </div>
-          <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
-            <Zap size={16} className="text-[#b17900]" /> Teams build separate
-            scores. An optional Beat Mimo challenge gives the whole room one
-            final target.
-          </p>
-        </>
-      ) : (
-        <div className="mt-4 flex items-start gap-3 border-y border-[#d1d8dc] py-4">
-          {room.playMode === 'together' ? (
-            <Trophy size={20} className="mt-0.5 shrink-0 text-[#a97800]" />
-          ) : (
-            <CircleUserRound
-              size={20}
-              className="mt-0.5 shrink-0 text-[#1f72d2]"
-            />
-          )}
-          <span>
-            <strong className="block font-display text-lg">
-              {room.playMode === 'together'
-                ? 'One room. One shared result.'
-                : 'Everyone plays for their own score.'}
-            </strong>
-            <span className="mt-1 block text-sm font-medium text-[#607486]">
-              {room.playMode === 'together'
-                ? 'There are no opposing teams. Every answer contributes to the same objective.'
-                : 'There are no teams in this room. The final ranking is individual.'}
+            <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#526a7e]">
+              <Zap size={16} className="text-[#b17900]" /> Teams build separate
+              scores. An optional Beat Mimo challenge gives the whole room one
+              final target.
+            </p>
+          </>
+        ) : (
+          <div className="mt-4 flex items-start gap-3 border-y border-[#d1d8dc] py-4">
+            {room.playMode === 'together' ? (
+              <Trophy size={20} className="mt-0.5 shrink-0 text-[#a97800]" />
+            ) : (
+              <CircleUserRound
+                size={20}
+                className="mt-0.5 shrink-0 text-[#1f72d2]"
+              />
+            )}
+            <span>
+              <strong className="block font-display text-lg">
+                {room.playMode === 'together'
+                  ? 'One room. One shared result.'
+                  : 'Everyone plays for their own score.'}
+              </strong>
+              <span className="mt-1 block text-sm font-medium text-[#607486]">
+                {room.playMode === 'together'
+                  ? 'There are no opposing teams. Every answer contributes to the same objective.'
+                  : 'There are no teams in this room. The final ranking is individual.'}
+              </span>
             </span>
-          </span>
-        </div>
-      ))}
+          </div>
+        ))}
       {room.rewardMode === 'nim' && (
         <RewardFundingPanel
           room={room}
@@ -1897,7 +1901,7 @@ function QuestionState({
   onExtend: () => void;
 }) {
   return (
-    <div className="mt-3 sm:mt-7">
+    <div className="live-question-screen mt-2 pb-4 sm:mt-7">
       <div className="mobile-round-top flex items-start justify-between gap-4 border-b border-[#d1d5d5] pb-5">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.15em] text-[#c94f3b]">
@@ -1926,7 +1930,7 @@ function QuestionState({
         </span>
       </div>
       {role === 'player' ? (
-        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+        <div className="live-answer-grid mt-3 grid grid-cols-2 gap-2.5">
           {room.choices.map((choice, index) => {
             return (
               <button
@@ -1936,22 +1940,28 @@ function QuestionState({
                 aria-pressed={selected === index}
                 className={`mobile-answer relative min-h-20 border-2 p-4 text-left font-display text-lg font-extrabold transition ${selected === index ? 'border-[#2577de] bg-[#eaf4ff] ring-2 ring-[#2577de]/15' : 'border-[#cbd4da] bg-white hover:border-[#8aa8c0]'} ${locked && selected !== index ? 'opacity-45' : ''} disabled:cursor-default`}
               >
-                <span
-                  className={`mr-3 inline-grid h-7 w-7 place-items-center rounded-full text-sm ${selected === index ? 'bg-[#2577de] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
-                >
-                  {String.fromCharCode(65 + index)}
+                <span className="flex items-start gap-2.5">
+                  <span
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm ${selected === index ? 'bg-[#2577de] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                  >
+                    {selected === index ? (
+                      <Check size={15} />
+                    ) : (
+                      String.fromCharCode(65 + index)
+                    )}
+                  </span>
+                  <span className="min-w-0 break-words">{choice}</span>
                 </span>
-                {choice}
                 {selected === index && (
-                  <span className="mt-4 flex w-fit items-center gap-1.5 rounded-full bg-[#203752] px-3 py-1.5 font-sans text-xs font-extrabold text-white">
-                    <Check size={15} /> {locked ? 'Submitted' : 'Selected'}
+                  <span className="mt-2 block pl-9 font-sans text-[11px] font-extrabold uppercase tracking-[.08em] text-[#1f72d2]">
+                    {locked ? 'Submitted' : 'Selected'}
                   </span>
                 )}
               </button>
             );
           })}
           {!locked && (
-            <div className="mobile-action-bar col-span-full mt-1">
+            <div className="live-answer-action mobile-action-bar col-span-full mt-1">
               <Button
                 onClick={onSubmit}
                 disabled={selected === null || busy || seconds === 0}
@@ -2109,7 +2119,9 @@ function ResultsState({
     .reduce((sum, player) => sum + player.score, 0);
   const teamTotal = signalTotal + sparkTotal;
   const signalShare = teamTotal ? (signalTotal / teamTotal) * 100 : 50;
-  const rewardRecipients = leaderboard.filter((player) => player.rewardEligible);
+  const rewardRecipients = leaderboard.filter(
+    (player) => player.rewardEligible,
+  );
   return (
     <div className="relative mt-6 overflow-hidden sm:mt-8">
       <div className="flex items-center gap-2 text-[#a97800]">
@@ -2658,8 +2670,20 @@ function RewardSettlement({
   participantToken?: string;
 }) {
   const [address, setAddress] = useState('');
+  const eligiblePlayers = room.players.filter(
+    (player) => player.rewardEligible,
+  );
+  const winnerIndex = Math.max(
+    0,
+    eligiblePlayers.findIndex((player) => player.id === winner.id),
+  );
+  const initialShares = getRewardShares(
+    nimToLuna(room.rewardAmount) ?? nimToLuna('0')!,
+    Math.max(1, eligiblePlayers.length),
+    room.rewardRule === 'community_unlock' ? 'equal' : room.rewardSplit,
+  );
   const [payoutAmount, setPayoutAmount] = useState(
-    (Number(room.rewardAmount) / Math.max(1, room.rewardWinnerCount))
+    (Number(initialShares[winnerIndex] ?? nimToLuna('0')!) / 100_000)
       .toFixed(5)
       .replace(/\.?0+$/, ''),
   );
@@ -2681,9 +2705,6 @@ function RewardSettlement({
     winner.payoutTxHash
       ? `${winner.payoutState === 'confirmed' ? 'Confirmed on Nimiq' : 'Submitted to Nimiq'} · proof ${winner.payoutTxHash.slice(0, 10)}…`
       : '',
-  );
-  const eligiblePlayers = room.players.filter(
-    (player) => player.rewardEligible,
   );
   const currentPlayer = room.players.find(
     (player) => player.id === currentPlayerId,
@@ -3116,9 +3137,7 @@ function RewardSettlement({
           </div>
           <Button
             onClick={() => void payWinner()}
-            disabled={
-              ['checking', 'approving', 'submitted'].includes(state)
-            }
+            disabled={['checking', 'approving', 'submitted'].includes(state)}
             className="mobile-primary mt-3 h-12 rounded-full bg-[#203752] px-6 font-extrabold"
           >
             {state === 'checking'

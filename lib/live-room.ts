@@ -475,6 +475,7 @@ export function getRoomConfig(value: string | null) {
     rewardNetwork: null as 'MainAlbatross' | 'TestAlbatross' | null,
     rewardRule: 'skill' as const,
     rewardWinnerCount: 1,
+    rewardSplit: 'equal' as const,
     eventKind: 'custom' as const,
     adaptiveMoments: false,
     adaptiveMode: 'off' as const,
@@ -515,8 +516,12 @@ export function getRoomConfig(value: string | null) {
           : ('skill' as const),
       rewardWinnerCount: Math.max(
         1,
-        Math.min(5, Math.floor(Number(config.rewardWinnerCount) || 1)),
+        Math.min(20, Math.floor(Number(config.rewardWinnerCount) || 1)),
       ),
+      rewardSplit:
+        config.rewardSplit === 'ranked'
+          ? ('ranked' as const)
+          : ('equal' as const),
       eventKind: [
         'game_night',
         'community_vote',

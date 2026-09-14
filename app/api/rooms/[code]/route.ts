@@ -181,24 +181,24 @@ export async function GET(
     .reduce((total, player) => total + player.score, 0);
   const hasNextRound = roundIndex + 1 < roundCount;
   const usesTeams = reward.playMode === 'teams' || reward.playMode === 'hybrid';
-  const roomSignal = reward.adaptiveMoments &&
-    (usesTeams || round?.type === 'finale')
-    ? detectLivingRoomSignal({
-        status: room.status,
-        roundType: round?.type ?? 'multiple_choice',
-        hasNextRound,
-        choiceCounts,
-        finalePassed,
-        signalScore,
-        sparkScore,
-        signalPlayers: playerRows.results.filter(
-          (player) => player.teamId === 'signal',
-        ).length,
-        sparkPlayers: playerRows.results.filter(
-          (player) => player.teamId === 'spark',
-        ).length,
-      })
-    : null;
+  const roomSignal =
+    reward.adaptiveMoments && (usesTeams || round?.type === 'finale')
+      ? detectLivingRoomSignal({
+          status: room.status,
+          roundType: round?.type ?? 'multiple_choice',
+          hasNextRound,
+          choiceCounts,
+          finalePassed,
+          signalScore,
+          sparkScore,
+          signalPlayers: playerRows.results.filter(
+            (player) => player.teamId === 'signal',
+          ).length,
+          sparkPlayers: playerRows.results.filter(
+            (player) => player.teamId === 'spark',
+          ).length,
+        })
+      : null;
   let rewardRule: 'skill' | 'community_unlock' = reward.rewardRule;
   try {
     const rules = JSON.parse(rewardRow?.rulesJson ?? '{}') as {
@@ -226,6 +226,7 @@ export async function GET(
     rewardAmount: reward.amount,
     rewardRule,
     rewardWinnerCount: reward.rewardWinnerCount,
+    rewardSplit: reward.rewardSplit,
     rewardState: rewardRow?.state ?? 'none',
     rewardCustody: reward.custody,
     fundingTxHash: rewardRow?.fundingTxHash ?? null,

@@ -398,6 +398,11 @@ button {
   .mobile-page.home-page {
     min-height: 0;
   }
+  .mobile-page.live-room-page {
+    min-height: 100dvh;
+    padding-top: 8px !important;
+    padding-bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  }
   .mobile-page > * {
     min-width: 0;
   }
@@ -567,12 +572,16 @@ button {
     background: linear-gradient(180deg, rgba(248, 247, 243, 0), #f8f7f3 24%);
   }
   .mobile-answer {
-    min-height: 68px !important;
+    min-height: 76px !important;
     border-radius: 16px;
-    padding: 13px !important;
+    padding: 11px !important;
+    font-size: 0.94rem !important;
+    line-height: 1.2 !important;
   }
   .mobile-round-top {
-    align-items: center;
+    align-items: flex-start;
+    gap: 10px !important;
+    padding-bottom: 12px !important;
   }
   .mobile-round-top h1 {
     font-size: clamp(2rem, 9vw, 2.8rem) !important;
@@ -580,12 +589,30 @@ button {
   }
   .mobile-question-prompt {
     overflow-wrap: anywhere;
-    font-size: clamp(1.65rem, 7.5vw, 2.25rem) !important;
-    line-height: 1.02 !important;
+    font-size: clamp(1.45rem, 6.7vw, 2.05rem) !important;
+    line-height: 1.04 !important;
   }
-  .mobile-round-top > div:last-child {
-    width: 52px;
-    height: 52px;
+  .mobile-round-top > span:last-child {
+    width: 46px;
+    height: 46px;
+    font-size: 1rem;
+  }
+  .live-room-header {
+    min-height: 44px;
+    padding-bottom: 7px !important;
+  }
+  .live-room-header button {
+    height: 36px !important;
+  }
+  .live-question-screen {
+    min-height: 0;
+  }
+  .live-answer-grid {
+    align-items: stretch;
+  }
+  .live-answer-action {
+    grid-column: 1 / -1;
+    padding-top: 10px;
   }
   .mobile-results-grid {
     grid-template-columns: 1fr 1fr !important;

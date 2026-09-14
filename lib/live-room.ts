@@ -476,6 +476,7 @@ export function getRoomConfig(value: string | null) {
     rewardRule: 'skill' as const,
     rewardWinnerCount: 1,
     rewardSplit: 'equal' as const,
+    rewardAllocations: [] as string[],
     eventKind: 'custom' as const,
     adaptiveMoments: false,
     adaptiveMode: 'off' as const,
@@ -519,9 +520,14 @@ export function getRoomConfig(value: string | null) {
         Math.min(100, Math.floor(Number(config.rewardWinnerCount) || 1)),
       ),
       rewardSplit:
-        config.rewardSplit === 'ranked'
-          ? ('ranked' as const)
+        config.rewardSplit === 'ranked' || config.rewardSplit === 'custom'
+          ? (config.rewardSplit as 'ranked' | 'custom')
           : ('equal' as const),
+      rewardAllocations: Array.isArray(config.rewardAllocations)
+        ? config.rewardAllocations
+            .filter((amount): amount is string => typeof amount === 'string')
+            .slice(0, 100)
+        : [],
       eventKind: [
         'game_night',
         'community_vote',

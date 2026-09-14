@@ -17,7 +17,7 @@ import {
 } from '@/lib/mimo-account';
 import { analyticsClassForRequest } from '@/lib/usage-evidence';
 import { getMainnetRewardConfig } from '@/lib/mainnet-reward';
-import { nimToLuna } from '@/lib/reward-split';
+import { getRewardShares, nimToLuna } from '@/lib/reward-split';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -49,7 +49,10 @@ export async function POST(request: Request) {
           Math.min(100, Math.floor(Number(body.rewardWinnerCount) || 1)),
         )
       : 1;
-  const rewardSplit = body.rewardSplit === 'ranked' ? 'ranked' : 'equal';
+  const rewardSplit =
+    body.rewardSplit === 'ranked' || body.rewardSplit === 'custom'
+      ? body.rewardSplit
+      : 'equal';
   const vault = rewardMode === 'nim' ? await getVaultConfig() : null;
   if (
     rewardMode === 'nim' &&
@@ -155,7 +158,7 @@ export async function POST(request: Request) {
           correctChoice: body.correctChoice,
         },
       ];
-  const parsedRounds = rawRounds.slice(0, 8).map((value) => {
+  const parsedRounds = rawRounds.slice(0, 20).map((value) => {
     const round = value && typeof value === 'object' ? value : {};
     const record = round as Record<string, unknown>;
     const type = ['pulse', 'multiple_choice', 'finale'].includes(
@@ -211,6 +214,35 @@ export async function POST(request: Request) {
     (rewardAmountLuna === null || rewardAmountLuna < BigInt(1))
   ) {
     return json({ error: 'Enter a valid NIM reward.' }, 400);
+  }
+  const rewardAllocations =
+    rewardMode === 'nim' && rewardRule === 'skill' && rewardSplit === 'custom'
+      ? (Array.isArray(body.rewardAllocations)
+          ? body.rewardAllocations
+          : []
+        ).map((amount) => nimToLuna(String(amount)))
+      : [];
+  if (
+    rewardMode === 'nim' &&
+    rewardRule === 'skill' &&
+    rewardSplit === 'custom'
+  ) {
+    try {
+      getRewardShares(
+        rewardAmountLuna ?? BigInt(0),
+        rewardWinnerCount,
+        'custom',
+        rewardAllocations.filter((amount): amount is bigint => amount !== null),
+      );
+    } catch {
+      return json(
+        {
+          error:
+            'Set one positive NIM amount for every winner. The amounts must add up exactly to the total reward.',
+        },
+        400,
+      );
+    }
   }
   if (
     rewardMode === 'nim' &&
@@ -311,6 +343,11 @@ export async function POST(request: Request) {
     rewardRule,
     rewardWinnerCount,
     rewardSplit,
+    rewardAllocations: rewardAllocations.map((amount) =>
+      amount === null
+        ? ''
+        : (Number(amount) / 100_000).toFixed(5).replace(/\.?0+$/, ''),
+    ),
     eventKind,
     adaptiveMoments: body.adaptiveMoments !== false,
     adaptiveMode: ['auto', 'ask', 'off'].includes(String(body.adaptiveMode))
@@ -418,7 +455,13 @@ export async function POST(request: Request) {
                       ? 'winner_takes_all'
                       : rewardRule === 'skill' && rewardSplit === 'ranked'
                         ? 'ranked_split'
+                        : rewardRule === 'skill' && rewardSplit === 'custom'
+                          ? 'custom_split'
                         : 'equal_split',
+                  allocationsLuna:
+                    rewardRule === 'skill' && rewardSplit === 'custom'
+                      ? rewardAllocations.map((amount) => amount!.toString())
+                      : undefined,
                   custody: rewardCustody,
                 }),
                 now,

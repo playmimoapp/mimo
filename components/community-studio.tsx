@@ -88,6 +88,15 @@ type CommunityEventSummary = {
   scores: Array<{ nickname: string; score: number }>;
 };
 
+type DiscoverEvent = Pick<
+  CommunityEventSummary,
+  'id' | 'title' | 'status' | 'startsAt' | 'roomCode'
+> & {
+  communityName: string;
+  communitySlug: string;
+  rewardAmount: number | null;
+};
+
 type CommunitySocial = 'discord' | 'x' | 'telegram';
 
 type DiscordSetup = {
@@ -1596,9 +1605,7 @@ function CommunityCard({
         };
         if (!response.ok || !body.events)
           throw new Error(body.error || 'Event history could not load.');
-        setManagedEvents(
-          body.events.filter((event) => event.status === 'complete'),
-        );
+        setManagedEvents(body.events);
         setHistoryLoaded(true);
       })
       .catch((cause) => {
@@ -1805,9 +1812,7 @@ function CommunityCard({
       };
       if (!response.ok || !body.events)
         throw new Error(body.error || 'Event history could not load.');
-      setManagedEvents(
-        body.events.filter((event) => event.status === 'complete'),
-      );
+      setManagedEvents(body.events);
       setHistoryLoaded(true);
     } catch (cause) {
       setScheduleError(
@@ -2023,6 +2028,51 @@ function CommunityCard({
         </div>
         {managing && (
           <div className="mt-5 border-t border-[#dfe5e9] pt-5">
+            {managedEvents.some((event) =>
+              ['scheduled', 'lobby', 'live', 'verifying'].includes(
+                event.status,
+              ),
+            ) && (
+              <div className="mb-6 border-b border-[#dfe5e9] pb-5">
+                <p className="text-xs font-black uppercase tracking-[.12em] text-[#c94f3b]">
+                  Running and upcoming
+                </p>
+                <div className="mt-2">
+                  {managedEvents
+                    .filter((event) =>
+                      ['scheduled', 'lobby', 'live', 'verifying'].includes(
+                        event.status,
+                      ),
+                    )
+                    .map((event) => (
+                      <a
+                        key={event.id}
+                        href={`/?room=${event.roomCode}&host=1`}
+                        className="flex items-center gap-3 border-t border-[#e4e9ec] py-3"
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${event.status === 'live' ? 'animate-pulse bg-[#d95643]' : 'bg-[#f0bd22]'}`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <strong className="block truncate text-sm">
+                            {event.title}
+                          </strong>
+                          <span className="text-xs font-bold capitalize text-[#718295]">
+                            {event.status}
+                          </span>
+                        </span>
+                        <span className="text-sm font-extrabold text-[#2577de]">
+                          Resume <ArrowRight size={16} className="ml-1 inline" />
+                        </span>
+                      </a>
+                    ))}
+                </div>
+                <p className="mt-2 text-xs font-bold text-[#718295]">
+                  Host access resumes securely on the device that created the
+                  room.
+                </p>
+              </div>
+            )}
             <p className="text-xs font-black uppercase tracking-[.12em] text-[#718295]">
               Primary community home
             </p>
@@ -2114,9 +2164,13 @@ function CommunityCard({
                   Hide an event from the community page without deleting its
                   results or payment record.
                 </p>
-                {managedEvents.length > 0 ? (
+                {managedEvents.some(
+                  (event) => event.status === 'complete',
+                ) ? (
                   <div className="mt-3 border-y border-[#dfe5e9]">
-                    {managedEvents.map((event) => (
+                    {managedEvents
+                      .filter((event) => event.status === 'complete')
+                      .map((event) => (
                       <div
                         key={event.id}
                         className="flex items-center justify-between gap-4 border-b border-[#edf0f2] py-3 last:border-0"
@@ -2144,7 +2198,7 @@ function CommunityCard({
                           {event.publicVisible ? 'Hide' : 'Show'}
                         </button>
                       </div>
-                    ))}
+                      ))}
                   </div>
                 ) : (
                   <p className="mt-3 text-xs font-bold text-[#718295]">
@@ -2738,6 +2792,7 @@ export function CommunityDirectory({
 }) {
   const [query, setQuery] = useState('');
   const [communities, setCommunities] = useState<Community[]>([]);
+  const [events, setEvents] = useState<DiscoverEvent[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
@@ -2750,8 +2805,12 @@ export function CommunityDirectory({
           .then(async (response) => {
             const body = (await response.json()) as {
               communities?: Community[];
+              events?: DiscoverEvent[];
             };
-            if (response.ok) setCommunities(body.communities ?? []);
+            if (response.ok) {
+              setCommunities(body.communities ?? []);
+              setEvents(body.events ?? []);
+            }
           })
           .finally(() => setLoading(false));
       },
@@ -2781,6 +2840,53 @@ export function CommunityDirectory({
           />
         </label>
       </div>
+      {events.length > 0 && (
+        <section className="mt-8 border-y border-[#d7dfe4] py-5">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.13em] text-[#c94f3b]">
+                Open rooms
+              </p>
+              <h2 className="font-display mt-1 text-2xl font-extrabold">
+                Play now or save the date.
+              </h2>
+            </div>
+            <span className="text-xs font-bold text-[#718295]">
+              Public events
+            </span>
+          </div>
+          <div className="mt-3 grid gap-x-7 md:grid-cols-2">
+            {events.map((event) => (
+              <a
+                key={event.id}
+                href={`/?room=${event.roomCode}`}
+                className="group flex min-w-0 items-center gap-4 border-t border-[#e0e6ea] py-4"
+              >
+                <span
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${event.status === 'live' ? 'animate-pulse bg-[#d95643]' : 'bg-[#f0bd22]'}`}
+                />
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate">{event.title}</strong>
+                  <span className="mt-1 block truncate text-xs font-bold text-[#718295]">
+                    {event.communityName} ·{' '}
+                    {event.status === 'live'
+                      ? 'Live now'
+                      : event.startsAt
+                        ? new Date(event.startsAt).toLocaleString()
+                        : 'Lobby open'}
+                    {event.rewardAmount
+                      ? ` · ${event.rewardAmount} NIM`
+                      : ''}
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm font-extrabold text-[#2577de]">
+                  Join <ArrowRight size={17} className="ml-1 inline" />
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="mt-8 space-y-1">
         {communities.map((community) => (
           <button

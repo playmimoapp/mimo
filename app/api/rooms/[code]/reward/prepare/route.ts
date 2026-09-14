@@ -8,7 +8,7 @@ import {
 } from '@/lib/live-room';
 import { assertMainnetRewardAmount } from '@/lib/mainnet-reward';
 import { decryptVaultAddress } from '@/lib/reward-vault';
-import { getRewardShares } from '@/lib/reward-split';
+import { getRewardShares, nimToLuna } from '@/lib/reward-split';
 
 function normalizeAddress(value: unknown) {
   return (typeof value === 'string' ? value : '')
@@ -139,6 +139,9 @@ export async function POST(
     totalLuna,
     winners.results.length,
     roomConfig.rewardSplit,
+    roomConfig.rewardAllocations
+      .map((amount) => nimToLuna(amount))
+      .filter((amount): amount is bigint => amount !== null),
   )[winnerIndex].toString();
   return json({
     verified: true,

@@ -23,5 +23,36 @@ export async function GET(request: Request) {
       LIMIT 40`)
     .bind(pattern, pattern, pattern, pattern)
     .all();
-  return json({ communities: communities.results });
+  const events = await getD1()
+    .prepare(`SELECT e.id, e.title, e.status, e.starts_at AS startsAt,
+      e.room_code AS roomCode, c.name AS communityName, c.slug AS communitySlug,
+      r.amount_luna AS rewardAmountLuna
+      FROM events e JOIN communities c ON c.id = e.community_id
+      LEFT JOIN rewards r ON r.event_id = e.id
+      WHERE c.slug NOT LIKE 'room-%' AND e.public_visible = 1
+        AND e.status IN ('live', 'lobby', 'scheduled')
+        AND (? = '%%' OR e.title LIKE ? OR c.name LIKE ? OR c.slug LIKE ?)
+      ORDER BY CASE e.status WHEN 'live' THEN 0 WHEN 'lobby' THEN 1 ELSE 2 END,
+        COALESCE(e.starts_at, e.created_at) ASC LIMIT 30`)
+    .bind(pattern, pattern, pattern, pattern)
+    .all<{
+      id: string;
+      title: string;
+      status: string;
+      startsAt: number | null;
+      roomCode: string;
+      communityName: string;
+      communitySlug: string;
+      rewardAmountLuna: string | null;
+    }>();
+  return json({
+    communities: communities.results,
+    events: events.results.map((event) => ({
+      ...event,
+      rewardAmount: event.rewardAmountLuna
+        ? Number(event.rewardAmountLuna) / 100_000
+        : null,
+      rewardAmountLuna: undefined,
+    })),
+  });
 }

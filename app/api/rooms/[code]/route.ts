@@ -247,6 +247,7 @@ export async function GET(
     rewardRule,
     rewardWinnerCount: reward.rewardWinnerCount,
     rewardSplit: reward.rewardSplit,
+    rewardAllocations: reward.rewardAllocations,
     rewardState: rewardRow?.state ?? 'none',
     rewardCustody: reward.custody,
     fundingTxHash: rewardRow?.fundingTxHash ?? null,

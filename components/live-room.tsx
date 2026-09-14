@@ -183,11 +183,16 @@ export function LiveRoom({
       `${window.location.origin}/r/${code}${inviteToken ? `#invite=${inviteToken}` : ''}`,
     [code, inviteToken],
   );
+  const inviteQrUrl = useCallback(
+    () =>
+      `${window.location.origin}/open/${code}${inviteToken ? `#invite=${inviteToken}` : ''}`,
+    [code, inviteToken],
+  );
 
   useEffect(() => {
     if (!inviteOpen && !(mode === 'host' && room?.status === 'lobby')) return;
     let active = true;
-    void QRCode.toDataURL(inviteUrl(), {
+    void QRCode.toDataURL(inviteQrUrl(), {
       width: 720,
       margin: 2,
       errorCorrectionLevel: 'M',
@@ -205,7 +210,7 @@ export function LiveRoom({
     return () => {
       active = false;
     };
-  }, [inviteOpen, inviteUrl, mode, room?.status]);
+  }, [inviteOpen, inviteQrUrl, mode, room?.status]);
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshSequence.current;
@@ -983,6 +988,7 @@ export function LiveRoom({
                   nimiq={nimiq}
                   onRefresh={refresh}
                   onStart={() => void hostAction('start')}
+                  onCancel={() => void hostAction('cancel')}
                 />
               )}
               {room.status === 'live' && (
@@ -1612,6 +1618,7 @@ function LobbyState({
   nimiq,
   onRefresh,
   onStart,
+  onCancel,
 }: {
   room: LiveRoomState;
   isHost: boolean;
@@ -1624,6 +1631,7 @@ function LobbyState({
   nimiq: MimoNimiq;
   onRefresh: () => Promise<void>;
   onStart: () => void;
+  onCancel: () => void;
 }) {
   const verifiedWallets = room.players.filter(
     (player) => player.walletVerified,
@@ -1680,6 +1688,44 @@ function LobbyState({
           >
             <Share2 size={16} /> Share invite
           </button>
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Cancel this room before it starts"
+                  disabled={busy}
+                  className="mt-3 inline-flex min-h-10 items-center gap-2 px-3 text-sm font-extrabold text-[#a34737]"
+                />
+              }
+            >
+              <XCircle size={16} /> Cancel room
+            </AlertDialogTrigger>
+            <AlertDialogContent className="rounded-[24px] border-0 bg-white p-5 shadow-2xl">
+              <AlertDialogHeader>
+                <AlertDialogMedia className="bg-[#fff0ec] text-[#b74d3d]">
+                  <XCircle />
+                </AlertDialogMedia>
+                <AlertDialogTitle className="font-display text-xl font-extrabold">
+                  Cancel this room?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="leading-6">
+                  Players will be told it ended. Confirmed vault funding will
+                  return automatically to the wallet that funded it.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep room</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={onCancel}
+                  disabled={busy}
+                  className="bg-[#b84a3a] text-white hover:bg-[#9e3d30]"
+                >
+                  Cancel and refund
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       ) : (
         <div className="live-lobby-stage mobile-only relative mb-5 min-h-[190px] overflow-hidden rounded-[28px] bg-[#dceeff] px-5 py-4">

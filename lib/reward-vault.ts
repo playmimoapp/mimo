@@ -370,11 +370,13 @@ export async function getRewardEligibility(eventId: string) {
   let rule: 'skill' | 'community_unlock' = 'skill';
   let winnerCount = 1;
   let split: RewardSplit = 'equal';
+  let customShares: bigint[] = [];
   try {
     const rules = JSON.parse(reward?.rulesJson ?? '{}') as {
       type?: unknown;
       winners?: unknown;
       distribution?: unknown;
+      allocationsLuna?: unknown;
     };
     if (rules.type === 'community_unlock') rule = 'community_unlock';
     if (rule === 'skill') {
@@ -383,6 +385,15 @@ export async function getRewardEligibility(eventId: string) {
         Math.min(100, Math.floor(Number(rules.winners) || 1)),
       );
       if (rules.distribution === 'ranked_split') split = 'ranked';
+      if (
+        rules.distribution === 'custom_split' &&
+        Array.isArray(rules.allocationsLuna)
+      ) {
+        split = 'custom';
+        customShares = rules.allocationsLuna.map((amount) =>
+          BigInt(String(amount)),
+        );
+      }
     }
   } catch {
     // Old rewards retain the skill fallback.
@@ -455,6 +466,7 @@ export async function getRewardEligibility(eventId: string) {
     reward,
     rule,
     split,
+    customShares,
     unlocked,
     collectiveCleared,
     eligible,
@@ -528,6 +540,7 @@ export async function attemptAutomaticPayout(eventId: string) {
     totalLuna,
     eligibility.eligible.length,
     eligibility.rule === 'community_unlock' ? 'equal' : eligibility.split,
+    eligibility.rule === 'community_unlock' ? [] : eligibility.customShares,
   );
   if (shares.some((share) => share < BigInt(1)))
     return { state: 'reward_too_small' as const };

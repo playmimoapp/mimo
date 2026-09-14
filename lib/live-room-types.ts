@@ -36,7 +36,8 @@ export type LiveRoomState = {
   rewardFeeReserve: string | null;
   rewardRule: 'skill' | 'community_unlock';
   rewardWinnerCount: number;
-  rewardSplit: 'equal' | 'ranked';
+  rewardSplit: 'equal' | 'ranked' | 'custom';
+  rewardAllocations: string[];
   rewardState:
     | 'none'
     | 'proposed'

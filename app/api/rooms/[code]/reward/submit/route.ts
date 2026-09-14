@@ -8,7 +8,7 @@ import {
 } from '@/lib/live-room';
 import { verifyMainnetPayout } from '@/lib/mainnet-reward';
 import { normalizeNimiqAddress } from '@/lib/reward-vault';
-import { getRewardShares } from '@/lib/reward-split';
+import { getRewardShares, nimToLuna } from '@/lib/reward-split';
 
 export async function POST(
   request: Request,
@@ -84,6 +84,9 @@ export async function POST(
     totalLuna,
     winners.results.length,
     roomConfig.rewardSplit,
+    roomConfig.rewardAllocations
+      .map((amount) => nimToLuna(amount))
+      .filter((amount): amount is bigint => amount !== null),
   )[winnerIndex].toString();
   const memo = `MIMO ${room.roomCode} WINNER${winners.results.length > 1 ? ` ${winnerIndex + 1}` : ''}`;
   if (reusedTransaction) {

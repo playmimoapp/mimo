@@ -1,4 +1,4 @@
-export type RewardSplit = 'equal' | 'ranked';
+export type RewardSplit = 'equal' | 'ranked' | 'custom';
 
 export function nimToLuna(value: string) {
   const normalized = value.trim();
@@ -11,8 +11,19 @@ export function getRewardShares(
   totalLuna: bigint,
   winnerCount: number,
   split: RewardSplit,
+  customShares: bigint[] = [],
 ) {
   const count = Math.max(1, Math.min(100, Math.floor(winnerCount) || 1));
+  if (split === 'custom') {
+    if (
+      customShares.length !== count ||
+      customShares.some((share) => share < BigInt(1)) ||
+      customShares.reduce((sum, share) => sum + share, BigInt(0)) !== totalLuna
+    ) {
+      throw new Error('invalid_custom_reward_split');
+    }
+    return customShares;
+  }
   if (split === 'equal' || count === 1) {
     const base = totalLuna / BigInt(count);
     const remainder = totalLuna % BigInt(count);

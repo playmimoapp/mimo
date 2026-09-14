@@ -70,7 +70,7 @@ type Screen =
 type RewardMode = 'free' | 'nim';
 type RewardCustody = 'host_wallet' | 'mimo_vault';
 type RewardRule = 'skill' | 'community_unlock';
-type RewardSplit = 'equal' | 'ranked';
+type RewardSplit = 'equal' | 'ranked' | 'custom';
 type RoundType = 'pulse' | 'multiple_choice' | 'finale';
 type EventKind =
   | 'game_night'
@@ -140,6 +140,15 @@ function saveRoomRecovery(
         expiresAt: Date.now() + ROOM_RECOVERY_TTL_MS,
       } satisfies RoomRecovery),
     );
+    if (values.hostKey) {
+      window.localStorage.setItem(
+        'mimo:recent-host-room',
+        JSON.stringify({
+          code,
+          expiresAt: Date.now() + ROOM_RECOVERY_TTL_MS,
+        }),
+      );
+    }
   } catch {
     // Private browsing may reject persistent storage. The live tab still works.
   }
@@ -219,6 +228,7 @@ type EventDraft = {
   rewardRule: RewardRule;
   rewardWinnerCount: number;
   rewardSplit: RewardSplit;
+  rewardAllocations: string[];
   adaptiveMoments: boolean;
   adaptiveMode: AdaptiveMode;
   startsAt: number | null;
@@ -506,6 +516,7 @@ export function MimoApp() {
   const [joinCode, setJoinCode] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [hostKey, setHostKey] = useState('');
+  const [recentHostCode, setRecentHostCode] = useState('');
   const [participantToken, setParticipantToken] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [inviteToken, setInviteToken] = useState('');
@@ -554,6 +565,7 @@ export function MimoApp() {
     rewardRule: 'skill',
     rewardWinnerCount: 1,
     rewardSplit: 'equal',
+    rewardAllocations: [''],
     adaptiveMoments: true,
     adaptiveMode: 'auto',
     startsAt: null,
@@ -578,6 +590,26 @@ export function MimoApp() {
       return token;
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const recent = JSON.parse(
+          window.localStorage.getItem('mimo:recent-host-room') ?? '{}',
+        ) as { code?: string; expiresAt?: number };
+        if (
+          recent.code &&
+          Number(recent.expiresAt) > Date.now() &&
+          readRoomRecovery(recent.code)?.hostKey
+        ) {
+          setRecentHostCode(recent.code);
+        }
+      } catch {
+        // A damaged convenience link never blocks the normal home screen.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!roomCode) return;
@@ -758,6 +790,9 @@ export function MimoApp() {
             accessMode?: 'public' | 'private';
           };
           setJoinWalletRequired(Boolean(preview.walletRequired));
+          setWalletUnavailable(
+            Boolean(preview.walletRequired) && !window.nimiq,
+          );
           setJoinAccessMode(
             preview.accessMode === 'private' ? 'private' : 'public',
           );
@@ -922,6 +957,7 @@ export function MimoApp() {
         rewardRule: 'skill',
         rewardWinnerCount: body.draft.rewardWinnerCount ?? 1,
         rewardSplit: 'equal',
+        rewardAllocations: [''],
         adaptiveMoments: true,
         adaptiveMode: 'auto',
         custodyMode: rewardCapabilities.mimoFundingAvailable
@@ -980,6 +1016,7 @@ export function MimoApp() {
         hostKey: body.hostKey,
         inviteToken: body.inviteToken ?? undefined,
       });
+      setRecentHostCode(body.code);
       if (body.inviteToken) {
         window.sessionStorage.setItem(
           `mimo:${body.code}:invite`,
@@ -1207,6 +1244,23 @@ export function MimoApp() {
               setCode={setJoinCode}
               join={openRoomCode}
               host={() => setScreen('host_entry')}
+              recentHostCode={recentHostCode}
+              resumeHost={() => {
+                const recovery = readRoomRecovery(recentHostCode);
+                if (!recovery?.hostKey) {
+                  setRecentHostCode('');
+                  return;
+                }
+                setRoomCode(recentHostCode);
+                setHostKey(recovery.hostKey);
+                setInviteToken(recovery.inviteToken ?? '');
+                window.history.replaceState(
+                  {},
+                  '',
+                  `/?room=${recentHostCode}&host=1`,
+                );
+                setScreen('live_host');
+              }}
               error={roomError}
             />
           )}
@@ -1387,12 +1441,16 @@ function ProductHome({
   setCode,
   join,
   host,
+  recentHostCode,
+  resumeHost,
   error,
 }: {
   code: string;
   setCode: (code: string) => void;
   join: () => void;
   host: () => void;
+  recentHostCode: string;
+  resumeHost: () => void;
   error: string;
 }) {
   const reduceMotion = useReducedMotion();
@@ -1450,6 +1508,16 @@ function ProductHome({
             </button>
           </div>
         </div>
+        {recentHostCode && (
+          <button
+            type="button"
+            onClick={resumeHost}
+            className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm font-extrabold text-[#1f72d2]"
+          >
+            <Radio size={16} /> Resume room {recentHostCode}{' '}
+            <ArrowRight size={16} />
+          </button>
+        )}
         {error && (
           <p role="alert" className="mt-3 text-sm font-bold text-[#a33f30]">
             {error}
@@ -2088,7 +2156,7 @@ function CreateEvent({
   const [showTiming, setShowTiming] = useState(false);
   const [showAccess, setShowAccess] = useState(false);
   const [showHostSettings, setShowHostSettings] = useState(false);
-  const [showRewardChoices, setShowRewardChoices] = useState(false);
+  const [showRewardChoices, setShowRewardChoices] = useState(true);
   const [openQuestionSettings, setOpenQuestionSettings] = useState<
     string | null
   >(null);
@@ -2149,7 +2217,7 @@ function CreateEvent({
     updateRound(roundIndex, { choices, correctChoice });
   };
   const addRound = (type: RoundType) => {
-    if (event.rounds.length >= 8) return;
+    if (event.rounds.length >= 20) return;
     const nextIndex = event.rounds.length;
     update('rounds', [...event.rounds, blankRound(type)]);
     setActiveRound(nextIndex);
@@ -2164,6 +2232,17 @@ function CreateEvent({
       Math.max(0, Math.min(current, event.rounds.length - 2)),
     );
   };
+  const rewardTotal = Number(event.rewardAmount) || 0;
+  const customRewardTotal = event.rewardAllocations.reduce(
+    (sum, amount) => sum + (Number(amount) || 0),
+    0,
+  );
+  const customRewardValid =
+    event.rewardRule !== 'skill' ||
+    event.rewardSplit !== 'custom' ||
+    (event.rewardAllocations.length === event.rewardWinnerCount &&
+      event.rewardAllocations.every((amount) => Number(amount) > 0) &&
+      Math.abs(customRewardTotal - rewardTotal) < 0.00001);
   const ready = Boolean(
     event.title.trim() &&
     event.rounds.length > 0 &&
@@ -2178,7 +2257,8 @@ function CreateEvent({
             round.correctChoice >= 0 &&
             round.correctChoice < round.choices.length)),
     ) &&
-    (event.rewardMode === 'free' || Number(event.rewardAmount) > 0) &&
+    (event.rewardMode === 'free' ||
+      (Number(event.rewardAmount) > 0 && customRewardValid)) &&
     !(
       event.playMode === 'together' &&
       event.rewardMode === 'nim' &&
@@ -2205,10 +2285,12 @@ function CreateEvent({
         : event.playMode === 'together'
           ? ['Together', 'The whole room works toward one result.']
           : ['Hybrid', 'Personal scores with team momentum.'];
-  const rewardTotal = Number(event.rewardAmount) || 0;
   const rewardShares = Array.from(
     { length: event.rewardWinnerCount },
     (_, index) => {
+      if (event.rewardSplit === 'custom') {
+        return Number(event.rewardAllocations[index]) || 0;
+      }
       if (event.rewardSplit === 'equal' || event.rewardWinnerCount === 1) {
         return rewardTotal / event.rewardWinnerCount;
       }
@@ -2822,7 +2904,7 @@ function CreateEvent({
             <div className="mt-4 grid grid-cols-2 gap-2 sm:flex">
               <button
                 type="button"
-                disabled={event.rounds.length >= 8}
+                disabled={event.rounds.length >= 20}
                 onClick={() => addRound('multiple_choice')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
@@ -2830,7 +2912,7 @@ function CreateEvent({
               </button>
               <button
                 type="button"
-                disabled={event.rounds.length >= 8}
+                disabled={event.rounds.length >= 20}
                 onClick={() => addRound('pulse')}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
@@ -2838,7 +2920,7 @@ function CreateEvent({
               </button>
               <button
                 type="button"
-                disabled={event.rounds.length >= 8}
+                disabled={event.rounds.length >= 20}
                 onClick={() => addRound('finale')}
                 className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#aebbc4] bg-white px-4 text-sm font-extrabold disabled:opacity-40"
               >
@@ -2846,8 +2928,8 @@ function CreateEvent({
               </button>
             </div>
             <p className="mt-3 text-sm font-bold text-[#617486]">
-              {event.rounds.length >= 8
-                ? 'Eight-question limit reached.'
+              {event.rounds.length >= 20
+                ? 'Twenty-question limit reached.'
                 : 'One question is enough. Add more only when the event needs them.'}
             </p>
           </div>
@@ -3066,10 +3148,12 @@ function CreateEvent({
                         custodyMode: 'host_wallet',
                         rewardRule: 'skill',
                         rewardWinnerCount: 1,
+                        rewardSplit: 'equal',
+                        rewardAllocations: [''],
                       });
                       setShowRewardChoices(false);
                     }}
-                    className={`min-h-12 px-3 font-extrabold ${event.rewardMode === 'free' ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
+                    className={`order-2 min-h-12 px-3 font-extrabold ${event.rewardMode === 'free' ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
                   >
                     No reward
                   </button>
@@ -3087,6 +3171,8 @@ function CreateEvent({
                             ? 'community_unlock'
                             : 'skill',
                         rewardWinnerCount: 1,
+                        rewardSplit: 'equal',
+                        rewardAllocations: [''],
                         custodyMode: mimoFundingAvailable
                           ? 'mimo_vault'
                           : 'host_wallet',
@@ -3094,9 +3180,9 @@ function CreateEvent({
                       });
                       setShowRewardChoices(false);
                     }}
-                    className={`min-h-12 px-3 font-extrabold disabled:cursor-not-allowed disabled:opacity-50 ${event.rewardMode === 'nim' ? 'bg-[#f7c933] text-[#203752]' : 'bg-[#fff4c9] text-[#715600]'}`}
+                    className={`order-1 min-h-12 px-3 font-extrabold disabled:cursor-not-allowed disabled:opacity-50 ${event.rewardMode === 'nim' ? 'bg-[#f7c933] text-[#203752]' : 'bg-[#fff4c9] text-[#715600]'}`}
                   >
-                    Add NIM reward
+                    Fund with NIM (recommended)
                   </button>
                 </div>
               )}
@@ -3164,6 +3250,8 @@ function CreateEvent({
                           ...event,
                           rewardRule: 'community_unlock',
                           rewardWinnerCount: 1,
+                          rewardSplit: 'equal',
+                          rewardAllocations: [''],
                           custodyMode: 'mimo_vault',
                           walletRequired: true,
                         });
@@ -3197,12 +3285,20 @@ function CreateEvent({
                         type="button"
                         aria-label="Remove one winner"
                         disabled={event.rewardWinnerCount <= 1}
-                        onClick={() =>
-                          update(
-                            'rewardWinnerCount',
-                            Math.max(1, event.rewardWinnerCount - 1),
-                          )
-                        }
+                        onClick={() => {
+                          const count = Math.max(
+                            1,
+                            event.rewardWinnerCount - 1,
+                          );
+                          setEvent({
+                            ...event,
+                            rewardWinnerCount: count,
+                            rewardAllocations: event.rewardAllocations.slice(
+                              0,
+                              count,
+                            ),
+                          });
+                        }}
                         className="grid h-12 w-12 place-items-center text-xl font-extrabold disabled:opacity-30"
                       >
                         -
@@ -3214,30 +3310,44 @@ function CreateEvent({
                         min={1}
                         max={100}
                         value={event.rewardWinnerCount}
-                        onChange={(input) =>
-                          update(
-                            'rewardWinnerCount',
-                            Math.max(
-                              1,
-                              Math.min(
-                                100,
-                                Math.floor(Number(input.target.value) || 1),
-                              ),
+                        onChange={(input) => {
+                          const count = Math.max(
+                            1,
+                            Math.min(
+                              100,
+                              Math.floor(Number(input.target.value) || 1),
                             ),
-                          )
-                        }
+                          );
+                          setEvent({
+                            ...event,
+                            rewardWinnerCount: count,
+                            rewardAllocations: Array.from(
+                              { length: count },
+                              (_, index) =>
+                                event.rewardAllocations[index] ?? '',
+                            ),
+                          });
+                        }}
                         className="h-12 min-w-0 flex-1 bg-transparent text-center font-display text-2xl font-extrabold outline-none"
                       />
                       <button
                         type="button"
                         aria-label="Add one winner"
                         disabled={event.rewardWinnerCount >= 100}
-                        onClick={() =>
-                          update(
-                            'rewardWinnerCount',
-                            Math.min(100, event.rewardWinnerCount + 1),
-                          )
-                        }
+                        onClick={() => {
+                          const count = Math.min(
+                            100,
+                            event.rewardWinnerCount + 1,
+                          );
+                          setEvent({
+                            ...event,
+                            rewardWinnerCount: count,
+                            rewardAllocations: [
+                              ...event.rewardAllocations,
+                              '',
+                            ].slice(0, count),
+                          });
+                        }}
                         className="grid h-12 w-12 place-items-center text-xl font-extrabold disabled:opacity-30"
                       >
                         +
@@ -3251,11 +3361,12 @@ function CreateEvent({
                         <p className="text-sm font-extrabold">
                           How should it split?
                         </p>
-                        <div className="mt-2 grid grid-cols-2 gap-2">
+                        <div className="mt-2 grid gap-2 sm:grid-cols-3">
                           {(
                             [
                               ['equal', 'Equal', 'Same amount each'],
                               ['ranked', 'By rank', 'Higher places earn more'],
+                              ['custom', 'Set amounts', 'You choose every prize'],
                             ] as const
                           ).map(([split, label, detail]) => (
                             <button
@@ -3272,6 +3383,70 @@ function CreateEvent({
                             </button>
                           ))}
                         </div>
+                        {event.rewardSplit === 'custom' && (
+                          <div className="mt-4 border-y border-[#d8dfe4] py-3">
+                            <p className="text-sm font-extrabold">
+                              Prize for each place
+                            </p>
+                            <div className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                              {Array.from(
+                                { length: event.rewardWinnerCount },
+                                (_, index) => (
+                                  <label
+                                    key={index}
+                                    className="flex min-h-11 items-center gap-3 border-b border-[#e1e6e9]"
+                                  >
+                                    <span className="w-8 text-sm font-extrabold text-[#607486]">
+                                      #{index + 1}
+                                    </span>
+                                    <input
+                                      aria-label={`NIM prize for place ${index + 1}`}
+                                      inputMode="decimal"
+                                      value={
+                                        event.rewardAllocations[index] ?? ''
+                                      }
+                                      onChange={(input) => {
+                                        const allocations = Array.from(
+                                          {
+                                            length: event.rewardWinnerCount,
+                                          },
+                                          (_, allocationIndex) =>
+                                            event.rewardAllocations[
+                                              allocationIndex
+                                            ] ?? '',
+                                        );
+                                        allocations[index] = input.target.value
+                                          .replace(/[^0-9.]/g, '')
+                                          .replace(/(\..*)\./g, '$1');
+                                        update(
+                                          'rewardAllocations',
+                                          allocations,
+                                        );
+                                      }}
+                                      placeholder="0"
+                                      className="h-11 min-w-0 flex-1 bg-transparent text-right font-display text-lg font-extrabold outline-none"
+                                    />
+                                    <span className="text-xs font-extrabold text-[#806200]">
+                                      NIM
+                                    </span>
+                                  </label>
+                                ),
+                              )}
+                            </div>
+                            <p
+                              className={`mt-3 text-sm font-extrabold ${customRewardValid ? 'text-[#237044]' : 'text-[#a34737]'}`}
+                            >
+                              Allocated{' '}
+                              {customRewardTotal
+                                .toFixed(5)
+                                .replace(/\.?0+$/, '') || '0'}{' '}
+                              of{' '}
+                              {rewardTotal.toFixed(5).replace(/\.?0+$/, '') ||
+                                '0'}{' '}
+                              NIM
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                     {rewardTotal > 0 && (
@@ -3629,6 +3804,13 @@ function Join({
 }) {
   const [guestIdentity, setGuestIdentity] = useState(false);
   const useSavedIdentity = Boolean(signedInProfile && !guestIdentity);
+  const openInNimiqPay = () => {
+    const savedInvite = window.sessionStorage.getItem(
+      `mimo:${roomCode}:invite`,
+    );
+    const invitation = `${window.location.origin}/r/${roomCode}${savedInvite ? `#invite=${encodeURIComponent(savedInvite)}` : ''}`;
+    window.location.href = `nimiqpay://miniapp?url=${encodeURIComponent(invitation)}`;
+  };
   return (
     <section className="mobile-page app-frame grid max-w-[1060px] items-center gap-8 pb-12 pt-3 sm:pt-10 md:grid-cols-[290px_minmax(0,1fr)]">
       <MimoCharacter className="mx-auto hidden w-[260px] md:block" />
@@ -3773,10 +3955,17 @@ function Join({
         {walletUnavailable && (
           <div className="mt-4">
             <p className="text-sm font-bold text-[#53687c]">
-              Install Nimiq Pay, then open this same invitation from its Mini
-              Apps browser.
+              Open this invitation in Nimiq Pay. If the app is not installed,
+              get it below and return to the same room code.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openInNimiqPay}
+                className="inline-flex h-11 items-center rounded-full bg-[#2577de] px-5 text-sm font-extrabold text-white"
+              >
+                Open in Nimiq Pay
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -3802,7 +3991,9 @@ function Join({
             Your wallet stays private
           </span>
           <Button
-            onClick={next}
+            onClick={
+              walletRequired && walletUnavailable ? openInNimiqPay : next
+            }
             disabled={!name.trim() || working || requirementsLoading}
             className="mobile-primary h-12 rounded-full bg-[#1f72d2] px-6 font-bold"
           >
@@ -3813,7 +4004,9 @@ function Join({
                   ? 'Waiting for Nimiq Pay…'
                   : 'Joining…'
                 : walletRequired
-                  ? 'Verify wallet and join'
+                  ? walletUnavailable
+                    ? 'Open in Nimiq Pay'
+                    : 'Verify wallet and join'
                   : 'Join the room'}{' '}
             <ChevronRight />
           </Button>

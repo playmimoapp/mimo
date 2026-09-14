@@ -452,7 +452,7 @@ button {
     gap: 22px !important;
   }
   .creator-form-page:has(.creator-step-action) {
-    padding-bottom: 112px !important;
+    padding-bottom: 148px !important;
   }
   .creator-step-action {
     position: fixed !important;
@@ -488,6 +488,11 @@ button {
     border-radius: 18px;
   }
   .creator-round {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     border-width: 1px !important;
     border-radius: 20px !important;
     padding: 14px !important;
@@ -497,6 +502,14 @@ button {
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
+  }
+  .creator-round textarea,
+  .creator-round input,
+  .creator-round select {
+    max-width: 100%;
+  }
+  .creator-round textarea {
+    overflow-wrap: anywhere;
   }
   .creator-round > div:first-of-type > div:first-child button {
     min-width: 0;

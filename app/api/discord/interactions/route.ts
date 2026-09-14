@@ -1,8 +1,11 @@
 import { createPublicKey, verify } from 'node:crypto';
+import { after } from 'next/server';
 import { getD1 } from '@/db';
+import { discordApi, getDiscordConfig } from '@/lib/discord-integration';
 import { hashToken, json } from '@/lib/live-room';
 
 export const runtime = 'nodejs';
+export const maxDuration = 15;
 
 type DiscordOption = {
   name?: unknown;
@@ -70,6 +73,84 @@ function subcommand(interaction: DiscordInteraction) {
   return first?.type === 1 && typeof first.name === 'string'
     ? first.name
     : 'create';
+}
+
+async function sendCreatorDraftDm({
+  discordUserId,
+  creatorUrl,
+  creatorName,
+  communityName,
+  topic,
+  kind,
+}: {
+  discordUserId: string;
+  creatorUrl: string;
+  creatorName: string;
+  communityName: string;
+  topic: string;
+  kind: string;
+}) {
+  const discord = getDiscordConfig();
+  if (!discord.botReady) return false;
+  const channel = await discordApi<{ id?: string }>(
+    '/users/@me/channels',
+    `Bot ${discord.botToken}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ recipient_id: discordUserId }),
+    },
+  );
+  if (!channel.response.ok || !channel.body?.id) return false;
+  const message = await discordApi<{ id?: string }>(
+    `/channels/${encodeURIComponent(channel.body.id)}/messages`,
+    `Bot ${discord.botToken}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        allowed_mentions: { parse: [] },
+        embeds: [
+          {
+            color: 0x2577de,
+            title: `${creatorName}, your Mimo brief is ready.`,
+            description: `I have the direction for ${communityName}: "${topic}"`,
+            fields: [
+              {
+                name: '1 / Brief captured',
+                value: `${kind.replaceAll('_', ' ')} for ${communityName}`,
+              },
+              {
+                name: '2 / Build and review',
+                value:
+                  'Open the private workspace. I will generate the questions, answers and pacing automatically.',
+              },
+              {
+                name: '3 / Approve and publish',
+                value:
+                  'Preview the room, choose any NIM reward, then approve the final event.',
+              },
+            ],
+            footer: {
+              text: 'Private creator flow / Nothing has been published',
+            },
+          },
+        ],
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: 5,
+                label: 'Build my private draft',
+                url: creatorUrl,
+              },
+            ],
+          },
+        ],
+      }),
+    },
+  );
+  return message.response.ok;
 }
 
 export async function POST(request: Request) {
@@ -367,30 +448,27 @@ export async function POST(request: Request) {
   creatorUrl.searchParams.set('communityName', connection.name);
   creatorUrl.searchParams.set('recurrence', connection.recurrence);
 
+  after(async () => {
+    try {
+      await sendCreatorDraftDm({
+        discordUserId,
+        creatorUrl: creatorUrl.toString(),
+        creatorName: account.displayName,
+        communityName: connection.name,
+        topic,
+        kind,
+      });
+    } catch (error) {
+      console.error('discord_creator_dm_failed', error);
+    }
+  });
+
   return json({
     type: 4,
     data: {
       flags: 64,
-      embeds: [
-        {
-          color: 0x2577de,
-          title: `Good brief, ${account.displayName}.`,
-          description: `I’ll turn “${topic}” into a complete, editable ${kind.replaceAll('_', ' ')} for ${connection.name}.`,
-          fields: [
-            {
-              name: 'What happens next',
-              value:
-                'Open the private draft. I’ll generate the rounds, answers and pacing there, then wait for your approval.',
-            },
-            {
-              name: 'Control',
-              value:
-                'Nothing publishes and no NIM moves until an owner or admin approves it.',
-            },
-          ],
-          footer: { text: 'Mimo · Community owner/admin verified' },
-        },
-      ],
+      content:
+        'I sent the private creation flow to your Discord messages. If your privacy settings block bot messages, use the private fallback below.',
       components: [
         {
           type: 1,
@@ -398,7 +476,7 @@ export async function POST(request: Request) {
             {
               type: 2,
               style: 5,
-              label: 'Open the full draft',
+              label: 'Private fallback',
               url: creatorUrl.toString(),
             },
           ],

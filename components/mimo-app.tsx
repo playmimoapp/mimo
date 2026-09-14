@@ -1927,6 +1927,21 @@ function CreateEvent({
     );
     update('rounds', rounds);
   };
+  const changeRoundType = (
+    roundIndex: number,
+    round: RoundDraft,
+    type: RoundType,
+  ) =>
+    updateRound(roundIndex, {
+      type,
+      correctChoice:
+        type === 'pulse' ? null : (round.correctChoice ?? 0),
+      durationSeconds:
+        type === 'finale'
+          ? Math.max(30, round.durationSeconds)
+          : round.durationSeconds,
+      scoringMode: type === 'multiple_choice' ? round.scoringMode : 'accuracy',
+    });
   const updateChoice = (
     roundIndex: number,
     choiceIndex: number,
@@ -2369,7 +2384,25 @@ function CreateEvent({
                     Question {roundIndex + 1}
                   </legend>
                   <div className="order-1 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap gap-2">
+                    <label className="mobile-only w-full flex-col gap-1.5 text-xs font-extrabold uppercase tracking-[.1em] text-[#617486]">
+                      Question type
+                      <select
+                        value={round.type}
+                        onChange={(event) =>
+                          changeRoundType(
+                            roundIndex,
+                            round,
+                            event.target.value as RoundType,
+                          )
+                        }
+                        className="h-12 w-full rounded-xl border border-[#bdc9d1] bg-[#f4f7f9] px-3 text-sm font-extrabold normal-case tracking-normal text-[#203752] outline-none focus:border-[#1f72d2]"
+                      >
+                        <option value="pulse">Live poll</option>
+                        <option value="multiple_choice">Scored question</option>
+                        <option value="finale">Beat Mimo</option>
+                      </select>
+                    </label>
+                    <div className="desktop-only flex-wrap gap-2">
                       {(
                         [
                           ['pulse', 'Live poll', CircleDot],
@@ -2381,21 +2414,7 @@ function CreateEvent({
                           type="button"
                           key={type}
                           onClick={() =>
-                            updateRound(roundIndex, {
-                              type,
-                              correctChoice:
-                                type === 'pulse'
-                                  ? null
-                                  : (round.correctChoice ?? 0),
-                              durationSeconds:
-                                type === 'finale'
-                                  ? Math.max(30, round.durationSeconds)
-                                  : round.durationSeconds,
-                              scoringMode:
-                                type === 'multiple_choice'
-                                  ? round.scoringMode
-                                  : 'accuracy',
-                            })
+                            changeRoundType(roundIndex, round, type)
                           }
                           className={`flex min-h-10 items-center gap-2 rounded-full px-3 text-sm font-extrabold ${round.type === type ? 'bg-[#203752] text-white' : 'bg-[#edf1f3] text-[#526a7c]'}`}
                         >

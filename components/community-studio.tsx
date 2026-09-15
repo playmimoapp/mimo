@@ -89,6 +89,42 @@ type CommunityEventSummary = {
   scores: Array<{ nickname: string; score: number }>;
 };
 
+export type ReusableEventDraft = {
+  eventKind:
+    | 'game_night'
+    | 'community_vote'
+    | 'product_launch'
+    | 'onboarding'
+    | 'custom';
+  title: string;
+  community: string;
+  communitySlug?: string;
+  accessMode: 'public' | 'private';
+  playMode: 'individual' | 'teams' | 'hybrid' | 'together';
+  walletRequired: boolean;
+  rewardMode: 'free' | 'nim';
+  custodyMode: 'host_wallet' | 'mimo_vault';
+  rewardAmount: string;
+  rewardRule: 'skill' | 'community_unlock';
+  rewardWinnerCount: number;
+  rewardSplit: 'equal' | 'ranked' | 'custom';
+  rewardAllocations: string[];
+  adaptiveMoments: boolean;
+  adaptiveMode: 'auto' | 'ask' | 'off';
+  startsAt: number | null;
+  recurrence: Community['recurrence'];
+  rounds: Array<{
+    id: string;
+    type: 'pulse' | 'multiple_choice' | 'finale';
+    question: string;
+    choices: string[];
+    correctChoice: number | null;
+    durationSeconds: number;
+    scoringMode: 'accuracy' | 'speed';
+    collectiveTargetPercent: number;
+  }>;
+};
+
 type DiscoverEvent = Pick<
   CommunityEventSummary,
   'id' | 'title' | 'status' | 'startsAt' | 'roomCode'
@@ -214,7 +250,7 @@ export function CommunityStudio({
     slug: string;
     recurrence: Community['recurrence'];
     nextEventAt: number | null;
-  }) => void;
+  }, draft?: ReusableEventDraft) => void;
 }) {
   const nimiq = useRef(new MimoNimiq());
   const [session, setSession] = useState('');
@@ -1556,7 +1592,7 @@ function CommunityCard({
     slug: string;
     recurrence: Community['recurrence'];
     nextEventAt: number | null;
-  }) => void;
+  }, draft?: ReusableEventDraft) => void;
   session: string;
   initiallyManaging?: boolean;
   onSaved: () => void;
@@ -1855,6 +1891,39 @@ function CommunityCard({
           : 'Event visibility could not be changed.',
       );
     } finally {
+      setSavingSchedule(false);
+    }
+  }
+  async function reuseEvent(eventId: string) {
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      const response = await fetch(
+        `/api/communities/${community.slug}/events/${eventId}`,
+        {
+          headers: { 'x-mimo-account': session },
+          cache: 'no-store',
+        },
+      );
+      const body = (await response.json()) as {
+        draft?: ReusableEventDraft;
+        error?: string;
+      };
+      if (!response.ok || !body.draft)
+        throw new Error(body.error || 'This event could not be reused.');
+      createEvent(
+        {
+          name: community.name,
+          slug: community.slug,
+          recurrence: community.recurrence,
+          nextEventAt: community.nextEventAt,
+        },
+        body.draft,
+      );
+    } catch (cause) {
+      setScheduleError(
+        cause instanceof Error ? cause.message : 'This event could not be reused.',
+      );
       setSavingSchedule(false);
     }
   }
@@ -2186,18 +2255,27 @@ function CommunityCard({
                               : 'Hidden from community page'}
                           </p>
                         </div>
-                        <button
-                          onClick={() =>
-                            void changeEventVisibility(
-                              event.id,
-                              !event.publicVisible,
-                            )
-                          }
-                          disabled={savingSchedule}
-                          className="shrink-0 text-xs font-extrabold text-[#2577de] disabled:opacity-50"
-                        >
-                          {event.publicVisible ? 'Hide' : 'Show'}
-                        </button>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button
+                            onClick={() => void reuseEvent(event.id)}
+                            disabled={savingSchedule}
+                            className="text-xs font-extrabold text-[#19805b] disabled:opacity-50"
+                          >
+                            Use again
+                          </button>
+                          <button
+                            onClick={() =>
+                              void changeEventVisibility(
+                                event.id,
+                                !event.publicVisible,
+                              )
+                            }
+                            disabled={savingSchedule}
+                            className="text-xs font-extrabold text-[#2577de] disabled:opacity-50"
+                          >
+                            {event.publicVisible ? 'Hide' : 'Show'}
+                          </button>
+                        </div>
                       </div>
                       ))}
                   </div>

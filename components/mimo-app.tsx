@@ -37,6 +37,7 @@ import {
 } from '@/components/mimo-host';
 import { MIMO_PROFILES, type MimoProfileStyle } from '@/lib/mimo-profile';
 import { MimoNimiq } from '@/lib/nimiq';
+import type { ReusableEventDraft } from '@/components/community-studio';
 
 const CommunityStudio = dynamic(() =>
   import('@/components/community-studio').then(
@@ -1335,9 +1336,9 @@ export function MimoApp() {
           )}
           {screen === 'studio' && (
             <CommunityStudio
-              createEvent={(community) => {
+              createEvent={(community, reusableDraft?: ReusableEventDraft) => {
                 setEvent((current) => ({
-                  ...current,
+                  ...(reusableDraft ?? current),
                   community: community.name,
                   communitySlug: community.slug,
                   startsAt: community.nextEventAt,
@@ -1349,7 +1350,7 @@ export function MimoApp() {
                   recurrence: community.recurrence,
                   community: community.name,
                 }));
-                setScreen('create_choice');
+                setScreen(reusableDraft ? 'create' : 'create_choice');
               }}
             />
           )}

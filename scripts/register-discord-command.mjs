@@ -44,7 +44,7 @@ const response = await fetch(endpoint, {
               type: 3,
               name: 'format',
               description: 'Choose the live experience.',
-              required: false,
+              required: true,
               choices: [
                 { name: 'Game night', value: 'game_night' },
                 { name: 'Live vote', value: 'community_vote' },

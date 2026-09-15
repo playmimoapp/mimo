@@ -2061,6 +2061,7 @@ function AssistedCreate({
   error: string;
 }) {
   const autoStarted = useRef(false);
+  const reduceMotion = useReducedMotion();
   const update = <K extends keyof AssistantBrief>(
     key: K,
     value: AssistantBrief[K],
@@ -2148,6 +2149,52 @@ function AssistedCreate({
     autoStarted.current = true;
     makeDraft();
   }, [autoStart, makeDraft, ready, working]);
+
+  if (autoStart) {
+    const format = EVENT_FORMATS.find(
+      (item) => item.id === brief.eventKind,
+    );
+    return (
+      <section className="mobile-page app-frame grid min-h-[calc(100svh-150px)] place-items-center py-10">
+        <div className="mx-auto w-full max-w-[620px] text-center">
+          <motion.div
+            animate={
+              reduceMotion
+                ? undefined
+                : { y: [0, -8, 0], rotate: [-1.5, 1.5, -1.5] }
+            }
+            transition={{ duration: 2.2, repeat: Infinity }}
+            className="mx-auto w-[150px] sm:w-[180px]"
+          >
+            <MimoCharacter mood="thinking" />
+          </motion.div>
+          <p className="mt-5 text-sm font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
+            From Discord
+          </p>
+          <h1 className="font-display mt-3 text-[clamp(2.5rem,8vw,4.5rem)] font-extrabold leading-[.92] tracking-[-.055em] text-[#142b45]">
+            Building your {format?.label.toLowerCase() ?? 'event'}.
+          </h1>
+          <p className="mx-auto mt-4 max-w-lg text-base font-semibold leading-7 text-[#5d7182]">
+            Mimo is shaping the content and pacing from your brief. Nothing is
+            published, and you will review every part next.
+          </p>
+          <div
+            className="mx-auto mt-7 h-2 w-full max-w-[300px] overflow-hidden rounded-full bg-[#dce6ee]"
+            aria-hidden="true"
+          >
+            <motion.span
+              className="block h-full w-1/2 rounded-full bg-[#2577de]"
+              animate={reduceMotion ? undefined : { x: ['-100%', '200%'] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+          <p className="sr-only" aria-live="polite">
+            Mimo is creating the draft.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="mobile-page creator-form-page app-frame grid gap-8 pb-16 pt-3 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_320px]">

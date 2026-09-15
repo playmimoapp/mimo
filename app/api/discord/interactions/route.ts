@@ -111,22 +111,17 @@ async function sendCreatorDraftDm({
         embeds: [
           {
             color: 0x2577de,
-            title: `${creatorName}, your Mimo brief is ready.`,
-            description: `I have the direction for ${communityName}: "${topic}"`,
+            title: `${creatorName}, I have your brief.`,
+            description: `**${communityName}**\n${topic}`,
             fields: [
               {
-                name: '1 / Brief captured',
-                value: `${kind.replaceAll('_', ' ')} for ${communityName}`,
+                name: 'Your event',
+                value: kind.replaceAll('_', ' '),
               },
               {
-                name: '2 / Build and review',
+                name: 'Next',
                 value:
-                  'Open the private workspace. I will generate the questions, answers and pacing automatically.',
-              },
-              {
-                name: '3 / Approve and publish',
-                value:
-                  'Preview the room, choose any NIM reward, then approve the final event.',
+                  'Open your private review. I will draft the content and pacing; you can edit everything before it goes live.',
               },
             ],
             footer: {
@@ -141,7 +136,7 @@ async function sendCreatorDraftDm({
               {
                 type: 2,
                 style: 5,
-                label: 'Build my private draft',
+                label: 'Create and review',
                 url: creatorUrl,
               },
             ],
@@ -428,7 +423,16 @@ export async function POST(request: Request) {
     'custom',
   ].includes(requestedKind)
     ? requestedKind
-    : 'game_night';
+    : '';
+  if (!kind) {
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        content: 'Choose the kind of event you want Mimo to create.',
+      },
+    });
+  }
   if (topic.length < 6) {
     return json({
       type: 4,

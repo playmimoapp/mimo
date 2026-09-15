@@ -1,141 +1,152 @@
-# Mimo
+<p align="center">
+  <img src="public/mimo-logo.svg" alt="Mimo" width="180" />
+</p>
 
-**Live community games and interactive NIM rewards, built for Nimiq Pay.**
+<h1 align="center">Live community play, powered by Nimiq</h1>
 
-[Open Mimo](https://playmimo.xyz)
+<p align="center">
+  Mimo creates and runs live games, votes and skill challenges for communities, then turns verified results into trustworthy NIM rewards.
+</p>
 
-Mimo gives communities one place to host a live game, vote together, react in real time, verify participation with Nimiq Pay, and reward declared skill with NIM.
-
-The product loop is:
-
-> Create → Host → Play → Prove → Drop → Return
+<p align="center">
+  <a href="https://playmimo.xyz"><strong>Open Mimo</strong></a>
+  ·
+  <a href="docs/NIMIQ_PAY_PHONE_TEST.md">Phone test guide</a>
+  ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
 ## Why Mimo exists
 
-Online communities already run game nights, onboarding sessions, votes, launches and reward campaigns. Today those experiences are fragmented across forms, chat bots, spreadsheets and manual wallet transfers. Mimo turns them into one synchronized, social and trustworthy live show.
+Communities already gather for game nights, launches, onboarding and decisions. Running those moments usually means combining a meeting, a form, a chat bot, a spreadsheet and manual wallet transfers.
 
-## What works today
+Mimo makes the whole experience one live show. The creator brings the community; Mimo drafts the content, welcomes the room, keeps every screen synchronized, scores declared rules on the server and handles verified NIM settlement.
 
-- Manual and Gemini-assisted event creation
-- Visual starting formats for game nights, live votes, launches, onboarding and custom rooms
-- Editable live polls, scored rounds and finales
-- Creator preview and private rehearsal
-- Public rooms and secure invite-only rooms
-- Server-owned timers, answers, scoring and room transitions
-- Live participant presence, team momentum and constrained reactions
-- Reconnection and restored participant sessions
-- Nimiq Pay wallet connection and one-time message signing
-- Server-side Nimiq signature and address verification
-- Replay protection and one verified wallet per event
-- Creator-held NIM rewards with verified-winner payout preparation
-- Fail-closed mainnet vault architecture with encrypted payout registration, automatic payouts, refunds and network-fee accounting
-- Funded Community Unlocks that split NIM exactly between verified finishers after a shared finale target is cleared
-- A visible locked room promise: creators can cancel before play, but cannot cancel or rewrite a room after it starts
-- Native Nimiq Pay transaction approval with honest submitted, cancelled and failed states
-- Mobile-first participant and host experiences
-- Wallet-owned Community Studio profiles with real pictures and durable public links
-- Permanent community pages that collect their live events in one place
+This is not a quiz with a payment button. It is participatory community entertainment designed to give people a reason to return.
 
-Mimo does not claim that proposed rewards are escrowed or funded. Creator-held mainnet rewards remain in the creator's wallet, require explicit Nimiq Pay approval after the verified result, and are independently checked on-chain against the winner, amount and room memo. Rewards are capped at 200 NIM per room. Automatic mainnet custody is fail-closed: it appears only when a dedicated production vault, encryption key, RPC connection and explicit mainnet switch are all configured.
+## The experience
 
-## Nimiq Pay flow
+1. **Create** — Start manually or ask Mimo to draft an editable event from a brief.
+2. **Publish** — Choose public or private access, individual or team play, timing and a funded NIM reward when the event calls for one.
+3. **Join** — Participants enter from a link, QR code, community page or Discord. Free rooms remain wallet-optional.
+4. **Play** — Mimo runs polls, objective questions and collective moments while the server owns time, answers and scores.
+5. **Prove** — Rewarded or protected rooms use a short-lived Nimiq Pay signature to verify one wallet without moving money.
+6. **Drop** — Locked results trigger the declared payout path. Every funding, payout and refund state follows real chain evidence.
+7. **Return** — Community seasons, standings, follows, notifications and fresh event editions make the next gathering easy.
 
-1. A participant joins with a nickname. Free rooms require no wallet.
-2. When wallet proof is needed, the server creates a short-lived, one-use challenge.
-3. Nimiq Pay signs the challenge without moving money.
-4. The server verifies the signature and matching Nimiq address.
-5. Mimo stores a one-way wallet fingerprint rather than exposing the address in room data. For a pre-funded vault event, the same signature also registers the encrypted receiving address.
-6. A participant may replace the event wallet with a fresh signature in the lobby. The wallet becomes immutable when play starts.
-7. For a genuinely pre-funded Mimo vault event, the locked result rules trigger payment to the verified receiving wallet without a second participant signature or host decision.
-8. For a creator-held NIM promise, the host still approves payment in Nimiq Pay and the server verifies that the receiving address matches the winner's fingerprint.
-9. A Community Unlock requires wallet proof before play, freezes eligibility through the launched rules and divides the funded pool using exact integer arithmetic.
+## What is live
 
-This is lightweight Sybil resistance, not a promise of perfect personhood. It prevents duplicate use of one verified wallet in an event and blocks copied or replayed proofs while keeping ordinary participation fast.
+| Product area | Current capability |
+| --- | --- |
+| Live rooms | Server-authoritative lifecycle, deadlines, scoring, reactions, teams and reconnect recovery |
+| Creation | Manual editor, preview, rehearsal and Gemini-assisted editable drafts |
+| Formats | Game nights, community votes, product launches, onboarding and open-format events |
+| Access | Public rooms, invite-only rooms and independently configurable wallet verification |
+| Nimiq Pay | Account access, one-use signatures, native payment approval and honest cancellation/failure states |
+| NIM rewards | Mainnet vault funding, automatic skill payouts, Community Unlocks, refunds and transaction proof |
+| Communities | Public homes, pictures, roles, follows, notifications, recurring schedules, seasons and standings |
+| Discord | OAuth connection, minimal-permission install, channel verification, admin-only creation, private draft handoff, event invitations and season points |
+| Operations | Privacy-conscious real/QA classification, event recaps and a protected competition report |
 
-## Architecture
+Discord is in production beta until the full real-server acceptance checklist passes. X creation and distribution remain intentionally outside the critical product path.
 
-- TypeScript, React and Next.js 16
-- Tailwind CSS and accessible UI primitives
-- Vercel Functions and edge delivery
-- Turso managed SQLite for durable relational persistence
-- Vercel Blob for community profile images
-- `@nimiq/mini-app-sdk` for native Nimiq Pay requests
-- `@nimiq/core` for server-side signature and transaction verification
-- Motion for live transitions and reduced-motion-aware animation
+## Why Nimiq matters
 
-The server is authoritative for room lifecycle, timers, answer deadlines, scores, wallet eligibility and final results. Clients never submit their own scores.
+Nimiq is part of Mimo's trust model, not decoration.
 
-## Local development
+- **Wallet-backed identity:** Nimiq Pay signs a one-use room challenge. No payment happens during verification.
+- **Lightweight abuse protection:** the server verifies the signature and address, blocks replay and limits one verified wallet per event.
+- **Protected recipients:** payout addresses are encrypted at rest and become immutable when play begins.
+- **Provable funding:** Mimo calls a reward funded only after verifying the transaction, recipient, amount, network and room memo.
+- **Automatic settlement:** a genuinely pre-funded vault can pay verified winners according to rules approved before launch.
+- **Honest recovery:** cancelled funded lobbies can be refunded to the verified payer, including Nimiq Pay payments routed through HTLC transactions.
+- **Self-custody at approval:** sensitive account, signature and payment requests remain inside native Nimiq Pay confirmation dialogs.
 
-Requirements: Node.js 24.
+Mimo never asks for a participant's seed phrase or wallet private key. AI cannot publish an event, change launched scoring rules, select a subjective winner or authorize funds.
+
+## System design
+
+```mermaid
+flowchart LR
+  Creator[Creator Studio or Discord] --> Event[Locked event configuration]
+  Event --> Engine[Authoritative show engine]
+  Players[Participant clients] <--> Engine
+  Pay[Nimiq Pay] --> Proof[Signature and transaction proof]
+  Proof --> Engine
+  Engine --> Results[Verified results]
+  Results --> Vault[Funded NIM settlement]
+  Results --> Community[Season and community history]
+```
+
+- **Frontend:** TypeScript, React, Next.js 16, Tailwind CSS, accessible primitives and Motion
+- **Backend:** Vercel Functions with server-owned room orchestration
+- **Data:** Turso managed SQLite and Vercel Blob community images
+- **Nimiq:** `@nimiq/mini-app-sdk` for native requests and `@nimiq/core` for verification
+- **Reliability:** immutable launch snapshots, idempotent actions, replay protection, bounded polling and reconnect restoration
+
+Clients submit intent, never scores, eligibility or payment status. The server is authoritative for the room lifecycle, deadlines, accepted answers, score calculation and final result.
+
+## Discord flow
+
+Community owners connect one server and choose a channel in Mimo Studio. Mimo verifies that it can post before saving the connection.
+
+- `/mimo create` is restricted to the connected community's wallet-authorized owners and admins.
+- The command returns privately and sends a ten-minute, one-use creation handoff by DM.
+- Opening the handoff restores the already-linked Mimo profile in that browser and starts the editable AI draft.
+- Discord cannot publish an event, change its rules or authorize NIM.
+- Free events are announced when published. Rewarded events are announced only after funding is confirmed.
+- The invitation becomes a results recap after completion and updates again when NIM settlement is confirmed.
+- `/mimo points` returns the member's wallet-backed season standing privately.
+
+Mimo requests only identity, manageable-server discovery, View Channel, Send Messages, Embed Links and application-command access. It does not request message history, member management, moderation or Administrator.
+
+## Run locally
+
+Requirements: Node.js 24 and npm.
 
 ```bash
+git clone https://github.com/playmimoapp/mimo.git
+cd mimo
 npm install
+cp .env.example .env.local
+npm run db:migrate
 npm run dev
 ```
 
-Optional Gemini-assisted drafting uses server-only environment variables:
+The default local database is SQLite. Gemini, Turso, Blob, Discord and real NIM settlement are optional server integrations and remain unavailable until their environment variables are configured. Mainnet custody fails closed unless every required production control is present.
+
+Never place Gemini, Discord, database or vault secrets in browser-visible variables.
+
+## Verify a change
 
 ```bash
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.7-flash
-TURSO_DATABASE_URL=
-TURSO_AUTH_TOKEN=
-BLOB_READ_WRITE_TOKEN=
-MIMO_DATA_ENCRYPTION_KEY=
-```
-
-Never expose the Gemini key in client-side code.
-
-## Verification
-
-```bash
-npx tsc --noEmit
 npm run lint
 npm run build
 npm run test:room -- http://localhost:3000
 npm run test:community -- http://localhost:3000
+npm run test:identity -- http://localhost:3000
+npm run test:wallet-entry -- http://localhost:3000
 ```
 
-The automated room check creates multiple test participants and verifies the server's round sequence, scoring, private access, reactions, signature proof and settlement state logic. Native Nimiq Pay dialogs and mainnet transaction states must additionally be checked on physical phones using [the real-phone checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
+Automated simulations are engineering checks, not proof of real users or payments. Native dialogs, wallet cancellation, mainnet settlement and responsive layout must also pass the [physical Nimiq Pay checklist](docs/NIMIQ_PAY_PHONE_TEST.md).
 
-## Discord app
+## Privacy and safety
 
-Mimo accepts Discord HTTP interactions at:
+- Full wallet addresses are not exposed in public room data.
+- Wallet and Discord identifiers are stored as scoped hashes where raw identity is unnecessary.
+- Payout and refund addresses are encrypted at rest.
+- Public rooms may be free and anonymous; wallet proof is requested only when the event requires it.
+- Random winner rewards, gambling, pay-to-win scoring and unrestricted chat are not supported.
+- Payment cancellation is a normal recoverable state, never presented as an application crash.
 
-```text
-https://playmimo.xyz/api/discord/interactions
-```
+This is lightweight Sybil resistance, not a claim of perfect personhood.
 
-Create the app in the Discord Developer Portal, set that Interactions Endpoint
-URL, add `/api/discord/oauth/callback` as the OAuth redirect, and configure
-`DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and the
-sensitive `DISCORD_BOT_TOKEN` in Vercel. `MIMO_PUBLIC_URL` should be the public
-Mimo origin. Register `/mimo` in a test server first:
+## Project status
 
-```bash
-DISCORD_TEST_GUILD_ID=... npm run discord:register
-```
+Mimo is a live product under active competition testing. The remaining release work is operational: complete the Discord real-server acceptance pass, finish physical-device QA, run multiple genuine community events with more than 25 wallet-connected users and publish the resulting privacy-safe evidence.
 
-Remove `DISCORD_TEST_GUILD_ID` to register globally. Discord requests are
-signature-checked and time-bounded. Only a hash of the interaction ID is kept
-for replay protection; Mimo does not store the Discord message or member ID.
-Community owners connect one server from Mimo Studio and select an announcement
-channel. Mimo requests only server discovery, View Channel, Send Messages and
-Embed Links; it does not request message history, member management, moderation
-or Administrator. The command creates a private, community-bound handoff to
-Mimo's editable creator and cannot publish an event or authorize NIM.
-
-## Product direction
-
-Mimo is being built as recurring community programming, not as a single quiz. Planned platform layers include reusable community libraries, seasons and standings, additional objective round types, privacy-respecting reminders, creator access rules, transaction confirmation monitoring and richer event recaps.
-
-Paid access will never mean buying extra votes or better odds. Any future creator fee must be declared clearly, paid directly, verified on-chain and separated from skill scoring.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security-sensitive issues privately using [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Report sensitive findings privately using [SECURITY.md](SECURITY.md).
 
 ## Licence
 
-Mimo is released under the [MIT Licence](LICENSE).
+Mimo is open source under the [MIT Licence](LICENSE).

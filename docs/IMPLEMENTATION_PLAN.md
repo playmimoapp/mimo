@@ -21,12 +21,14 @@ The product loop is `Create -> Host -> Play -> Prove -> Drop -> Return`.
 - Manual and Gemini-assisted creation through one editable event model
 - Multi-round live polls, objective play and collective finales
 - Server-authoritative rooms, deadlines, scoring, reactions and reconnect sessions
+- Non-overlapping live synchronization with immediate foreground/online recovery and bounded network backoff
 - Public and invite-only rooms with optional pre-entry wallet verification
 - Nimiq Pay account access, one-use signed challenges and server-side verification
 - Encrypted payout-address registration and locked event-wallet identity
 - Creator-held reward preparation and a fail-closed TestAlbatross vault path
 - Automatic payout and refund state machines with exact reward arithmetic
-- Completed real TestAlbatross funding, automatic payout and refund proof
+- Completed real MainAlbatross funding, automatic payout and refund proof
+- Verified-payer refund registration for Nimiq Pay payments routed through HTLC transactions
 - Wallet-owned personal profiles and community roles
 - Public community pages, discovery, following, notifications and event history controls
 - Recurring schedules, seasons and standings

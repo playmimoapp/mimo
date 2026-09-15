@@ -175,7 +175,8 @@ export function LiveRoom({
     rewardState: LiveRoomState['rewardState'];
   } | null>(null);
   const previousSecond = useRef<number | null>(null);
-  const refreshSequence = useRef(0);
+  const refreshInFlight = useRef(false);
+  const refreshFailures = useRef(0);
   const serverClockOffset = useRef(0);
 
   const inviteUrl = useCallback(
@@ -213,7 +214,8 @@ export function LiveRoom({
   }, [inviteOpen, inviteQrUrl, mode, room?.status]);
 
   const refresh = useCallback(async () => {
-    const requestId = ++refreshSequence.current;
+    if (refreshInFlight.current) return true;
+    refreshInFlight.current = true;
     try {
       const headers: Record<string, string> = {};
       if (hostKey) headers['x-mimo-host'] = hostKey;
@@ -225,11 +227,11 @@ export function LiveRoom({
       });
       if (!response.ok) throw new Error(await getError(response));
       const next = (await response.json()) as LiveRoomState;
-      if (requestId !== refreshSequence.current) return;
       serverClockOffset.current = next.serverNow - Date.now();
       setRoom(next);
       setNow(Date.now() + serverClockOffset.current);
       setError('');
+      refreshFailures.current = 0;
       if (mode === 'player' && nickname) {
         const me = next.players.find(
           (player) =>
@@ -260,8 +262,9 @@ export function LiveRoom({
           );
         }
       }
+      return true;
     } catch (cause) {
-      if (requestId !== refreshSequence.current) return;
+      refreshFailures.current += 1;
       setError(
         typeof navigator !== 'undefined' && !navigator.onLine
           ? 'You are offline. Mimo will reconnect when your signal returns.'
@@ -269,25 +272,49 @@ export function LiveRoom({
             ? cause.message
             : 'Live connection interrupted. Mimo is reconnecting.',
       );
+      return false;
+    } finally {
+      refreshInFlight.current = false;
     }
   }, [code, hostKey, inviteToken, nickname, mode, participantToken]);
 
   useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    const poll = window.setInterval(() => void refresh(), 1200);
+    let active = true;
+    let poll: number | undefined;
+    let polling = false;
+    const run = async () => {
+      if (!active || polling) return;
+      polling = true;
+      const connected = await refresh();
+      polling = false;
+      if (!active) return;
+      const hidden = document.visibilityState !== 'visible';
+      const retryDelay = Math.min(
+        10_000,
+        1200 * 2 ** Math.min(3, refreshFailures.current),
+      );
+      poll = window.setTimeout(run, hidden ? 5000 : connected ? 1200 : retryDelay);
+    };
+    const recover = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (poll) window.clearTimeout(poll);
+      void run();
+    };
+    const reconnect = () => {
+      refreshFailures.current = 0;
+      if (poll) window.clearTimeout(poll);
+      void run();
+    };
+    void run();
     const clock = window.setInterval(
       () => setNow(Date.now() + serverClockOffset.current),
       250,
     );
-    const recover = () => {
-      if (document.visibilityState === 'visible') void refresh();
-    };
-    const reconnect = () => void refresh();
     document.addEventListener('visibilitychange', recover);
     window.addEventListener('online', reconnect);
     return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(poll);
+      active = false;
+      if (poll) window.clearTimeout(poll);
       window.clearInterval(clock);
       document.removeEventListener('visibilitychange', recover);
       window.removeEventListener('online', reconnect);
@@ -1402,7 +1429,7 @@ function RewardFundingPanel({
   isHost: boolean;
   hostKey?: string;
   nimiq: MimoNimiq;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<boolean>;
 }) {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState('');
@@ -1650,7 +1677,7 @@ function LobbyState({
   busy: boolean;
   hostKey?: string;
   nimiq: MimoNimiq;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<boolean>;
   onStart: () => void;
   onCancel: () => void;
 }) {

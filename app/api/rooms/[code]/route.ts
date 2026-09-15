@@ -9,6 +9,8 @@ import {
 } from '@/lib/live-room';
 import { getVaultConfig } from '@/lib/reward-vault';
 import { detectLivingRoomSignal } from '@/lib/living-room-engine';
+import { after } from 'next/server';
+import { syncDiscordEventRecap } from '@/lib/discord-announcements';
 
 function formatLuna(value: string | null | undefined) {
   if (!value) return null;
@@ -35,6 +37,11 @@ export async function GET(
     );
   }
   room = await reconcileRoom(room);
+  if (room.status === 'complete') {
+    after(async () => {
+      await syncDiscordEventRecap(room.id);
+    });
+  }
 
   const db = getD1();
   const participantToken = request.headers.get('x-mimo-session');

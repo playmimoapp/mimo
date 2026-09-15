@@ -700,6 +700,91 @@ export function MimoApp() {
         setScreen('directory');
         return;
       }
+      const discordDraftToken = query.get('discordDraft')?.trim() ?? '';
+      if (discordDraftToken) {
+        window.history.replaceState({}, '', window.location.pathname);
+        setScreen('create_assisted');
+        void fetch(
+          `/api/discord/draft?token=${encodeURIComponent(discordDraftToken)}`,
+          { cache: 'no-store' },
+        )
+          .then(async (response) => {
+            const body = (await response.json()) as {
+              draft?: {
+                eventKind?: unknown;
+                topic?: unknown;
+                communitySlug?: unknown;
+                communityName?: unknown;
+                recurrence?: unknown;
+              };
+              sessionToken?: string;
+              error?: string;
+            };
+            if (!response.ok || !body.draft) {
+              throw new Error(body.error || 'This Discord draft could not open.');
+            }
+            if (body.sessionToken) {
+              window.localStorage.setItem(
+                'mimo:studio:session',
+                body.sessionToken,
+              );
+            }
+            const eventKind = EVENT_FORMATS.some(
+              (format) => format.id === body.draft?.eventKind,
+            )
+              ? (body.draft.eventKind as EventKind)
+              : 'game_night';
+            const topic =
+              typeof body.draft.topic === 'string'
+                ? body.draft.topic.trim().slice(0, 300)
+                : '';
+            const communitySlug =
+              typeof body.draft.communitySlug === 'string'
+                ? body.draft.communitySlug
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]/g, '')
+                : '';
+            const communityName =
+              typeof body.draft.communityName === 'string'
+                ? body.draft.communityName.trim().slice(0, 60)
+                : '';
+            const recurrence = ['weekly', 'fortnightly', 'monthly'].includes(
+              String(body.draft.recurrence),
+            )
+              ? (body.draft.recurrence as
+                  | 'weekly'
+                  | 'fortnightly'
+                  | 'monthly')
+              : 'none';
+            setEvent((current) => ({
+              ...current,
+              eventKind,
+              playMode: defaultPlayMode(eventKind),
+              community: communityName,
+              communitySlug,
+              startsAt: null,
+              recurrence,
+            }));
+            setAssistantBrief((current) => ({
+              ...current,
+              eventKind,
+              hostingMode: 'community',
+              recurrence,
+              community: communityName,
+              topic,
+              avoidQuestions: [],
+            }));
+            setAssistantAutoStart(true);
+          })
+          .catch((cause) => {
+            setRoomError(
+              cause instanceof Error
+                ? cause.message
+                : 'This Discord draft could not open.',
+            );
+          });
+        return;
+      }
       if (query.get('studio') === '1') {
         setScreen('studio');
         return;
@@ -772,6 +857,7 @@ export function MimoApp() {
       setRoomCode(code);
       const recovery = readRoomRecovery(code);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const hostHandoff = fragment.get('hostHandoff') ?? '';
       const linkedInvite = fragment.get('invite') ?? '';
       const savedInvite =
         recovery?.inviteToken ??
@@ -782,6 +868,39 @@ export function MimoApp() {
         setInviteToken(resolvedInvite);
         window.sessionStorage.setItem(`mimo:${code}:invite`, resolvedInvite);
         saveRoomRecovery(code, { inviteToken: resolvedInvite });
+      }
+      if (hostHandoff) {
+        window.history.replaceState(
+          {},
+          '',
+          `${window.location.pathname}${window.location.search}`,
+        );
+        void fetch(
+          `/api/rooms/${code}/host-handoff?token=${encodeURIComponent(hostHandoff)}`,
+          { cache: 'no-store' },
+        )
+          .then(async (response) => {
+            const body = (await response.json()) as {
+              hostKey?: string;
+              error?: string;
+            };
+            if (!response.ok || !body.hostKey) {
+              throw new Error(body.error || 'Host access could not be restored.');
+            }
+            setHostKey(body.hostKey);
+            window.sessionStorage.setItem(`mimo:${code}:host`, body.hostKey);
+            saveRoomRecovery(code, { hostKey: body.hostKey });
+            setScreen('live_host');
+          })
+          .catch((cause) => {
+            setRoomError(
+              cause instanceof Error
+                ? cause.message
+                : 'Host access could not be restored.',
+            );
+            setScreen('join');
+          });
+        return;
       }
       setJoinRequirementsLoading(true);
       void fetch(`/api/rooms/${code}`, {

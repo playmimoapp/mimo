@@ -146,3 +146,143 @@ export async function announceDiscordEvent(eventId: string) {
     .run();
   return { status: 'sent', messageId: sent.body.id } as const;
 }
+
+type RecapEvent = {
+  id: string;
+  title: string;
+  roomCode: string;
+  communityName: string;
+  status: string;
+  channelId: string;
+  messageId: string;
+  announcementStatus: string;
+  announcementUpdatedAt: number;
+  rewardState: string | null;
+  rewardAmountLuna: string | null;
+};
+
+export async function syncDiscordEventRecap(eventId: string) {
+  const discord = getDiscordConfig();
+  if (!discord.botReady) return { status: 'not_configured' } as const;
+  const db = getD1();
+  const event = await db
+    .prepare(`SELECT e.id, e.title, e.room_code AS roomCode,
+      e.status, c.name AS communityName,
+      da.channel_id AS channelId, da.message_id AS messageId,
+      da.status AS announcementStatus, da.updated_at AS announcementUpdatedAt,
+      r.state AS rewardState, r.amount_luna AS rewardAmountLuna
+      FROM events e
+      JOIN communities c ON c.id = e.community_id
+      JOIN discord_event_announcements da ON da.event_id = e.id
+      LEFT JOIN rewards r ON r.event_id = e.id
+      WHERE e.id = ? AND e.status = 'complete'
+      AND da.message_id IS NOT NULL LIMIT 1`)
+    .bind(eventId)
+    .first<RecapEvent>();
+  if (!event) return { status: 'not_ready' } as const;
+  if (event.announcementStatus === 'recapped') {
+    return { status: 'already_recapped' } as const;
+  }
+  const now = Date.now();
+  if (
+    event.announcementStatus === 'recap_pending' &&
+    event.announcementUpdatedAt > now - 30_000
+  ) {
+    return { status: 'waiting_for_settlement' } as const;
+  }
+  const claimed = await db
+    .prepare(`UPDATE discord_event_announcements
+      SET status = 'updating', updated_at = ?
+      WHERE event_id = ? AND (status = 'sent' OR status = 'failed'
+        OR status = 'recap_pending'
+        OR (status = 'updating' AND updated_at < ?))`)
+    .bind(now, event.id, now - 60_000)
+    .run();
+  if (!claimed.meta.changes) return { status: 'already_updating' } as const;
+
+  const players = await db
+    .prepare(`SELECT nickname, score FROM participants
+      WHERE event_id = ? ORDER BY score DESC, joined_at ASC LIMIT 3`)
+    .bind(event.id)
+    .all<{ nickname: string; score: number }>();
+  const participantCount = await db
+    .prepare(`SELECT COUNT(*) AS total FROM participants WHERE event_id = ?`)
+    .bind(event.id)
+    .first<{ total: number }>();
+  const leaderboard = players.results.length
+    ? players.results
+        .map(
+          (player, index) =>
+            `${index + 1}. ${player.nickname} - ${player.score.toLocaleString()} pts`,
+        )
+        .join('\n')
+    : 'No completed entries';
+  const rewardAmount = event.rewardAmountLuna
+    ? `${(Number(event.rewardAmountLuna) / 100_000).toLocaleString(undefined, {
+        maximumFractionDigits: 5,
+      })} NIM`
+    : '';
+  const settlementComplete =
+    !event.rewardAmountLuna || event.rewardState === 'payout_confirmed';
+  const reward = !event.rewardAmountLuna
+    ? 'No NIM reward'
+    : event.rewardState === 'payout_confirmed'
+      ? `${rewardAmount} paid on Nimiq`
+      : event.rewardState === 'partially_paid'
+        ? `${rewardAmount} partially paid - verification continues`
+        : `${rewardAmount} payout processing`;
+  const origin = process.env.MIMO_PUBLIC_URL?.trim() || 'https://playmimo.xyz';
+  const recapUrl = `${origin}/r/${encodeURIComponent(event.roomCode)}`;
+  const updated = await discordApi<{ id?: string }>(
+    `/channels/${encodeURIComponent(event.channelId)}/messages/${encodeURIComponent(event.messageId)}`,
+    `Bot ${discord.botToken}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        allowed_mentions: { parse: [] },
+        embeds: [
+          {
+            color: settlementComplete ? 0x19805b : 0xd6a600,
+            author: { name: event.communityName },
+            title: `${event.title} - results`,
+            description: `${participantCount?.total ?? 0} people joined this Mimo.`,
+            fields: [
+              { name: 'Top scores', value: leaderboard },
+              { name: 'NIM reward', value: reward },
+            ],
+            footer: { text: `Room ${event.roomCode} is complete` },
+          },
+        ],
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: 5,
+                label: 'View results and proof',
+                url: recapUrl,
+              },
+            ],
+          },
+        ],
+      }),
+    },
+  );
+  const nextStatus = updated.response.ok
+    ? settlementComplete
+      ? 'recapped'
+      : 'recap_pending'
+    : 'recap_pending';
+  await db
+    .prepare(`UPDATE discord_event_announcements
+      SET status = ?, last_error = ?, updated_at = ? WHERE event_id = ?`)
+    .bind(
+      nextStatus,
+      updated.response.ok ? null : `discord_http_${updated.response.status}`,
+      Date.now(),
+      event.id,
+    )
+    .run();
+  return { status: nextStatus } as const;
+}

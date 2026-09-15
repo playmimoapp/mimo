@@ -23,13 +23,25 @@ export function OpenInNimiqPay({ code }: { code: string }) {
   const [origin] = useState(() =>
     typeof window === 'undefined' ? '' : window.location.origin,
   );
+  const [hostHandoff] = useState(() =>
+    typeof window === 'undefined'
+      ? ''
+      : (new URLSearchParams(window.location.hash.slice(1)).get(
+          'hostHandoff',
+        ) ?? ''),
+  );
   const fallbackTimer = useRef<number | null>(null);
-  const roomUrl = `${origin}/r/${encodeURIComponent(code)}${invite ? `#invite=${encodeURIComponent(invite)}` : ''}`;
+  const roomUrl = hostHandoff
+    ? `${origin}/?room=${encodeURIComponent(code)}#hostHandoff=${encodeURIComponent(hostHandoff)}`
+    : `${origin}/r/${encodeURIComponent(code)}${invite ? `#invite=${encodeURIComponent(invite)}` : ''}`;
 
   useEffect(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
     const directInvite = fragment.get('invite') ?? '';
-    const directRoomUrl = `${window.location.origin}/r/${encodeURIComponent(code)}${directInvite ? `#invite=${encodeURIComponent(directInvite)}` : ''}`;
+    const directHostHandoff = fragment.get('hostHandoff') ?? '';
+    const directRoomUrl = directHostHandoff
+      ? `${window.location.origin}/?room=${encodeURIComponent(code)}#hostHandoff=${encodeURIComponent(directHostHandoff)}`
+      : `${window.location.origin}/r/${encodeURIComponent(code)}${directInvite ? `#invite=${encodeURIComponent(directInvite)}` : ''}`;
     if (window.nimiq) window.location.replace(directRoomUrl);
   }, [code]);
 

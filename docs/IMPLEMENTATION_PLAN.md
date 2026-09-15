@@ -34,7 +34,8 @@ The product loop is `Create -> Host -> Play -> Prove -> Drop -> Return`.
 - Recurring schedules, seasons and standings
 - Community pictures stored in managed object storage
 - Discord interaction signature verification and replay protection
-- Discord OAuth server selection, minimal-permission bot install, write-verified announcement-channel selection, community-bound `/mimo` drafts and automatic event invitations
+- Discord OAuth server selection, minimal-permission bot install, write-verified announcement-channel selection, one-use community-bound `/mimo` drafts, automatic event invitations and completion recaps
+- Encrypted one-use browser-to-Nimiq-Pay host handoffs for funding the same room without copying secrets or payment details
 - Privacy-safe real/QA event classification, verified-user and return metrics
 - Protected competition report with transaction proof and host event recaps
 

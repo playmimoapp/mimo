@@ -2,7 +2,7 @@ import { createPublicKey, verify } from 'node:crypto';
 import { after } from 'next/server';
 import { getD1 } from '@/db';
 import { discordApi, getDiscordConfig } from '@/lib/discord-integration';
-import { hashToken, json } from '@/lib/live-room';
+import { hashToken, json, makeToken } from '@/lib/live-room';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
@@ -438,15 +438,30 @@ export async function POST(request: Request) {
       },
     });
   }
+  const draftToken = makeToken();
+  const now = Date.now();
+  await getD1()
+    .prepare(`INSERT INTO discord_link_sessions
+      (token_hash, account_id, community_id, kind, payload_json, expires_at,
+        used_at, created_at)
+      VALUES (?, ?, ?, 'creator_draft', ?, ?, NULL, ?)`)
+    .bind(
+      await hashToken(draftToken),
+      account.id,
+      connection.communityId,
+      JSON.stringify({
+        eventKind: kind,
+        topic,
+        communitySlug: connection.slug,
+        communityName: connection.name,
+        recurrence: connection.recurrence,
+      }),
+      now + 10 * 60_000,
+      now,
+    )
+    .run();
   const creatorUrl = new URL('/', origin);
-  creatorUrl.searchParams.set('create', '1');
-  creatorUrl.searchParams.set('source', 'discord');
-  creatorUrl.searchParams.set('autodraft', '1');
-  creatorUrl.searchParams.set('kind', kind);
-  creatorUrl.searchParams.set('topic', topic);
-  creatorUrl.searchParams.set('communitySlug', connection.slug);
-  creatorUrl.searchParams.set('communityName', connection.name);
-  creatorUrl.searchParams.set('recurrence', connection.recurrence);
+  creatorUrl.searchParams.set('discordDraft', draftToken);
 
   after(async () => {
     try {

@@ -253,7 +253,16 @@ export const discordEventAnnouncements = sqliteTable(
       .references(() => events.id),
     channelId: text('channel_id').notNull(),
     messageId: text('message_id'),
-    status: text('status', { enum: ['sending', 'sent', 'failed'] }).notNull(),
+    status: text('status', {
+      enum: [
+        'sending',
+        'sent',
+        'failed',
+        'updating',
+        'recap_pending',
+        'recapped',
+      ],
+    }).notNull(),
     attemptCount: integer('attempt_count').notNull().default(0),
     lastError: text('last_error'),
     createdAt: integer('created_at').notNull(),
@@ -262,6 +271,22 @@ export const discordEventAnnouncements = sqliteTable(
   (t) => [
     index('idx_discord_event_announcements_status').on(t.status, t.updatedAt),
   ],
+);
+
+export const hostHandoffs = sqliteTable(
+  'host_handoffs',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    hostKeyCiphertext: text('host_key_ciphertext').notNull(),
+    hostKeyIv: text('host_key_iv').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    usedAt: integer('used_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_host_handoffs_expiry').on(t.expiresAt)],
 );
 
 export const roomVisits = sqliteTable(

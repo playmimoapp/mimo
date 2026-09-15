@@ -1433,6 +1433,7 @@ function RewardFundingPanel({
 }) {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState('');
+  const [needsNimiqPay, setNeedsNimiqPay] = useState(false);
   const funded = [
     'funded',
     'event_live',
@@ -1472,6 +1473,11 @@ function RewardFundingPanel({
         return;
       }
 
+      if (!window.nimiq) {
+        setNeedsNimiqPay(true);
+        setDetail('Open this host room in Nimiq Pay to approve the funding.');
+        return;
+      }
       const connection = await nimiq.connect();
       if (connection.status !== 'ready') {
         setDetail(
@@ -1481,6 +1487,7 @@ function RewardFundingPanel({
         );
         return;
       }
+      setNeedsNimiqPay(false);
       const depositNim = Number(prepared.amountLuna) / 100_000;
       const feeReserveNim = Number(prepared.feeReserveLuna) / 100_000;
       setDetail(
@@ -1525,6 +1532,41 @@ function RewardFundingPanel({
           : 'The reward could not be funded.',
       );
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const openHostInNimiqPay = async () => {
+    if (!hostKey || busy) return;
+    setBusy(true);
+    setDetail('Opening the same host room in Nimiq Pay...');
+    try {
+      const response = await fetch(
+        `/api/rooms/${room.code}/host-handoff`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostKey }),
+        },
+      );
+      const body = (await response.json()) as {
+        openPath?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.openPath) {
+        throw new Error(body.error || 'Nimiq Pay could not be opened safely.');
+      }
+      const openUrl = new URL(body.openPath, window.location.origin).toString();
+      window.location.href = `nimiqpay://miniapp?url=${encodeURIComponent(openUrl)}`;
+      window.setTimeout(() => {
+        if (!document.hidden) window.location.href = openUrl;
+      }, 1400);
+    } catch (cause) {
+      setDetail(
+        cause instanceof Error
+          ? cause.message
+          : 'Nimiq Pay could not be opened safely.',
+      );
       setBusy(false);
     }
   };
@@ -1631,6 +1673,14 @@ function RewardFundingPanel({
               className="h-11 rounded-full bg-[#203752] px-5 font-extrabold"
             >
               {busy ? 'Checking…' : 'Check confirmation'}
+            </Button>
+          ) : needsNimiqPay ? (
+            <Button
+              onClick={() => void openHostInNimiqPay()}
+              disabled={busy}
+              className="h-11 rounded-full bg-[#2577de] px-5 font-extrabold"
+            >
+              {busy ? 'Opening...' : 'Open in Nimiq Pay'}
             </Button>
           ) : (
             <Button

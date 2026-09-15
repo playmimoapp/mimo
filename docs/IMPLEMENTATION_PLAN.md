@@ -34,11 +34,11 @@ The product loop is `Create -> Host -> Play -> Prove -> Drop -> Return`.
 - Recurring schedules, seasons and standings
 - Community pictures stored in managed object storage
 - Discord interaction signature verification and replay protection
-- Discord OAuth server selection, minimal-permission bot install, verified announcement-channel selection and community-bound `/mimo` drafts
+- Discord OAuth server selection, minimal-permission bot install, write-verified announcement-channel selection, community-bound `/mimo` drafts and automatic event invitations
 - Privacy-safe real/QA event classification, verified-user and return metrics
 - Protected competition report with transaction proof and host event recaps
 
-Discord connection code is implemented but is not considered live-proven until production credentials are configured and a real server installation passes the acceptance test.
+Discord connection code is implemented but is not considered complete until a real server passes the full acceptance test: connect, channel proof, admin-only `/mimo create`, private handoff, free and funded announcements, points, disconnect and reconnect. Discord Activity play remains a later participant surface.
 
 ## Next, in order
 

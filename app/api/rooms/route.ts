@@ -18,6 +18,8 @@ import {
 import { analyticsClassForRequest } from '@/lib/usage-evidence';
 import { getMainnetRewardConfig } from '@/lib/mainnet-reward';
 import { getRewardShares, nimToLuna } from '@/lib/reward-split';
+import { after } from 'next/server';
+import { announceDiscordEvent } from '@/lib/discord-announcements';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -491,6 +493,12 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('room_create_failed', error);
     return json({ error: 'The room could not be opened. Try again.' }, 500);
+  }
+
+  if (permanentCommunity && rewardMode === 'free') {
+    after(async () => {
+      await announceDiscordEvent(eventId);
+    });
   }
 
   return json(

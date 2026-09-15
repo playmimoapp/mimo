@@ -8,6 +8,8 @@ import {
   getVaultConfig,
   verifyFundingTransaction,
 } from '@/lib/reward-vault';
+import { after } from 'next/server';
+import { announceDiscordEvent } from '@/lib/discord-announcements';
 
 export async function POST(
   request: Request,
@@ -61,6 +63,9 @@ export async function POST(
     return json({ error: 'No funding transaction has been submitted.' }, 409);
   }
   if (reward.state === 'funded') {
+    after(async () => {
+      await announceDiscordEvent(room.id);
+    });
     return json({ state: 'funded', txHash: reward.fundingTxHash });
   }
 
@@ -127,6 +132,9 @@ export async function POST(
           now,
         ),
     ]);
+    after(async () => {
+      await announceDiscordEvent(room.id);
+    });
     return json({
       state: 'funded',
       txHash: reward.fundingTxHash,

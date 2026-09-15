@@ -245,6 +245,25 @@ export const events = sqliteTable(
   ],
 );
 
+export const discordEventAnnouncements = sqliteTable(
+  'discord_event_announcements',
+  {
+    eventId: text('event_id')
+      .primaryKey()
+      .references(() => events.id),
+    channelId: text('channel_id').notNull(),
+    messageId: text('message_id'),
+    status: text('status', { enum: ['sending', 'sent', 'failed'] }).notNull(),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    lastError: text('last_error'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('idx_discord_event_announcements_status').on(t.status, t.updatedAt),
+  ],
+);
+
 export const roomVisits = sqliteTable(
   'room_visits',
   {

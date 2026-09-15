@@ -1,5 +1,6 @@
 import { getD1 } from '@/db';
 import {
+  discordApi,
   getDiscordConfig,
   getDiscordGuildChannels,
 } from '@/lib/discord-integration';
@@ -170,6 +171,34 @@ export async function POST(request: Request) {
     const channel = verified.channels.find((item) => item.id === channelId);
     if (!channel)
       return json({ error: 'Choose a channel Mimo can access.' }, 400);
+    const channelCheck = await discordApi<{ id?: string }>(
+      `/channels/${encodeURIComponent(channel.id)}/messages`,
+      `Bot ${discord.botToken}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          allowed_mentions: { parse: [] },
+          embeds: [
+            {
+              color: 0x2577de,
+              title: 'Mimo is connected.',
+              description:
+                'New event invitations for this community will appear here.',
+              footer: { text: 'No message history or member data requested' },
+            },
+          ],
+        }),
+      },
+    );
+    if (!channelCheck.response.ok || !channelCheck.body?.id) {
+      return json(
+        {
+          error:
+            'Mimo cannot post in that channel. Allow View Channel, Send Messages and Embed Links, then try again.',
+        },
+        409,
+      );
+    }
     const now = Date.now();
     try {
       await getD1().batch([

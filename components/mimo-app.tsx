@@ -213,6 +213,7 @@ type AssistantBrief = {
   audience: 'newcomers' | 'community' | 'experts';
   difficulty: 'easy' | 'balanced' | 'hard';
   source: string;
+  avoidQuestions: string[];
 };
 
 type EventDraft = {
@@ -550,8 +551,10 @@ export function MimoApp() {
     audience: 'community',
     difficulty: 'balanced',
     source: '',
+    avoidQuestions: [],
   });
   const [assistantAutoStart, setAssistantAutoStart] = useState(false);
+  const reusableTemplate = useRef<ReusableEventDraft | null>(null);
   const [event, setEvent] = useState<EventDraft>({
     eventKind: 'game_night',
     title: '',
@@ -743,6 +746,7 @@ export function MimoApp() {
           recurrence,
           community: linkedCommunityName,
           topic,
+          avoidQuestions: [],
         }));
         setAssistantAutoStart(query.get('autodraft') === '1');
         setScreen('create_assisted');
@@ -885,6 +889,7 @@ export function MimoApp() {
       source: '',
       audience: 'community',
       difficulty: 'balanced',
+      avoidQuestions: [],
     }));
   };
 
@@ -905,6 +910,7 @@ export function MimoApp() {
       source: '',
       audience: 'community',
       difficulty: 'balanced',
+      avoidQuestions: [],
     }));
     setScreen('create_choice');
   };
@@ -947,28 +953,49 @@ export function MimoApp() {
       if (!response.ok || !body.draft) {
         throw new Error(body.error || 'Mimo could not make the draft.');
       }
+      const template = reusableTemplate.current;
       setEvent({
         ...body.draft,
-        playMode: body.draft.playMode ?? defaultPlayMode(body.draft.eventKind),
-        walletRequired: body.draft.walletRequired ?? false,
+        eventKind: template?.eventKind ?? body.draft.eventKind,
+        playMode:
+          template?.playMode ??
+          body.draft.playMode ??
+          defaultPlayMode(body.draft.eventKind),
+        walletRequired:
+          template?.walletRequired ?? body.draft.walletRequired ?? false,
         community: event.communitySlug ? event.community : body.draft.community,
         communitySlug: event.communitySlug ?? '',
         startsAt: event.startsAt,
         recurrence: event.recurrence,
-        rewardRule: 'skill',
-        rewardWinnerCount: body.draft.rewardWinnerCount ?? 1,
-        rewardSplit: 'equal',
-        rewardAllocations: [''],
-        adaptiveMoments: true,
-        adaptiveMode: 'auto',
-        custodyMode: rewardCapabilities.mimoFundingAvailable
-          ? 'mimo_vault'
-          : 'host_wallet',
+        accessMode: template?.accessMode ?? body.draft.accessMode,
+        rewardMode: template?.rewardMode ?? body.draft.rewardMode,
+        rewardAmount: template?.rewardAmount ?? body.draft.rewardAmount,
+        rewardRule: template?.rewardRule ?? 'skill',
+        rewardWinnerCount:
+          template?.rewardWinnerCount ?? body.draft.rewardWinnerCount ?? 1,
+        rewardSplit: template?.rewardSplit ?? 'equal',
+        rewardAllocations: template?.rewardAllocations ?? [''],
+        adaptiveMoments: template?.adaptiveMoments ?? true,
+        adaptiveMode: template?.adaptiveMode ?? 'auto',
+        custodyMode:
+          template?.custodyMode ??
+          (rewardCapabilities.mimoFundingAvailable
+            ? 'mimo_vault'
+            : 'host_wallet'),
+        rounds: body.draft.rounds.map((round, index) => ({
+          ...round,
+          durationSeconds:
+            template?.rounds[index]?.durationSeconds ?? round.durationSeconds,
+          scoringMode:
+            template?.rounds[index]?.scoringMode ?? round.scoringMode,
+        })),
       });
+      reusableTemplate.current = null;
       setAssistantBrief((current) => ({
         ...current,
         topic: '',
         source: '',
+        avoidQuestions: [],
       }));
       setScreen('create');
     } catch (cause) {
@@ -1337,8 +1364,29 @@ export function MimoApp() {
           {screen === 'studio' && (
             <CommunityStudio
               createEvent={(community, reusableDraft?: ReusableEventDraft) => {
+                if (reusableDraft) {
+                  reusableTemplate.current = reusableDraft;
+                  setEvent(reusableDraft);
+                  setAssistantBrief({
+                    eventKind: reusableDraft.eventKind,
+                    hostingMode: 'community',
+                    recurrence: community.recurrence,
+                    community: community.name,
+                    topic: `Create ${reusableDraft.rounds.length} new questions for a fresh edition of ${reusableDraft.title}.`,
+                    audience: 'community',
+                    difficulty: 'balanced',
+                    source: '',
+                    avoidQuestions: reusableDraft.rounds.map(
+                      (round) => round.question,
+                    ),
+                  });
+                  setAssistantAutoStart(true);
+                  setScreen('create_assisted');
+                  return;
+                }
+                reusableTemplate.current = null;
                 setEvent((current) => ({
-                  ...(reusableDraft ?? current),
+                  ...current,
                   community: community.name,
                   communitySlug: community.slug,
                   startsAt: community.nextEventAt,
@@ -1350,7 +1398,7 @@ export function MimoApp() {
                   recurrence: community.recurrence,
                   community: community.name,
                 }));
-                setScreen(reusableDraft ? 'create' : 'create_choice');
+                setScreen('create_choice');
               }}
             />
           )}

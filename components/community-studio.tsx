@@ -2261,7 +2261,7 @@ function CommunityCard({
                             disabled={savingSchedule}
                             className="text-xs font-extrabold text-[#19805b] disabled:opacity-50"
                           >
-                            Use again
+                            New edition
                           </button>
                           <button
                             onClick={() =>

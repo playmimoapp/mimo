@@ -9,6 +9,7 @@ type DraftRequest = {
   audience?: unknown;
   difficulty?: unknown;
   source?: unknown;
+  avoidQuestions?: unknown;
 };
 
 type GeneratedDraft = {
@@ -159,6 +160,14 @@ export async function POST(request: Request) {
   const community = clean(body?.community, 60);
   const topic = clean(body?.topic, 500);
   const source = clean(body?.source, 8000);
+  const avoidQuestions = Array.isArray(body?.avoidQuestions)
+    ? body.avoidQuestions
+        .flatMap((value) =>
+          typeof value === 'string' ? [clean(value, 180)] : [],
+        )
+        .filter(Boolean)
+        .slice(0, 20)
+    : [];
   const audience = ['newcomers', 'community', 'experts'].includes(
     String(body?.audience),
   )
@@ -255,6 +264,10 @@ Return only the requested JSON.`;
 
   const input = `Format: ${eventKind}\nHosting mode: ${hostingMode}\n${continuityInstruction}\nAudience: ${audience}\nDifficulty: ${difficulty}\nBrief: ${topic}\n${
     source ? `Approved source text:\n${source}` : 'No source text was supplied.'
+  }${
+    avoidQuestions.length
+      ? `\nThis is a new edition. Do not repeat or closely paraphrase these previous questions:\n${avoidQuestions.map((question) => `- ${question}`).join('\n')}`
+      : ''
   }`;
   const hostRequestedPoll =
     eventKind === 'community_vote' ||

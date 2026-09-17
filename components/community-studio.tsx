@@ -2511,26 +2511,35 @@ export function PublicCommunity({
       }
       const body = (await response.json()) as {
         following?: boolean;
+        followerCount?: number;
         error?: string;
       };
       if (!response.ok) {
         throw new Error(body.error || 'Follow could not be updated.');
       }
-      setFollowing(nextValue);
+      const confirmedFollowing = Boolean(body.following);
+      setFollowing(confirmedFollowing);
       setData((current) =>
         current
           ? {
               ...current,
               community: {
                 ...current.community,
-                following: nextValue,
-                followerCount: Math.max(
-                  0,
-                  (current.community.followerCount ?? 0) + (nextValue ? 1 : -1),
-                ),
+                following: confirmedFollowing,
+                followerCount:
+                  body.followerCount ?? current.community.followerCount ?? 0,
               },
             }
           : current,
+      );
+      window.dispatchEvent(
+        new CustomEvent('mimo:community-follow-changed', {
+          detail: {
+            slug,
+            following: confirmedFollowing,
+            followerCount: body.followerCount,
+          },
+        }),
       );
     } catch (cause) {
       setFollowError(
@@ -2878,8 +2887,11 @@ export function CommunityDirectory({
     const controller = new AbortController();
     const timer = window.setTimeout(
       () => {
+        const session =
+          window.localStorage.getItem('mimo:studio:session') ?? '';
         void fetch(`/api/communities/discover?q=${encodeURIComponent(query)}`, {
           cache: 'no-store',
+          headers: session ? { 'x-mimo-account': session } : undefined,
           signal: controller.signal,
         })
           .then(async (response) => {
@@ -2901,6 +2913,36 @@ export function CommunityDirectory({
       window.clearTimeout(timer);
     };
   }, [query]);
+  useEffect(() => {
+    const updateFollowState = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          slug: string;
+          following: boolean;
+          followerCount?: number;
+        }>
+      ).detail;
+      if (!detail?.slug) return;
+      setCommunities((current) =>
+        current.map((community) =>
+          community.slug === detail.slug
+            ? {
+                ...community,
+                following: detail.following,
+                followerCount:
+                  detail.followerCount ?? community.followerCount ?? 0,
+              }
+            : community,
+        ),
+      );
+    };
+    window.addEventListener('mimo:community-follow-changed', updateFollowState);
+    return () =>
+      window.removeEventListener(
+        'mimo:community-follow-changed',
+        updateFollowState,
+      );
+  }, []);
   return (
     <StudioShell>
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -2996,6 +3038,12 @@ export function CommunityDirectory({
                 {community.description || `@${community.slug}`}
               </span>
               <span className="mt-2 block text-xs font-extrabold text-[#718295]">
+                {community.following && (
+                  <>
+                    <span className="text-[#19805b]">Following</span>
+                    <span aria-hidden="true"> · </span>
+                  </>
+                )}
                 {community.followerCount ?? 0}{' '}
                 {(community.followerCount ?? 0) === 1
                   ? 'follower'

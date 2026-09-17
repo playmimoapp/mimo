@@ -12,7 +12,10 @@ export type MimoAccount = {
   profileStyle: string;
 };
 
-export async function getAccountBySession(request: Request) {
+export async function getAccountBySession(
+  request: Request,
+  options: { touch?: boolean } = {},
+) {
   const token = request.headers.get('x-mimo-account')?.trim() ?? '';
   if (token.length < 32) return null;
   const tokenHash = await hashToken(token);
@@ -26,12 +29,14 @@ export async function getAccountBySession(request: Request) {
     .bind(tokenHash, Date.now(), Date.now() - MIMO_ACCOUNT_SESSION_MS)
     .first<MimoAccount>();
   if (!account) return null;
-  await getD1()
-    .prepare(
-      `UPDATE account_sessions SET last_seen_at = ? WHERE token_hash = ?`,
-    )
-    .bind(Date.now(), tokenHash)
-    .run();
+  if (options.touch !== false) {
+    await getD1()
+      .prepare(
+        `UPDATE account_sessions SET last_seen_at = ? WHERE token_hash = ?`,
+      )
+      .bind(Date.now(), tokenHash)
+      .run();
+  }
   return account;
 }
 

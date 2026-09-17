@@ -19,6 +19,16 @@ async function contextFor(
   return { account, community };
 }
 
+async function followerCount(communityId: string) {
+  const row = await getD1()
+    .prepare(
+      'SELECT COUNT(*) AS followerCount FROM community_follows WHERE community_id = ?',
+    )
+    .bind(communityId)
+    .first<{ followerCount: number }>();
+  return row?.followerCount ?? 0;
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ slug: string }> },
@@ -30,7 +40,10 @@ export async function POST(
       (community_id, account_id, created_at) VALUES (?, ?, ?)`)
     .bind(found.community.id, found.account.id, Date.now())
     .run();
-  return json({ following: true });
+  return json({
+    following: true,
+    followerCount: await followerCount(found.community.id),
+  });
 }
 
 export async function DELETE(
@@ -45,5 +58,8 @@ export async function DELETE(
     )
     .bind(found.community.id, found.account.id)
     .run();
-  return json({ following: false });
+  return json({
+    following: false,
+    followerCount: await followerCount(found.community.id),
+  });
 }

@@ -508,6 +508,7 @@ function MobileDock({
 export function MimoApp() {
   const reduceMotion = useReducedMotion();
   const [screen, setScreen] = useState<Screen>('home');
+  const [routeReady, setRouteReady] = useState(false);
   const [communitySlug, setCommunitySlug] = useState('');
   const [name, setName] = useState('');
   const [profileStyle, setProfileStyle] = useState<MimoProfileStyle>('hype');
@@ -695,15 +696,19 @@ export function MimoApp() {
 
   useEffect(() => {
     const initial = window.setTimeout(() => {
+      const openInitial = (nextScreen: Screen) => {
+        setScreen(nextScreen);
+        setRouteReady(true);
+      };
       const query = new URLSearchParams(window.location.search);
       if (query.get('discover') === '1') {
-        setScreen('directory');
+        openInitial('directory');
         return;
       }
       const discordDraftToken = query.get('discordDraft')?.trim() ?? '';
       if (discordDraftToken) {
         window.history.replaceState({}, '', window.location.pathname);
-        setScreen('create_assisted');
+        openInitial('create_assisted');
         void fetch(
           `/api/discord/draft?token=${encodeURIComponent(discordDraftToken)}`,
           { cache: 'no-store' },
@@ -786,11 +791,11 @@ export function MimoApp() {
         return;
       }
       if (query.get('studio') === '1') {
-        setScreen('studio');
+        openInitial('studio');
         return;
       }
       if (query.get('communityInvite')) {
-        setScreen('studio');
+        openInitial('studio');
         return;
       }
       if (query.get('create') === '1' && query.get('source') === 'discord') {
@@ -834,7 +839,7 @@ export function MimoApp() {
           avoidQuestions: [],
         }));
         setAssistantAutoStart(query.get('autodraft') === '1');
-        setScreen('create_assisted');
+        openInitial('create_assisted');
         return;
       }
       const linkedCommunity =
@@ -844,7 +849,7 @@ export function MimoApp() {
           .replace(/[^a-z0-9-]/g, '') ?? '';
       if (linkedCommunity) {
         setCommunitySlug(linkedCommunity);
-        setScreen('community');
+        openInitial('community');
         return;
       }
       const code =
@@ -853,7 +858,10 @@ export function MimoApp() {
           ?.toUpperCase()
           .replace(/[^A-Z0-9]/g, '')
           .slice(0, 8) ?? '';
-      if (!code) return;
+      if (!code) {
+        setRouteReady(true);
+        return;
+      }
       setRoomCode(code);
       const recovery = readRoomRecovery(code);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -890,7 +898,7 @@ export function MimoApp() {
             setHostKey(body.hostKey);
             window.sessionStorage.setItem(`mimo:${code}:host`, body.hostKey);
             saveRoomRecovery(code, { hostKey: body.hostKey });
-            setScreen('live_host');
+            openInitial('live_host');
           })
           .catch((cause) => {
             setRoomError(
@@ -898,7 +906,7 @@ export function MimoApp() {
                 ? cause.message
                 : 'Host access could not be restored.',
             );
-            setScreen('join');
+            openInitial('join');
           });
         return;
       }
@@ -936,7 +944,7 @@ export function MimoApp() {
           '';
         if (savedHostKey) {
           setHostKey(savedHostKey);
-          setScreen('live_host');
+          openInitial('live_host');
           return;
         }
       }
@@ -959,9 +967,9 @@ export function MimoApp() {
       if (savedToken && savedName) {
         setParticipantToken(savedToken);
         setName(savedName);
-        setScreen('live_player');
+        openInitial('live_player');
       } else {
-        setScreen('join');
+        openInitial('join');
       }
     }, 0);
     return () => window.clearTimeout(initial);
@@ -1322,6 +1330,19 @@ export function MimoApp() {
   const dockVisible = ['home', 'directory', 'studio', 'community'].includes(
     screen,
   );
+
+  if (!routeReady) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#f6f4ef] text-[#16283d]">
+        <output className="flex flex-col items-center gap-4">
+          <Logo />
+          <span className="text-sm font-bold text-[#607487] motion-safe:animate-pulse">
+            Opening Mimo…
+          </span>
+        </output>
+      </main>
+    );
+  }
 
   return (
     <main

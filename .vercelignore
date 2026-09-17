@@ -4,7 +4,13 @@
 .edge-*
 dist
 outputs
+output
 local-assets
+.agents
+skills-lock.json
+scripts/compact-srt.mjs
+scripts/render-mimo-demo.mjs
+scripts/render-mimo-promo.mjs
 local-mimo.db*
 .env*
 tsconfig.tsbuildinfo

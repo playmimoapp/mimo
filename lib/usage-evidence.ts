@@ -10,6 +10,8 @@ function secureEqual(value: string | null, expected: string | undefined) {
 }
 
 export function analyticsClassForRequest(request: Request): 'real' | 'qa' {
+  const hostname = new URL(request.url).hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return 'qa';
   return secureEqual(
     request.headers.get('x-mimo-qa-token'),
     process.env.MIMO_QA_TOKEN?.trim(),

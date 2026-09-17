@@ -18,6 +18,7 @@ export async function GET(request: Request) {
       FROM communities c
       WHERE c.slug NOT LIKE 'room-%'
         AND c.slug NOT LIKE 'mimo-qa-%'
+        AND c.slug NOT LIKE 'identity-%'
         AND (? = '%%' OR c.name LIKE ? OR c.slug LIKE ? OR c.description LIKE ?)
       ORDER BY CASE WHEN activeStatus = 'live' THEN 0 WHEN activeStatus = 'lobby' THEN 1 ELSE 2 END,
         c.next_event_at IS NULL, c.next_event_at ASC, followerCount DESC, c.created_at DESC
@@ -31,6 +32,7 @@ export async function GET(request: Request) {
       FROM events e JOIN communities c ON c.id = e.community_id
       LEFT JOIN rewards r ON r.event_id = e.id
       WHERE c.slug NOT LIKE 'room-%' AND c.slug NOT LIKE 'mimo-qa-%'
+        AND c.slug NOT LIKE 'identity-%'
         AND e.analytics_class = 'real' AND e.public_visible = 1
         AND e.status IN ('live', 'lobby', 'scheduled')
         AND (? = '%%' OR e.title LIKE ? OR c.name LIKE ? OR c.slug LIKE ?)

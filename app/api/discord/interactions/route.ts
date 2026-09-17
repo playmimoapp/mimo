@@ -1,7 +1,11 @@
 import { createPublicKey, verify } from 'node:crypto';
 import { after } from 'next/server';
 import { getD1 } from '@/db';
-import { discordApi, getDiscordConfig } from '@/lib/discord-integration';
+import {
+  DISCORD_API,
+  discordApi,
+  getDiscordConfig,
+} from '@/lib/discord-integration';
 import { hashToken, json, makeToken } from '@/lib/live-room';
 
 export const runtime = 'nodejs';
@@ -15,6 +19,8 @@ type DiscordOption = {
 };
 type DiscordInteraction = {
   id?: unknown;
+  application_id?: unknown;
+  token?: unknown;
   type?: unknown;
   guild_id?: unknown;
   user?: { id?: unknown; username?: unknown; global_name?: unknown };
@@ -148,7 +154,7 @@ async function sendCreatorDraftDm({
   return message.response.ok;
 }
 
-export async function POST(request: Request) {
+async function handleDiscordInteraction(request: Request) {
   const signature = request.headers.get('x-signature-ed25519') ?? '';
   const timestamp = request.headers.get('x-signature-timestamp') ?? '';
   const rawBody = await request.text();
@@ -184,11 +190,21 @@ export async function POST(request: Request) {
     });
   }
 
-  await getD1()
+  const claim = await getD1()
     .prepare(`INSERT OR IGNORE INTO discord_interactions
       (interaction_hash, created_at) VALUES (?, ?)`)
     .bind(await hashToken(interactionId), Date.now())
     .run();
+  if (claim.meta.changes === 0) {
+    return json({
+      type: 4,
+      data: {
+        flags: 64,
+        content:
+          'Mimo already received this command. Check your private messages for the creation link.',
+      },
+    });
+  }
 
   const connection = await getD1()
     .prepare(`SELECT c.id AS communityId, c.slug, c.name, c.recurrence,
@@ -467,27 +483,27 @@ export async function POST(request: Request) {
   const creatorUrl = new URL('/', origin);
   creatorUrl.searchParams.set('discordDraft', draftToken);
 
-  after(async () => {
-    try {
-      await sendCreatorDraftDm({
-        discordUserId,
-        creatorUrl: creatorUrl.toString(),
-        creatorName: account.displayName,
-        communityName: connection.name,
-        topic,
-        kind,
-      });
-    } catch (error) {
-      console.error('discord_creator_dm_failed', error);
-    }
-  });
+  let dmSent = false;
+  try {
+    dmSent = await sendCreatorDraftDm({
+      discordUserId,
+      creatorUrl: creatorUrl.toString(),
+      creatorName: account.displayName,
+      communityName: connection.name,
+      topic,
+      kind,
+    });
+  } catch (error) {
+    console.error('discord_creator_dm_failed', error);
+  }
 
   return json({
     type: 4,
     data: {
       flags: 64,
-      content:
-        'I sent the private creation flow to your Discord messages. If your privacy settings block bot messages, use the private fallback below.',
+      content: dmSent
+        ? 'I sent your private creation flow to your Discord messages. Nothing has been published yet.'
+        : 'Discord could not deliver the private message. Continue safely with the private link below.',
       components: [
         {
           type: 1,
@@ -503,4 +519,101 @@ export async function POST(request: Request) {
       ],
     },
   });
+}
+
+function deferredError(message: string) {
+  return {
+    flags: 64,
+    content: message,
+  };
+}
+
+async function editDeferredInteraction(
+  applicationId: string,
+  token: string,
+  data: Record<string, unknown>,
+) {
+  const response = await fetch(
+    `${DISCORD_API}/webhooks/${encodeURIComponent(applicationId)}/${encodeURIComponent(token)}/messages/@original`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(
+      `discord_deferred_response_failed:${response.status}:${detail.slice(0, 240)}`,
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  const signature = request.headers.get('x-signature-ed25519') ?? '';
+  const timestamp = request.headers.get('x-signature-timestamp') ?? '';
+  const rawBody = await request.text();
+  if (!verifyDiscordSignature(rawBody, timestamp, signature)) {
+    return json({ error: 'Invalid Discord request signature.' }, 401);
+  }
+
+  let interaction: DiscordInteraction;
+  try {
+    interaction = JSON.parse(rawBody) as DiscordInteraction;
+  } catch {
+    return json({ error: 'Invalid Discord interaction.' }, 400);
+  }
+  if (interaction.type === 1) return json({ type: 1 });
+  if (interaction.type !== 2 || interaction.data?.name !== 'mimo') {
+    return json({
+      type: 4,
+      data: deferredError('That Mimo command is not available.'),
+    });
+  }
+
+  const applicationId =
+    typeof interaction.application_id === 'string'
+      ? interaction.application_id
+      : '';
+  const interactionToken =
+    typeof interaction.token === 'string' ? interaction.token : '';
+  if (!applicationId || !interactionToken) {
+    return json({
+      type: 4,
+      data: deferredError('Discord did not provide a valid command session.'),
+    });
+  }
+
+  const headers = new Headers(request.headers);
+  after(async () => {
+    let data: Record<string, unknown> = deferredError(
+      'Mimo could not finish that command. Please try once more.',
+    );
+    try {
+      const handled = await handleDiscordInteraction(
+        new Request(request.url, {
+          method: 'POST',
+          headers,
+          body: rawBody,
+        }),
+      );
+      const payload = (await handled.json()) as {
+        data?: Record<string, unknown>;
+        error?: string;
+      };
+      data =
+        payload.data ??
+        deferredError(payload.error || 'Mimo could not finish that command.');
+    } catch (error) {
+      console.error('discord_command_processing_failed', error);
+    }
+    try {
+      await editDeferredInteraction(applicationId, interactionToken, data);
+    } catch (error) {
+      console.error('discord_command_response_failed', error);
+    }
+  });
+
+  return json({ type: 5, data: { flags: 64 } });
 }

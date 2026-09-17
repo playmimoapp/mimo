@@ -23,7 +23,7 @@ function formatLuna(value: string | null | undefined) {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
-export async function GET(
+async function getRoomResponse(
   request: Request,
   context: { params: Promise<{ code: string }> },
 ) {
@@ -328,4 +328,22 @@ export async function GET(
       })
       .filter(Boolean),
   });
+}
+
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ code: string }> },
+) {
+  try {
+    return await getRoomResponse(request, context);
+  } catch (error) {
+    console.error('room_refresh_failed', error);
+    return json(
+      {
+        error:
+          'Mimo could not refresh the room just now. Your session is safe and will reconnect automatically.',
+      },
+      503,
+    );
+  }
 }

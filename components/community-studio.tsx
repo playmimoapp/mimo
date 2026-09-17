@@ -245,12 +245,15 @@ async function signInWithNimiqPay(nimiq: MimoNimiq) {
 export function CommunityStudio({
   createEvent,
 }: {
-  createEvent: (community: {
-    name: string;
-    slug: string;
-    recurrence: Community['recurrence'];
-    nextEventAt: number | null;
-  }, draft?: ReusableEventDraft) => void;
+  createEvent: (
+    community: {
+      name: string;
+      slug: string;
+      recurrence: Community['recurrence'];
+      nextEventAt: number | null;
+    },
+    draft?: ReusableEventDraft,
+  ) => void;
 }) {
   const nimiq = useRef(new MimoNimiq());
   const [session, setSession] = useState('');
@@ -381,13 +384,7 @@ export function CommunityStudio({
     const discordProfile = current.searchParams.get('discordProfile') ?? '';
     const xError = current.searchParams.get('xError') ?? '';
     const xProfile = current.searchParams.get('xProfile') ?? '';
-    if (
-      !setupToken &&
-      !setupError &&
-      !discordProfile &&
-      !xError &&
-      !xProfile
-    )
+    if (!setupToken && !setupError && !discordProfile && !xError && !xProfile)
       return;
     current.searchParams.delete('discordSetup');
     current.searchParams.delete('discordError');
@@ -859,7 +856,7 @@ export function CommunityStudio({
                 ? `Mimo is installed. Choose where ${discordSetup.communityName} should receive event updates.`
                 : discordSetup?.communityName
                   ? `Choose the server for ${discordSetup.communityName}. Mimo will bring you straight back.`
-                : 'Checking your Discord connection…'}
+                  : 'Checking your Discord connection…'}
             </DialogDescription>
           </DialogHeader>
           {discordSetup?.stage === 'guild_picker' && (
@@ -984,9 +981,7 @@ export function CommunityStudio({
                 <ArrowLeft size={18} /> Back to your communities
               </button>
               {communities
-                .filter(
-                  (community) => community.slug === activeCommunitySlug,
-                )
+                .filter((community) => community.slug === activeCommunitySlug)
                 .map((community) => (
                   <CommunityCard
                     key={community.slug}
@@ -1587,12 +1582,15 @@ function CommunityCard({
   onSaved,
 }: {
   community: Community;
-  createEvent: (community: {
-    name: string;
-    slug: string;
-    recurrence: Community['recurrence'];
-    nextEventAt: number | null;
-  }, draft?: ReusableEventDraft) => void;
+  createEvent: (
+    community: {
+      name: string;
+      slug: string;
+      recurrence: Community['recurrence'];
+      nextEventAt: number | null;
+    },
+    draft?: ReusableEventDraft,
+  ) => void;
   session: string;
   initiallyManaging?: boolean;
   onSaved: () => void;
@@ -1922,7 +1920,9 @@ function CommunityCard({
       );
     } catch (cause) {
       setScheduleError(
-        cause instanceof Error ? cause.message : 'This event could not be reused.',
+        cause instanceof Error
+          ? cause.message
+          : 'This event could not be reused.',
       );
       setSavingSchedule(false);
     }
@@ -2132,7 +2132,8 @@ function CommunityCard({
                           </span>
                         </span>
                         <span className="text-sm font-extrabold text-[#2577de]">
-                          Resume <ArrowRight size={16} className="ml-1 inline" />
+                          Resume{' '}
+                          <ArrowRight size={16} className="ml-1 inline" />
                         </span>
                       </a>
                     ))}
@@ -2234,49 +2235,47 @@ function CommunityCard({
                   Hide an event from the community page without deleting its
                   results or payment record.
                 </p>
-                {managedEvents.some(
-                  (event) => event.status === 'complete',
-                ) ? (
+                {managedEvents.some((event) => event.status === 'complete') ? (
                   <div className="mt-3 border-y border-[#dfe5e9]">
                     {managedEvents
                       .filter((event) => event.status === 'complete')
                       .map((event) => (
-                      <div
-                        key={event.id}
-                        className="flex items-center justify-between gap-4 border-b border-[#edf0f2] py-3 last:border-0"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-extrabold">
-                            {event.title}
-                          </p>
-                          <p className="mt-0.5 text-xs font-bold text-[#718295]">
-                            {event.publicVisible
-                              ? 'Visible on community page'
-                              : 'Hidden from community page'}
-                          </p>
+                        <div
+                          key={event.id}
+                          className="flex items-center justify-between gap-4 border-b border-[#edf0f2] py-3 last:border-0"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-extrabold">
+                              {event.title}
+                            </p>
+                            <p className="mt-0.5 text-xs font-bold text-[#718295]">
+                              {event.publicVisible
+                                ? 'Visible on community page'
+                                : 'Hidden from community page'}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <button
+                              onClick={() => void reuseEvent(event.id)}
+                              disabled={savingSchedule}
+                              className="text-xs font-extrabold text-[#19805b] disabled:opacity-50"
+                            >
+                              New edition
+                            </button>
+                            <button
+                              onClick={() =>
+                                void changeEventVisibility(
+                                  event.id,
+                                  !event.publicVisible,
+                                )
+                              }
+                              disabled={savingSchedule}
+                              className="text-xs font-extrabold text-[#2577de] disabled:opacity-50"
+                            >
+                              {event.publicVisible ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <button
-                            onClick={() => void reuseEvent(event.id)}
-                            disabled={savingSchedule}
-                            className="text-xs font-extrabold text-[#19805b] disabled:opacity-50"
-                          >
-                            New edition
-                          </button>
-                          <button
-                            onClick={() =>
-                              void changeEventVisibility(
-                                event.id,
-                                !event.publicVisible,
-                              )
-                            }
-                            disabled={savingSchedule}
-                            className="text-xs font-extrabold text-[#2577de] disabled:opacity-50"
-                          >
-                            {event.publicVisible ? 'Hide' : 'Show'}
-                          </button>
-                        </div>
-                      </div>
                       ))}
                   </div>
                 ) : (
@@ -2548,7 +2547,8 @@ export function PublicCommunity({
     const stamp = (date: Date) =>
       date
         .toISOString()
-        .replace(/[-:]/g, '')
+        .replaceAll('-', '')
+        .replaceAll(':', '')
         .replace(/\.\d{3}Z$/, 'Z');
     const calendar = [
       'BEGIN:VCALENDAR',
@@ -2963,9 +2963,7 @@ export function CommunityDirectory({
                       : event.startsAt
                         ? new Date(event.startsAt).toLocaleString()
                         : 'Lobby open'}
-                    {event.rewardAmount
-                      ? ` · ${event.rewardAmount} NIM`
-                      : ''}
+                    {event.rewardAmount ? ` · ${event.rewardAmount} NIM` : ''}
                   </span>
                 </span>
                 <span className="shrink-0 text-sm font-extrabold text-[#2577de]">

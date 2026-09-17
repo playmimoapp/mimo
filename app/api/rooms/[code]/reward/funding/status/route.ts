@@ -69,18 +69,56 @@ export async function POST(
     return json({ state: 'funded', txHash: reward.fundingTxHash });
   }
 
+  let confirmation;
   try {
-    const confirmation = await checkFundingConfirmation(
-      vault,
-      reward.fundingTxHash,
+    confirmation = await checkFundingConfirmation(vault, reward.fundingTxHash);
+  } catch (error) {
+    console.error('reward_funding_network_unavailable', error);
+    return json(
+      {
+        error:
+          'The Nimiq network check is temporarily unavailable. Your submitted transaction has not been marked as failed.',
+      },
+      502,
     );
-    if (!confirmation.included) {
-      return json({
-        state: 'funding_submitted',
-        txHash: reward.fundingTxHash,
-        confirmations: 0,
-      });
-    }
+  }
+  if (confirmation.failed) {
+    const now = Date.now();
+    await db.batch([
+      db
+        .prepare(`UPDATE rewards SET state = 'payment_failed', updated_at = ?
+            WHERE id = ? AND state = 'funding_submitted'`)
+        .bind(now, reward.id),
+      db
+        .prepare(`INSERT INTO event_audit
+            (id, event_id, actor_hash, action, payload_json, created_at)
+            VALUES (?, ?, 'mimo:chain-monitor', 'funding_execution_failed', ?, ?)`)
+        .bind(
+          crypto.randomUUID(),
+          room.id,
+          JSON.stringify({
+            txHash: reward.fundingTxHash,
+            blockNumber: confirmation.blockNumber,
+          }),
+          now,
+        ),
+    ]);
+    return json({
+      state: 'payment_failed',
+      txHash: reward.fundingTxHash,
+      error:
+        'The funding transaction failed on Nimiq. The reward was not marked as funded.',
+    });
+  }
+  if (!confirmation.included) {
+    return json({
+      state: 'funding_submitted',
+      txHash: reward.fundingTxHash,
+      confirmations: 0,
+    });
+  }
+
+  try {
     const registeredRefundAddress =
       reward.senderCiphertext && reward.senderIv
         ? await decryptVaultAddress(
@@ -141,10 +179,29 @@ export async function POST(
       confirmations: confirmation.confirmations,
     });
   } catch (error) {
-    console.error('reward_funding_confirmation_failed', error);
-    return json(
-      { error: 'The Nimiq network could not confirm this funding yet.' },
-      502,
-    );
+    console.error('reward_funding_proof_mismatch', error);
+    const now = Date.now();
+    await db.batch([
+      db
+        .prepare(`UPDATE rewards SET state = 'payment_failed', updated_at = ?
+          WHERE id = ? AND state = 'funding_submitted'`)
+        .bind(now, reward.id),
+      db
+        .prepare(`INSERT INTO event_audit
+          (id, event_id, actor_hash, action, payload_json, created_at)
+          VALUES (?, ?, 'mimo:chain-monitor', 'funding_proof_mismatch', ?, ?)`)
+        .bind(
+          crypto.randomUUID(),
+          room.id,
+          JSON.stringify({ txHash: reward.fundingTxHash }),
+          now,
+        ),
+    ]);
+    return json({
+      state: 'payment_failed',
+      txHash: reward.fundingTxHash,
+      error:
+        'The submitted transaction does not match this room’s funding request. The reward was not marked as funded.',
+    });
   }
 }

@@ -34,7 +34,7 @@ function isHostAction(value: string): value is HostAction {
   return hostActions.includes(value as HostAction);
 }
 
-export async function POST(
+async function handlePost(
   request: Request,
   context: { params: Promise<{ code: string }> },
 ) {
@@ -324,4 +324,22 @@ export async function POST(
     extendedBy: action === 'extend' ? 10 : undefined,
     settlement,
   });
+}
+
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ code: string }> },
+) {
+  try {
+    return await handlePost(request, context);
+  } catch (error) {
+    console.error('room_action_failed', error);
+    return json(
+      {
+        error:
+          'Mimo could not confirm that room change. The room is safe—refresh and try once more.',
+      },
+      503,
+    );
+  }
 }

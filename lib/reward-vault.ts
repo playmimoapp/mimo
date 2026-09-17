@@ -117,8 +117,7 @@ export function getVaultFundingQuote(
     Math.min(config.maxPayouts, Math.floor(requestedPayoutSlots) || 1),
   );
   const feeReserveLuna =
-    config.transactionFeeLuna * BigInt(feeSlots) +
-    VAULT_ACCOUNT_RESERVE_LUNA;
+    config.transactionFeeLuna * BigInt(feeSlots) + VAULT_ACCOUNT_RESERVE_LUNA;
   return {
     rewardAmountLuna,
     transactionFeeLuna: config.transactionFeeLuna,
@@ -205,7 +204,10 @@ async function verifiedFundingAccount(
   )
     ? ((transaction as Record<string, unknown>).relatedAddresses as unknown[])
         .map(normalizeNimiqAddress)
-        .filter((address) => address && address !== normalizeNimiqAddress(config.address))
+        .filter(
+          (address) =>
+            address && address !== normalizeNimiqAddress(config.address),
+        )
     : [];
   const matches: string[] = [];
   for (const address of new Set(related)) {
@@ -254,14 +256,9 @@ export async function checkFundingConfirmation(
   txHash: string,
 ) {
   if (!config.rpcUrl) throw new Error('rpc_unavailable');
-  let transaction: unknown;
-  try {
-    transaction = await rpcCall(config.rpcUrl, 'getTransactionByHash', [
-      txHash,
-    ]);
-  } catch {
-    transaction = null;
-  }
+  const transaction = await rpcCall(config.rpcUrl, 'getTransactionByHash', [
+    txHash,
+  ]);
   if (!transaction || typeof transaction !== 'object') {
     return { included: false, failed: false, confirmations: 0 };
   }
@@ -592,7 +589,12 @@ export async function attemptAutomaticPayout(eventId: string) {
 
   const results: Array<{
     participantId: string;
-    state: 'awaiting_address' | 'submitted' | 'confirmed' | 'retrying';
+    state:
+      | 'awaiting_address'
+      | 'submitted'
+      | 'confirmed'
+      | 'retrying'
+      | 'failed';
     txHash?: string | null;
     amountLuna: string;
   }> = [];
@@ -620,11 +622,29 @@ export async function attemptAutomaticPayout(eventId: string) {
       });
       continue;
     }
+    if (payout?.state === 'failed') {
+      results.push({
+        participantId: participant.id,
+        state: 'failed',
+        txHash: payout.txHash,
+        amountLuna,
+      });
+      continue;
+    }
     if (payout?.state === 'submitted' && payout.txHash) {
-      const confirmation = await checkFundingConfirmation(
-        config,
-        payout.txHash,
-      );
+      let confirmation;
+      try {
+        confirmation = await checkFundingConfirmation(config, payout.txHash);
+      } catch (error) {
+        console.error('automatic_payout_confirmation_unavailable', error);
+        results.push({
+          participantId: participant.id,
+          state: 'retrying',
+          txHash: payout.txHash,
+          amountLuna,
+        });
+        continue;
+      }
       if (confirmation.included) {
         await db
           .prepare(`UPDATE payouts SET state = 'confirmed', updated_at = ?
@@ -634,6 +654,34 @@ export async function attemptAutomaticPayout(eventId: string) {
         results.push({
           participantId: participant.id,
           state: 'confirmed',
+          txHash: payout.txHash,
+          amountLuna,
+        });
+      } else if (confirmation.failed) {
+        const now = Date.now();
+        await db.batch([
+          db
+            .prepare(`UPDATE payouts SET state = 'failed',
+              failure_code = 'execution_failed', updated_at = ? WHERE id = ?`)
+            .bind(now, payout.id),
+          db
+            .prepare(`INSERT INTO event_audit
+              (id, event_id, actor_hash, action, payload_json, created_at)
+              VALUES (?, ?, 'mimo:chain-monitor', 'payout_execution_failed', ?, ?)`)
+            .bind(
+              crypto.randomUUID(),
+              eventId,
+              JSON.stringify({
+                participantId: participant.id,
+                txHash: payout.txHash,
+                blockNumber: confirmation.blockNumber,
+              }),
+              now,
+            ),
+        ]);
+        results.push({
+          participantId: participant.id,
+          state: 'failed',
           txHash: payout.txHash,
           amountLuna,
         });
@@ -742,16 +790,19 @@ export async function attemptAutomaticPayout(eventId: string) {
   const retrying = results.filter(
     (result) => result.state === 'retrying',
   ).length;
+  const failed = results.filter((result) => result.state === 'failed').length;
   const state =
     confirmed === results.length
       ? ('confirmed' as const)
-      : confirmed > 0
+      : confirmed > 0 || (failed > 0 && failed < results.length)
         ? ('partially_paid' as const)
-        : submitted > 0
-          ? ('submitted' as const)
-          : retrying > 0
-            ? ('retrying' as const)
-            : ('awaiting_payout_addresses' as const);
+        : failed === results.length
+          ? ('failed' as const)
+          : submitted > 0
+            ? ('submitted' as const)
+            : retrying > 0
+              ? ('retrying' as const)
+              : ('awaiting_payout_addresses' as const);
   const storedState =
     state === 'confirmed'
       ? 'payout_confirmed'
@@ -759,7 +810,9 @@ export async function attemptAutomaticPayout(eventId: string) {
         ? 'partially_paid'
         : state === 'submitted'
           ? 'payout_submitted'
-          : 'results_under_verification';
+          : state === 'failed'
+            ? 'payment_failed'
+            : 'results_under_verification';
   await db
     .prepare(`UPDATE rewards SET state = ?, updated_at = ? WHERE id = ?`)
     .bind(storedState, Date.now(), reward.id)
@@ -773,6 +826,7 @@ export async function attemptAutomaticPayout(eventId: string) {
     submitted,
     awaiting,
     retrying,
+    failed,
     txHash: results.length === 1 ? (results[0].txHash ?? null) : null,
     payouts: results,
   };
@@ -823,10 +877,19 @@ export async function attemptAutomaticRefund(eventId: string) {
     return { state: 'confirmed' as const, txHash: reward.refundTxHash };
   }
   if (reward.refundState === 'submitted' && reward.refundTxHash) {
-    const confirmation = await checkFundingConfirmation(
-      config,
-      reward.refundTxHash,
-    );
+    let confirmation;
+    try {
+      confirmation = await checkFundingConfirmation(
+        config,
+        reward.refundTxHash,
+      );
+    } catch (error) {
+      console.error('automatic_refund_confirmation_unavailable', error);
+      return {
+        state: 'retrying' as const,
+        txHash: reward.refundTxHash,
+      };
+    }
     if (!confirmation.included && !confirmation.failed) {
       return { state: 'submitted' as const, txHash: reward.refundTxHash };
     }

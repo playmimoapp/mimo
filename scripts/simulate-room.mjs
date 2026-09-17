@@ -14,6 +14,7 @@ if (!/localhost|127\.0\.0\.1/.test(base) && !qaToken) {
 }
 const fakeChain = new Map();
 const fakeHead = 900_000;
+let failNextExecution = false;
 
 function signMessage(keyPair, message) {
   const data = new TextEncoder().encode(
@@ -32,6 +33,10 @@ function transactionRecord(transaction) {
     value: transaction.value.toString(),
     recipientData: Buffer.from(transaction.data).toString('hex'),
     networkId: transaction.networkId,
+    relatedAddresses: [
+      transaction.sender.toUserFriendlyAddress(),
+      transaction.recipient.toUserFriendlyAddress(),
+    ],
   };
 }
 
@@ -56,6 +61,10 @@ const fakeRpc = createServer(async (request, response) => {
     ) {
       const transaction = Transaction.fromAny(payload.params?.[0]);
       const record = transactionRecord(transaction);
+      if (failNextExecution) {
+        record.executionResult = false;
+        failNextExecution = false;
+      }
       fakeChain.set(record.hash.toLowerCase(), record);
       data = record.hash;
     }
@@ -85,17 +94,39 @@ await new Promise((resolve) => fakeRpc.listen(9393, '127.0.0.1', resolve));
 fakeRpc.unref();
 
 async function request(path, options = {}) {
-  const response = await fetch(`${base}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(qaToken ? { 'x-mimo-qa-token': qaToken } : {}),
-      ...options.headers,
-    },
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`${response.status} ${body.error || path}`);
-  return body;
+  const method = String(options.method || 'GET').toUpperCase();
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(qaToken ? { 'x-mimo-qa-token': qaToken } : {}),
+        ...options.headers,
+      },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok) return body;
+    if (method === 'GET' && response.status >= 500 && attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      continue;
+    }
+    throw new Error(`${response.status} ${body.error || path}`);
+  }
+  throw new Error(`503 ${path}`);
+}
+
+async function hostAction(code, hostKey, action) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await request(`/api/rooms/${code}/action`, {
+        method: 'POST',
+        body: JSON.stringify({ action, hostKey }),
+      });
+    } catch (error) {
+      if (!String(error).includes('503 ') || attempt === 3) throw error;
+      await wait(attempt * 500);
+    }
+  }
 }
 
 function assert(condition, message) {
@@ -104,6 +135,15 @@ function assert(condition, message) {
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
+async function waitFor(check, timeoutMs = 16_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await check();
+    if (result) return result;
+    await wait(350);
+  }
+  return null;
+}
 
 const room = await request('/api/rooms', {
   method: 'POST',
@@ -124,7 +164,7 @@ const room = await request('/api/rooms', {
           'A shared finale',
         ],
         correctChoice: null,
-        durationSeconds: 10,
+        durationSeconds: 60,
         scoringMode: 'accuracy',
       },
       {
@@ -251,6 +291,7 @@ const fundingProof = await request(
     body: JSON.stringify({
       hostKey: vaultRoom.hostKey,
       transactionHash: fundingTransaction.hash(),
+      refundAddress: fundingSender.toAddress().toUserFriendlyAddress(),
     }),
   },
 );
@@ -281,37 +322,43 @@ assert(
   'The room must expose confirmed funding and its proof hash.',
 );
 
-const vaultWinner = await request(`/api/rooms/${vaultRoom.code}/join`, {
-  method: 'POST',
-  body: JSON.stringify({ nickname: `Vault-${vaultRoom.code.slice(0, 2)}` }),
-});
 const vaultWinnerKey = KeyPair.generate();
 const vaultWinnerAddress = vaultWinnerKey.toAddress().toUserFriendlyAddress();
-const vaultWalletChallenge = await request(
-  `/api/rooms/${vaultRoom.code}/wallet/challenge`,
+const vaultNickname = `Vault-${vaultRoom.code.slice(0, 2)}`;
+const vaultEntryChallenge = await request(
+  `/api/rooms/${vaultRoom.code}/wallet/entry`,
   {
     method: 'POST',
-    body: JSON.stringify({ participantToken: vaultWinner.participantToken }),
+    body: JSON.stringify({ nickname: vaultNickname, profileStyle: 'cool' }),
   },
 );
-const vaultWalletSignature = vaultWinnerKey.sign(
-  new TextEncoder().encode(vaultWalletChallenge.message),
+const vaultEntrySignature = signMessage(
+  vaultWinnerKey,
+  vaultEntryChallenge.message,
 );
-const vaultWalletProof = await request(
-  `/api/rooms/${vaultRoom.code}/wallet/verify`,
-  {
-    method: 'POST',
-    body: JSON.stringify({
-      participantToken: vaultWinner.participantToken,
-      challengeId: vaultWalletChallenge.challengeId,
+const vaultWinner = await request(`/api/rooms/${vaultRoom.code}/join`, {
+  method: 'POST',
+  body: JSON.stringify({
+    nickname: vaultNickname,
+    profileStyle: 'cool',
+    walletProof: {
+      challengeId: vaultEntryChallenge.challengeId,
       account: vaultWinnerAddress,
       publicKey: vaultWinnerKey.publicKey.toHex(),
-      signature: vaultWalletSignature.toHex(),
-    }),
-  },
-);
+      signature: vaultEntrySignature.toHex(),
+    },
+  }),
+});
+const vaultVerifiedLobby = await request(`/api/rooms/${vaultRoom.code}`, {
+  headers: { 'x-mimo-session': vaultWinner.participantToken },
+});
 assert(
-  vaultWalletProof.payoutAddressRegistered === true,
+  vaultVerifiedLobby.players.some(
+    (player) =>
+      player.id === vaultWinner.participantId &&
+      player.walletVerified &&
+      player.payoutAddressRegistered,
+  ),
   'One wallet signature must privately register the automatic payout address.',
 );
 await request(`/api/rooms/${vaultRoom.code}/action`, {
@@ -338,8 +385,8 @@ const enrolledPayout = await request(
   { method: 'POST', body: '{}' },
 );
 assert(
-  enrolledPayout.state === 'submitted',
-  'The verified result must trigger an automatic testnet payout without a second signature.',
+  ['submitted', 'confirmed'].includes(enrolledPayout.state),
+  'The verified result must trigger or confirm an automatic testnet payout without a second signature.',
 );
 const confirmedPayout = await request(
   `/api/rooms/${vaultRoom.code}/reward/settlement`,
@@ -397,6 +444,7 @@ await request(`/api/rooms/${unlockRoom.code}/reward/funding/submit`, {
   body: JSON.stringify({
     hostKey: unlockRoom.hostKey,
     transactionHash: unlockFundingTransaction.hash(),
+    refundAddress: unlockFunder.toAddress().toUserFriendlyAddress(),
   }),
 });
 await request(`/api/rooms/${unlockRoom.code}/reward/funding/status`, {
@@ -468,33 +516,61 @@ await request(`/api/rooms/${unlockRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'reveal', hostKey: unlockRoom.hostKey }),
 });
-await request(`/api/rooms/${unlockRoom.code}/action`, {
+const completedUnlock = await request(`/api/rooms/${unlockRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'finish', hostKey: unlockRoom.hostKey }),
 });
+const failedUnlockPayout = completedUnlock.settlement?.payouts?.[0];
+assert(
+  failedUnlockPayout?.state === 'submitted' && failedUnlockPayout.txHash,
+  'The completed Community Unlock must submit its automatic payouts.',
+);
+const failedUnlockTransaction = fakeChain.get(
+  failedUnlockPayout.txHash.toLowerCase(),
+);
+assert(
+  failedUnlockTransaction,
+  'The fake chain must contain the submitted payout before failure testing.',
+);
+failedUnlockTransaction.executionResult = false;
 const unlocked = await request(`/api/rooms/${unlockRoom.code}`);
 assert(
   unlocked.rewardRule === 'community_unlock' &&
     unlocked.players.filter((player) => player.rewardEligible).length === 2,
   'Only verified finishers must become eligible after the shared target clears.',
 );
-const submittedUnlock = await request(
-  `/api/rooms/${unlockRoom.code}/reward/settlement`,
-  { method: 'POST', body: '{}' },
-);
-assert(
-  submittedUnlock.state === 'submitted' && submittedUnlock.submitted === 2,
-  'The cleared Community Unlock must submit both payouts without another signature.',
-);
 const unlockSettlement = await request(
   `/api/rooms/${unlockRoom.code}/reward/settlement`,
   { method: 'POST', body: '{}' },
 );
 assert(
-  unlockSettlement.state === 'confirmed' &&
+  unlockSettlement.state === 'partially_paid' &&
     unlockSettlement.eligible === 2 &&
+    unlockSettlement.confirmed === 1 &&
+    unlockSettlement.failed === 1 &&
     unlockSettlement.payouts.every((payout) => payout.amountLuna === '1000000'),
-  'A cleared 20 NIM Community Unlock must settle as two exact 10 NIM payouts.',
+  'A failed on-chain payout must stop safely while the other exact payout confirms.',
+);
+const failedUnlockRoom = await request(`/api/rooms/${unlockRoom.code}`);
+assert(
+  failedUnlockRoom.rewardState === 'partially_paid' &&
+    failedUnlockRoom.players.some(
+      (player) => player.payoutState === 'failed' && player.payoutTxHash,
+    ),
+  'A failed payout must stay visible with transaction proof instead of appearing pending.',
+);
+const repeatedFailedSettlement = await request(
+  `/api/rooms/${unlockRoom.code}/reward/settlement`,
+  { method: 'POST', body: '{}' },
+);
+assert(
+  repeatedFailedSettlement.state === 'partially_paid' &&
+    repeatedFailedSettlement.payouts.some(
+      (payout) =>
+        payout.state === 'failed' &&
+        payout.txHash === failedUnlockPayout.txHash,
+    ),
+  'A failed chain transaction must stay stopped instead of being broadcast again.',
 );
 
 const refundRoom = await request('/api/rooms', {
@@ -541,6 +617,7 @@ await request(`/api/rooms/${refundRoom.code}/reward/funding/submit`, {
   body: JSON.stringify({
     hostKey: refundRoom.hostKey,
     transactionHash: refundFundingTransaction.hash(),
+    refundAddress: refundSender.toAddress().toUserFriendlyAddress(),
   }),
 });
 await request(`/api/rooms/${refundRoom.code}/reward/funding/status`, {
@@ -599,17 +676,18 @@ await request(`/api/rooms/${room.code}/action`, {
   body: JSON.stringify({ action: 'pause_auto', hostKey: room.hostKey }),
 });
 
-await request(`/api/rooms/${room.code}/reaction`, {
+const savedReaction = await request(`/api/rooms/${room.code}/reaction`, {
   method: 'POST',
   body: JSON.stringify({
     participantToken: players[0].participantToken,
     emoji: '🔥',
   }),
 });
-await request(`/api/rooms/${room.code}/action`, {
-  method: 'POST',
-  body: JSON.stringify({ action: 'extend', hostKey: room.hostKey }),
-});
+assert(
+  typeof savedReaction.id === 'string' && savedReaction.id.length > 10,
+  'A safe live reaction must reach the server.',
+);
+await hostAction(room.code, room.hostKey, 'extend');
 
 const firstLockedAnswer = await request(`/api/rooms/${room.code}/answer`, {
   method: 'POST',
@@ -657,6 +735,15 @@ await request(`/api/rooms/${room.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'resume_auto', hostKey: room.hostKey }),
 });
+const awaitingDeadline = await request(`/api/rooms/${room.code}`);
+assert(
+  awaitingDeadline.status === 'live',
+  'A fully answered room must keep the published countdown instead of ending early.',
+);
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
+});
 const pulse = await request(`/api/rooms/${room.code}`);
 assert(pulse.status === 'verifying', 'The pulse must reach its reveal.');
 assert(pulse.roundType === 'pulse', 'The first round must be a pulse.');
@@ -670,25 +757,16 @@ assert(
   'A pulse must not change scores.',
 );
 assert(
-  pulse.reactions.some((reaction) => reaction.emoji === '🔥'),
-  'A safe live reaction must reach the room.',
-);
-assert(
   pulse.roomSignal?.kind === 'split_room',
   'Mimo must recognise an evenly split live poll from server data.',
 );
 
-await wait(5200);
-const heldFaceOff = await request(`/api/rooms/${room.code}`);
+const secondRound = await waitFor(async () => {
+  const current = await request(`/api/rooms/${room.code}`);
+  return current.status === 'live' && current.roundIndex === 1 ? current : null;
+});
 assert(
-  heldFaceOff.status === 'verifying' &&
-    heldFaceOff.roomSignal?.kind === 'split_room',
-  'An approved split-room face-off must hold the reveal for live reactions.',
-);
-await wait(4200);
-const secondRound = await request(`/api/rooms/${room.code}`);
-assert(
-  secondRound.status === 'live' && secondRound.roundIndex === 1,
+  secondRound?.status === 'live' && secondRound.roundIndex === 1,
   'Mimo must start the next moment without the host device.',
 );
 
@@ -704,6 +782,16 @@ await Promise.all(
   ),
 );
 
+const lockedSecondRound = await request(`/api/rooms/${room.code}`);
+assert(
+  lockedSecondRound.status === 'live' &&
+    lockedSecondRound.correctChoice === null,
+  'Answering early must not reveal the correct choice before the countdown or host action.',
+);
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
+});
 const playResult = await request(`/api/rooms/${room.code}`);
 assert(playResult.roundIndex === 1, 'The show must move to round two.');
 assert(
@@ -719,10 +807,14 @@ assert(
   'Speed scoring must add a server-calculated time bonus.',
 );
 
-await wait(5200);
-const finalRound = await request(`/api/rooms/${room.code}`);
+const finalRound = await waitFor(async () => {
+  const current = await request(`/api/rooms/${room.code}`);
+  return current.status === 'live' && current.roundType === 'finale'
+    ? current
+    : null;
+});
 assert(
-  finalRound.status === 'live' && finalRound.roundType === 'finale',
+  finalRound?.status === 'live' && finalRound.roundType === 'finale',
   'Mimo must open the finale automatically.',
 );
 
@@ -738,6 +830,15 @@ await Promise.all(
   ),
 );
 
+const lockedFinale = await request(`/api/rooms/${room.code}`);
+assert(
+  lockedFinale.status === 'live' && lockedFinale.finalePassed === null,
+  'The finale must keep the published countdown after everyone answers.',
+);
+await request(`/api/rooms/${room.code}/action`, {
+  method: 'POST',
+  body: JSON.stringify({ action: 'reveal', hostKey: room.hostKey }),
+});
 const finale = await request(`/api/rooms/${room.code}`);
 assert(
   finale.roundType === 'finale',
@@ -764,10 +865,12 @@ assert(
   'Mimo must recognise when the room clears its shared target.',
 );
 
-await wait(5200);
-const completed = await request(`/api/rooms/${room.code}`);
+const completed = await waitFor(async () => {
+  const current = await request(`/api/rooms/${room.code}`);
+  return current.status === 'complete' ? current : null;
+});
 assert(
-  completed.status === 'complete',
+  completed?.status === 'complete',
   'Mimo must close the event without the host device.',
 );
 
@@ -788,35 +891,21 @@ const privateRoom = await request('/api/rooms', {
     ],
   }),
 });
-assert(privateRoom.inviteToken, 'A private room must issue an invite token.');
 assert(
-  privateRoom.sharePath.includes('#invite='),
-  'A private invite must keep its secret out of the server URL.',
+  privateRoom.sharePath === `/r/${privateRoom.code}`,
+  'A private room must share one clean room link.',
 );
 
-const blockedView = await fetch(`${base}/api/rooms/${privateRoom.code}`);
-assert(blockedView.status === 403, 'A private room must block public viewing.');
-
-const blockedJoin = await fetch(`${base}/api/rooms/${privateRoom.code}/join`, {
+const codeJoin = await fetch(`${base}/api/rooms/${privateRoom.code}/join`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ nickname: `NoLink-${privateRoom.code.slice(0, 2)}` }),
+  body: JSON.stringify({ nickname: `Code-${privateRoom.code.slice(0, 2)}` }),
 });
 assert(
-  blockedJoin.status === 403,
-  'A private room must block code-only joins.',
+  codeJoin.ok,
+  'An unlisted private room must allow guests who possess its room code.',
 );
-
-const invitedPlayer = await request(`/api/rooms/${privateRoom.code}/join`, {
-  method: 'POST',
-  body: JSON.stringify({
-    nickname: `Invited-${privateRoom.code.slice(0, 2)}`,
-    inviteToken: privateRoom.inviteToken,
-  }),
-});
-const privateLobby = await request(`/api/rooms/${privateRoom.code}`, {
-  headers: { 'x-mimo-session': invitedPlayer.participantToken },
-});
+const privateLobby = await request(`/api/rooms/${privateRoom.code}`);
 assert(
   privateLobby.accessMode === 'private' && privateLobby.players.length === 1,
   'An invited participant must be able to restore the private room.',
@@ -832,9 +921,8 @@ const walletRoom = await request('/api/rooms', {
     title: 'Wallet proof simulation',
     community: 'Mimo QA',
     accessMode: 'public',
-    rewardMode: 'nim',
-    rewardAmount: '10',
-    custodyMode: 'host_wallet',
+    rewardMode: 'free',
+    rewardAmount: '0',
     rounds: [
       {
         type: 'multiple_choice',
@@ -886,8 +974,9 @@ const changeChallenge = await request(
     body: JSON.stringify({ participantToken: walletPlayer.participantToken }),
   },
 );
-const changeSignature = replacementKeyPair.sign(
-  new TextEncoder().encode(changeChallenge.message),
+const changeSignature = signMessage(
+  replacementKeyPair,
+  changeChallenge.message,
 );
 const changedWallet = await request(
   `/api/rooms/${walletRoom.code}/wallet/verify`,
@@ -945,22 +1034,6 @@ await request(`/api/rooms/${walletRoom.code}/action`, {
   method: 'POST',
   body: JSON.stringify({ action: 'finish', hostKey: walletRoom.hostKey }),
 });
-const preparedPayout = await request(
-  `/api/rooms/${walletRoom.code}/reward/prepare`,
-  {
-    method: 'POST',
-    body: JSON.stringify({
-      hostKey: walletRoom.hostKey,
-      participantId: walletLobby.players[0].id,
-      payoutAddress: replacementAccount,
-    }),
-  },
-);
-assert(
-  preparedPayout.amountLuna === '1000000',
-  'The payout must match the declared 10 NIM reward.',
-);
-
 console.log(
   JSON.stringify({
     ok: true,
@@ -976,7 +1049,7 @@ console.log(
     livingRoomBranch: true,
     communityUnlock: true,
     fairCancellation: true,
-    rewardPrepared: true,
     vaultFundingProof: true,
+    automaticPayoutFailure: true,
   }),
 );

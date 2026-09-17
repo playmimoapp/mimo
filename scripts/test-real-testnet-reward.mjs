@@ -1,9 +1,6 @@
 import { Address, Hash, KeyPair, TransactionBuilder } from '@nimiq/core';
 
-const base = (process.argv[2] || 'https://playmimo.xyz').replace(
-  /\/$/,
-  '',
-);
+const base = (process.argv[2] || 'https://playmimo.xyz').replace(/\/$/, '');
 const rpcUrl = 'https://rpc.testnet.nimiqwatch.com';
 const qaToken = process.env.MIMO_QA_TOKEN?.trim() || '';
 if (!/localhost|127\.0\.0\.1/.test(base) && !qaToken) {
@@ -139,6 +136,7 @@ await request(`/api/rooms/${room.code}/reward/funding/submit`, {
   body: JSON.stringify({
     hostKey: room.hostKey,
     transactionHash: fundingTxHash,
+    refundAddress: funder.toAddress().toUserFriendlyAddress(),
   }),
 });
 

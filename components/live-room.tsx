@@ -293,7 +293,10 @@ export function LiveRoom({
         10_000,
         1200 * 2 ** Math.min(3, refreshFailures.current),
       );
-      poll = window.setTimeout(run, hidden ? 5000 : connected ? 1200 : retryDelay);
+      poll = window.setTimeout(
+        run,
+        hidden ? 5000 : connected ? 1200 : retryDelay,
+      );
     };
     const recover = () => {
       if (document.visibilityState !== 'visible') return;
@@ -390,6 +393,7 @@ export function LiveRoom({
         }
         await refresh();
       } catch (cause) {
+        await refresh().catch(() => undefined);
         setError(
           cause instanceof Error ? cause.message : 'The room did not change.',
         );
@@ -1292,7 +1296,7 @@ function CancelledState({ room }: { room: LiveRoomState }) {
                 ? 'Mimo prepared the refund and will retry the same transaction safely.'
                 : room.refundState === 'failed'
                   ? 'The refund could not complete. The funded NIM is still traceable and Mimo has stopped automatic retries.'
-                : 'Mimo will return the funded NIM automatically after the network confirms the original funding payment.'
+                  : 'Mimo will return the funded NIM automatically after the network confirms the original funding payment.'
           : 'Mimo did not request or move any NIM. Any open wallet prompt can be safely closed.'}
       </p>
       {room.refundTxHash && (
@@ -1541,14 +1545,11 @@ function RewardFundingPanel({
     setBusy(true);
     setDetail('Opening the same host room in Nimiq Pay...');
     try {
-      const response = await fetch(
-        `/api/rooms/${room.code}/host-handoff`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hostKey }),
-        },
-      );
+      const response = await fetch(`/api/rooms/${room.code}/host-handoff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostKey }),
+      });
       const body = (await response.json()) as {
         openPath?: string;
         error?: string;
@@ -1588,11 +1589,15 @@ function RewardFundingPanel({
       const status = (await response.json()) as {
         state: string;
         confirmations?: number;
+        error?: string;
       };
       setDetail(
         status.state === 'funded'
           ? `Funding confirmed${status.confirmations ? ` · ${status.confirmations} confirmation${status.confirmations === 1 ? '' : 's'}` : ''}.`
-          : 'Still waiting for the transaction to enter a block.',
+          : status.state === 'payment_failed'
+            ? status.error ||
+              'The funding transaction failed. No reward was marked as funded; you can safely try again.'
+            : 'Still waiting for the transaction to enter a block.',
       );
       await onRefresh();
     } catch (cause) {
@@ -1690,7 +1695,9 @@ function RewardFundingPanel({
             >
               {busy
                 ? 'Preparing…'
-                : `Approve ${room.rewardFundingAmount ?? room.rewardAmount} NIM`}
+                : room.rewardState === 'payment_failed'
+                  ? 'Try funding again'
+                  : `Approve ${room.rewardFundingAmount ?? room.rewardAmount} NIM`}
             </Button>
           )}
         </div>
@@ -2939,6 +2946,7 @@ function RewardSettlement({
           confirmed?: number;
           submitted?: number;
           awaiting?: number;
+          failed?: number;
         };
         if (result.state === 'confirmed') {
           setState('submitted');
@@ -2962,6 +2970,11 @@ function RewardSettlement({
         } else if (result.state === 'retrying') {
           setState('checking');
           setDetail('The network is busy. Mimo is retrying the same payout.');
+        } else if (result.state === 'failed') {
+          setState('failed');
+          setDetail(
+            `${result.failed ?? result.eligible ?? 1} payout transaction failed on Nimiq. Mimo stopped safely and kept the transaction proof visible.`,
+          );
         }
       } catch {
         // The room poll keeps the visible state honest and retries later.

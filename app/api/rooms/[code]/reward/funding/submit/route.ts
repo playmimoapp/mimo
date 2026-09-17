@@ -27,7 +27,10 @@ export async function POST(
     return json({ error: 'The funding proof is incomplete.' }, 400);
   }
   if (!refundAddress) {
-    return json({ error: 'Reconnect Nimiq Pay and try the funding payment again.' }, 400);
+    return json(
+      { error: 'Reconnect Nimiq Pay and try the funding payment again.' },
+      400,
+    );
   }
   if (room.status !== 'lobby') {
     return json({ error: 'This reward can no longer be changed.' }, 409);
@@ -63,7 +66,11 @@ export async function POST(
   }
 
   try {
-    if (reward.fundingTxHash && reward.fundingTxHash !== transactionHash) {
+    if (
+      reward.fundingTxHash &&
+      reward.fundingTxHash !== transactionHash &&
+      reward.state !== 'payment_failed'
+    ) {
       return json(
         { error: 'A different funding transaction is already being checked.' },
         409,

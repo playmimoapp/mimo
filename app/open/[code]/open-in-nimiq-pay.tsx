@@ -72,8 +72,8 @@ export function OpenInNimiqPay({ code }: { code: string }) {
         Open Mimo in Nimiq Pay.
       </h1>
       <p className="mt-5 text-lg leading-7 text-[#607486]">
-        The room needs a verified wallet. Nimiq Pay keeps the signature and any
-        NIM approval inside the wallet app.
+        Play inside the Mini App for wallet verification and NIM rewards. Free
+        rooms can also continue in your browser.
       </p>
       <button
         type="button"

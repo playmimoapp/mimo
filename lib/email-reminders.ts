@@ -118,7 +118,9 @@ export async function sendCommunityEventEmails(eventId: string) {
         timeZone: 'UTC',
       }) + ' UTC'
     : 'The lobby is open now';
-  const eventUrl = `${publicUrl()}/?community=${encodeURIComponent(event.communitySlug)}`;
+  const eventUrl = event.roomCode
+    ? `${publicUrl()}/open/${encodeURIComponent(event.roomCode)}`
+    : `${publicUrl()}/?community=${encodeURIComponent(event.communitySlug)}`;
   for (const recipient of recipients.results) {
     const now = Date.now();
     await db
@@ -155,7 +157,7 @@ export async function sendCommunityEventEmails(eventId: string) {
         to: email,
         subject: `${event.communityName}: ${event.title}`,
         text: `${event.communityName} has a new Mimo: ${event.title}. ${start}. Open ${eventUrl}\n\nTurn off this community's email reminders: ${unsubscribeUrl}`,
-        html: `<div style="background:#f8f6f1;padding:32px 20px;color:#14283e;font-family:Arial,sans-serif"><div style="max-width:560px;margin:auto"><p style="color:#cf5845;font-size:12px;font-weight:800;letter-spacing:2px">NEW FROM ${safeCommunity.toUpperCase()}</p><h1 style="font-size:32px;line-height:1.1;margin:16px 0">${safeTitle}</h1><p style="color:#526a7c;font-size:17px;line-height:1.6">${escapeHtml(start)}</p><a href="${eventUrl}" style="display:inline-block;margin-top:18px;background:#2577de;color:white;padding:14px 22px;border-radius:999px;text-decoration:none;font-weight:800">Open in Mimo</a><p style="margin-top:34px;color:#718295;font-size:12px;line-height:1.6">You asked Mimo to email you about ${safeCommunity}. <a href="${unsubscribeUrl}" style="color:#526a7c">Turn off these reminders</a>.</p></div></div>`,
+        html: `<div style="background:#f8f6f1;padding:32px 20px;color:#14283e;font-family:Arial,sans-serif"><div style="max-width:560px;margin:auto"><p style="color:#cf5845;font-size:12px;font-weight:800;letter-spacing:2px">NEW FROM ${safeCommunity.toUpperCase()}</p><h1 style="font-size:32px;line-height:1.1;margin:16px 0">${safeTitle}</h1><p style="color:#526a7c;font-size:17px;line-height:1.6">${escapeHtml(start)}</p><a href="${eventUrl}" style="display:inline-block;margin-top:18px;background:#2577de;color:white;padding:14px 22px;border-radius:999px;text-decoration:none;font-weight:800">${event.roomCode ? 'Open in Nimiq Pay' : 'View community in Mimo'}</a><p style="margin-top:34px;color:#718295;font-size:12px;line-height:1.6">You asked Mimo to email you about ${safeCommunity}. <a href="${unsubscribeUrl}" style="color:#526a7c">Turn off these reminders</a>.</p></div></div>`,
         unsubscribeUrl,
       });
       await db

@@ -2482,6 +2482,7 @@ export function PublicCommunity({
   const [emailAddress, setEmailAddress] = useState('');
   const [emailWorking, setEmailWorking] = useState(false);
   const [emailNotice, setEmailNotice] = useState('');
+  const [showEmailReminders, setShowEmailReminders] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const primarySocial = data ? communityPrimarySocial(data.community) : null;
   useEffect(() => {
@@ -2525,10 +2526,18 @@ export function PublicCommunity({
         );
         if (emailResult === 'verified') {
           setEmailNotice('Email reminders are on.');
+          setShowEmailReminders(true);
         } else if (emailResult === 'expired') {
           setEmailNotice('That email link expired. Request a new one below.');
+          setShowEmailReminders(true);
         } else if (emailResult === 'invalid') {
           setEmailNotice('That email link is not valid.');
+          setShowEmailReminders(true);
+        }
+        if (emailResult) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('emailReminder');
+          window.history.replaceState({}, '', `${url.pathname}${url.search}`);
         }
       })
       .catch((cause) =>
@@ -2613,6 +2622,15 @@ export function PublicCommunity({
           },
         }),
       );
+      if (
+        confirmedFollowing &&
+        data.community.emailAvailable &&
+        !data.community.emailReminders
+      ) {
+        setShowEmailReminders(true);
+      } else if (!confirmedFollowing) {
+        setShowEmailReminders(false);
+      }
     } catch (cause) {
       setFollowError(
         cause instanceof Error ? cause.message : 'Follow could not be updated.',
@@ -2753,6 +2771,19 @@ export function PublicCommunity({
                     ? 'Following'
                     : 'Follow community'}
               </Button>
+              {following && data.community.emailAvailable && (
+                <Button
+                  type="button"
+                  onClick={() => setShowEmailReminders(true)}
+                  variant="outline"
+                  className="h-11 rounded-full bg-white px-4 font-extrabold"
+                >
+                  <Mail size={16} />
+                  {data.community.emailReminders
+                    ? 'Email on'
+                    : 'Event reminders'}
+                </Button>
+              )}
               {nextTime && (
                 <Button
                   onClick={addToCalendar}
@@ -2784,108 +2815,6 @@ export function PublicCommunity({
               <p role="alert" className="mt-2 text-xs font-bold text-[#b53636]">
                 {followError}
               </p>
-            )}
-            {following && data.community.emailAvailable && (
-              <div className="mt-5 max-w-xl border-t border-[#d9e1e6] pt-4">
-                <div className="flex items-start gap-3">
-                  <Mail size={18} className="mt-0.5 shrink-0 text-[#2577de]" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-extrabold">Event emails</p>
-                    <p className="mt-0.5 text-sm leading-6 text-[#60758a]">
-                      Optional. Get one short email when {data.community.name}{' '}
-                      publishes a new event.
-                    </p>
-                    {data.community.emailReminders ? (
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <span className="text-sm font-extrabold text-[#19805b]">
-                          On for {data.community.emailMasked}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void updateEmailReminder(false)}
-                          disabled={emailWorking}
-                          className="text-sm font-extrabold text-[#526a7c] underline decoration-[#aebbc5] underline-offset-4"
-                        >
-                          Turn off email
-                        </button>
-                      </div>
-                    ) : data.community.emailStatus === 'verified' ? (
-                      <Button
-                        type="button"
-                        onClick={() => void updateEmailReminder(true)}
-                        disabled={emailWorking}
-                        variant="outline"
-                        className="mt-3 h-10 rounded-full bg-white px-4 font-extrabold"
-                      >
-                        {emailWorking
-                          ? 'Updating…'
-                          : `Email ${data.community.emailMasked}`}
-                      </Button>
-                    ) : data.community.emailStatus === 'pending' ? (
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <span className="text-sm font-extrabold text-[#526a7c]">
-                          Check {data.community.emailMasked ?? 'your inbox'} to
-                          confirm.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setData((current) =>
-                              current
-                                ? {
-                                    ...current,
-                                    community: {
-                                      ...current.community,
-                                      emailStatus: 'none',
-                                    },
-                                  }
-                                : current,
-                            )
-                          }
-                          className="text-sm font-extrabold text-[#2577de]"
-                        >
-                          Use another email
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-3 flex max-w-md gap-2">
-                        <label className="sr-only" htmlFor="follow-email">
-                          Email for event reminders
-                        </label>
-                        <input
-                          id="follow-email"
-                          type="email"
-                          autoComplete="email"
-                          inputMode="email"
-                          value={emailAddress}
-                          onChange={(event) =>
-                            setEmailAddress(event.target.value)
-                          }
-                          placeholder="you@example.com"
-                          className="h-11 min-w-0 flex-1 rounded-full border border-[#cbd7df] bg-white px-4 text-sm font-bold outline-none focus:border-[#2577de]"
-                        />
-                        <Button
-                          type="button"
-                          onClick={() => void updateEmailReminder(true)}
-                          disabled={emailWorking || !emailAddress.trim()}
-                          className="h-11 shrink-0 rounded-full px-4 font-extrabold"
-                        >
-                          {emailWorking ? 'Sending…' : 'Email me'}
-                        </Button>
-                      </div>
-                    )}
-                    <p className="mt-2 text-xs leading-5 text-[#718295]">
-                      We use this address only for Mimo reminders. Verify once
-                      and unsubscribe anytime.
-                    </p>
-                    {emailNotice && (
-                      <output className="mt-2 block text-xs font-extrabold text-[#526a7c]">
-                        {emailNotice}
-                      </output>
-                    )}
-                  </div>
-                </div>
-              </div>
             )}
           </div>
           <div className="rounded-[24px] bg-[#f3f7fa] p-5">
@@ -3100,6 +3029,123 @@ export function PublicCommunity({
           Open Studio
         </Button>
       </div>
+      <Dialog open={showEmailReminders} onOpenChange={setShowEmailReminders}>
+        <DialogContent className="bottom-0 left-0 top-auto w-full max-w-none translate-x-0 translate-y-0 rounded-b-none rounded-t-[28px] bg-[#f8f6f1] px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-6 sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[28px] sm:p-8">
+          <DialogHeader>
+            <span className="mb-2 grid h-11 w-11 place-items-center rounded-full bg-[#eaf3ff] text-[#2577de]">
+              <Mail size={20} />
+            </span>
+            <DialogTitle className="font-display text-3xl font-extrabold tracking-[-.04em]">
+              Never miss the next Mimo.
+            </DialogTitle>
+            <DialogDescription className="text-base leading-6">
+              You are following {data.community.name} in Mimo. Email is
+              optional—add it only if you want a note when a new event opens.
+            </DialogDescription>
+          </DialogHeader>
+          {data.community.emailReminders ? (
+            <div className="mt-6">
+              <p className="font-extrabold text-[#19805b]">
+                Email is on for {data.community.emailMasked}
+              </p>
+              <Button
+                type="button"
+                onClick={() => void updateEmailReminder(false)}
+                disabled={emailWorking}
+                variant="outline"
+                className="mt-4 h-12 w-full rounded-full bg-white font-extrabold"
+              >
+                {emailWorking ? 'Updating…' : 'Turn off email'}
+              </Button>
+            </div>
+          ) : data.community.emailStatus === 'verified' ? (
+            <div className="mt-6">
+              <p className="text-sm font-bold text-[#60758a]">
+                Use your verified address: {data.community.emailMasked}
+              </p>
+              <Button
+                type="button"
+                onClick={() => void updateEmailReminder(true)}
+                disabled={emailWorking}
+                className="mt-4 h-12 w-full rounded-full bg-[#2577de] font-extrabold text-white"
+              >
+                {emailWorking ? 'Turning on…' : 'Turn on email reminders'}
+              </Button>
+            </div>
+          ) : data.community.emailStatus === 'pending' ? (
+            <div className="mt-6 rounded-[20px] bg-[#eef6ff] p-4">
+              <p className="font-extrabold">Check your inbox</p>
+              <p className="mt-1 text-sm leading-6 text-[#60758a]">
+                We sent a confirmation link to {data.community.emailMasked}.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setData((current) =>
+                    current
+                      ? {
+                          ...current,
+                          community: {
+                            ...current.community,
+                            emailStatus: 'none',
+                          },
+                        }
+                      : current,
+                  )
+                }
+                className="mt-3 text-sm font-extrabold text-[#2577de]"
+              >
+                Use another email
+              </button>
+            </div>
+          ) : (
+            <form
+              className="mt-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void updateEmailReminder(true);
+              }}
+            >
+              <label className="text-sm font-extrabold" htmlFor="follow-email">
+                Email address
+              </label>
+              <input
+                id="follow-email"
+                type="email"
+                required
+                autoComplete="email"
+                inputMode="email"
+                value={emailAddress}
+                onChange={(event) => setEmailAddress(event.target.value)}
+                placeholder="you@example.com"
+                className="mt-2 h-13 w-full rounded-2xl border border-[#cbd7df] bg-white px-4 font-bold outline-none focus:border-[#2577de]"
+              />
+              <Button
+                type="submit"
+                disabled={emailWorking || !emailAddress.trim()}
+                className="mt-3 h-12 w-full rounded-full bg-[#2577de] font-extrabold text-white"
+              >
+                {emailWorking ? 'Sending…' : 'Send confirmation'}
+              </Button>
+            </form>
+          )}
+          <p className="mt-4 text-xs leading-5 text-[#718295]">
+            Used only for Mimo reminders. Verify once and unsubscribe anytime.
+          </p>
+          {emailNotice && (
+            <output className="mt-3 block text-sm font-extrabold text-[#526a7c]">
+              {emailNotice}
+            </output>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowEmailReminders(false)}
+            className="mt-4 min-h-10 w-full text-sm font-extrabold text-[#60758a]"
+          >
+            {data.community.emailReminders ? 'Done' : 'Not now'}
+          </button>
+        </DialogContent>
+      </Dialog>
     </StudioShell>
   );
 }

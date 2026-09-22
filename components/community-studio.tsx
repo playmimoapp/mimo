@@ -2780,7 +2780,7 @@ export function PublicCommunity({
                 >
                   <Mail size={16} />
                   {data.community.emailReminders
-                    ? 'Email on'
+                    ? 'Reminders on'
                     : 'Event reminders'}
                 </Button>
               )}
@@ -3039,14 +3039,14 @@ export function PublicCommunity({
               Never miss the next Mimo.
             </DialogTitle>
             <DialogDescription className="text-base leading-6">
-              You are following {data.community.name} in Mimo. Email is
-              optional—add it only if you want a note when a new event opens.
+              Email is optional. Verify it once, then choose reminders for
+              each community you follow.
             </DialogDescription>
           </DialogHeader>
           {data.community.emailReminders ? (
             <div className="mt-6">
               <p className="font-extrabold text-[#19805b]">
-                Email is on for {data.community.emailMasked}
+                Reminders are on for {data.community.emailMasked}
               </p>
               <Button
                 type="button"
@@ -3061,7 +3061,7 @@ export function PublicCommunity({
           ) : data.community.emailStatus === 'verified' ? (
             <div className="mt-6">
               <p className="text-sm font-bold text-[#60758a]">
-                Use your verified address: {data.community.emailMasked}
+                Verified email: {data.community.emailMasked}
               </p>
               <Button
                 type="button"
@@ -3069,7 +3069,9 @@ export function PublicCommunity({
                 disabled={emailWorking}
                 className="mt-4 h-12 w-full rounded-full bg-[#2577de] font-extrabold text-white"
               >
-                {emailWorking ? 'Turning on…' : 'Turn on email reminders'}
+                {emailWorking
+                  ? 'Turning on…'
+                  : `Turn on for ${data.community.name}`}
               </Button>
             </div>
           ) : data.community.emailStatus === 'pending' ? (
@@ -3130,7 +3132,8 @@ export function PublicCommunity({
             </form>
           )}
           <p className="mt-4 text-xs leading-5 text-[#718295]">
-            Used only for Mimo reminders. Verify once and unsubscribe anytime.
+            Verified once. Managed separately for every community. Unsubscribe
+            anytime.
           </p>
           {emailNotice && (
             <output className="mt-3 block text-sm font-extrabold text-[#526a7c]">

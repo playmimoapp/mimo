@@ -516,6 +516,8 @@ export const accountEmailContacts = sqliteTable(
       .notNull()
       .default('pending'),
     verificationTokenHash: text('verification_token_hash'),
+    verificationCodeHash: text('verification_code_hash'),
+    verificationAttempts: integer('verification_attempts').notNull().default(0),
     verificationExpiresAt: integer('verification_expires_at', {
       mode: 'timestamp_ms',
     }),

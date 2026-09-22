@@ -36,17 +36,17 @@ This is not a quiz with a payment button. It is participatory community entertai
 
 ## What is live
 
-| Product area | Current capability |
-| --- | --- |
-| Live rooms | Server-authoritative lifecycle, deadlines, scoring, reactions, teams and reconnect recovery |
-| Creation | Manual editor, preview, rehearsal and Gemini-assisted editable drafts |
-| Formats | Game nights, community votes, product launches, onboarding and open-format events |
-| Access | Public rooms, invite-only rooms and independently configurable wallet verification |
-| Nimiq Pay | Account access, one-use signatures, native payment approval and honest cancellation/failure states |
-| NIM rewards | Mainnet vault funding, automatic skill payouts, Community Unlocks, refunds and transaction proof |
-| Communities | Public homes, pictures, roles, follows, notifications, recurring schedules, seasons and standings |
-| Discord | OAuth connection, minimal-permission install, channel verification, admin-only creation, private draft handoff, event invitations and season points |
-| Operations | Privacy-conscious real/QA classification, event recaps and a protected competition report |
+| Product area | Current capability                                                                                                                                  |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live rooms   | Server-authoritative lifecycle, deadlines, scoring, reactions, teams and reconnect recovery                                                         |
+| Creation     | Manual editor, preview, rehearsal and Gemini-assisted editable drafts                                                                               |
+| Formats      | Game nights, community votes, product launches, onboarding and open-format events                                                                   |
+| Access       | Public rooms, invite-only rooms and independently configurable wallet verification                                                                  |
+| Nimiq Pay    | Account access, one-use signatures, native payment approval and honest cancellation/failure states                                                  |
+| NIM rewards  | Mainnet vault funding, automatic skill payouts, Community Unlocks, refunds and transaction proof                                                    |
+| Communities  | Public homes, roles, follows, verified email reminders, recurring schedules, seasons and standings                                                  |
+| Discord      | OAuth connection, minimal-permission install, channel verification, admin-only creation, private draft handoff, event invitations and season points |
+| Operations   | Privacy-conscious real/QA classification, event recaps and a protected competition report                                                           |
 
 Discord is in production beta until the full real-server acceptance checklist passes. X creation and distribution remain intentionally outside the critical product path.
 
@@ -135,7 +135,8 @@ Automated simulations are engineering checks, not proof of real users or payment
 - Full wallet addresses are not exposed in public room data.
 - Wallet and Discord identifiers are stored as scoped hashes where raw identity is unnecessary.
 - Payout and refund addresses are encrypted at rest.
-- Reminder email addresses are optional, encrypted at rest and used only after verification. A player can disable one community or remove the saved address entirely.
+- Reminder email addresses are optional and encrypted at rest. Mimo sends a six-digit code and a time-limited confirmation link; no reminder becomes active until one is confirmed.
+- One verified address belongs to the wallet-backed profile, while reminder permission is controlled separately for every followed community. Each event delivery is deduplicated, and every reminder includes a community-specific unsubscribe link.
 - Public rooms may be free and anonymous; wallet proof is requested only when the event requires it.
 - Random winner rewards, gambling, pay-to-win scoring and unrestricted chat are not supported.
 - Payment cancellation is a normal recoverable state, never presented as an application crash.

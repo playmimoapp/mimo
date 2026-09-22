@@ -2480,6 +2480,7 @@ export function PublicCommunity({
   const [followWorking, setFollowWorking] = useState(false);
   const [followError, setFollowError] = useState('');
   const [emailAddress, setEmailAddress] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [emailWorking, setEmailWorking] = useState(false);
   const [emailNotice, setEmailNotice] = useState('');
   const [showEmailReminders, setShowEmailReminders] = useState(false);
@@ -2671,7 +2672,10 @@ export function PublicCommunity({
     link.click();
     URL.revokeObjectURL(url);
   };
-  const updateEmailReminder = async (enabled: boolean) => {
+  const updateEmailReminder = async (
+    enabled: boolean,
+    options?: { resend?: boolean },
+  ) => {
     if (emailWorking || !accountSession) return;
     setEmailWorking(true);
     setEmailNotice('');
@@ -2685,7 +2689,10 @@ export function PublicCommunity({
             }
           : { 'x-mimo-account': accountSession },
         body: enabled
-          ? JSON.stringify({ email: emailAddress || undefined })
+          ? JSON.stringify({
+              email: emailAddress || undefined,
+              resend: options?.resend === true,
+            })
           : undefined,
       });
       const body = (await response.json()) as {
@@ -2723,6 +2730,53 @@ export function PublicCommunity({
         cause instanceof Error
           ? cause.message
           : 'Email reminders could not be updated.',
+      );
+    } finally {
+      setEmailWorking(false);
+    }
+  };
+  const verifyEmailReminder = async () => {
+    if (emailWorking || !accountSession || !/^\d{6}$/.test(emailCode)) return;
+    setEmailWorking(true);
+    setEmailNotice('');
+    try {
+      const response = await fetch('/api/account/email/verify', {
+        method: 'POST',
+        headers: {
+          'x-mimo-account': accountSession,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: emailCode }),
+      });
+      const body = (await response.json()) as {
+        emailReminders?: boolean;
+        emailStatus?: 'verified';
+        emailMasked?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error || 'That code could not be confirmed.');
+      }
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              community: {
+                ...current.community,
+                emailReminders: Boolean(body.emailReminders),
+                emailStatus: 'verified',
+                emailMasked: body.emailMasked ?? current.community.emailMasked,
+              },
+            }
+          : current,
+      );
+      setEmailCode('');
+      setEmailNotice('Email confirmed. Reminders are on.');
+    } catch (cause) {
+      setEmailNotice(
+        cause instanceof Error
+          ? cause.message
+          : 'That code could not be confirmed.',
       );
     } finally {
       setEmailWorking(false);
@@ -3039,8 +3093,8 @@ export function PublicCommunity({
               Never miss the next Mimo.
             </DialogTitle>
             <DialogDescription className="text-base leading-6">
-              Email is optional. Verify it once, then choose reminders for
-              each community you follow.
+              Email is optional. Verify it once, then choose reminders for each
+              community you follow.
             </DialogDescription>
           </DialogHeader>
           {data.community.emailReminders ? (
@@ -3075,30 +3129,84 @@ export function PublicCommunity({
               </Button>
             </div>
           ) : data.community.emailStatus === 'pending' ? (
-            <div className="mt-6 rounded-[20px] bg-[#eef6ff] p-4">
-              <p className="font-extrabold">Check your inbox</p>
+            <div className="mt-6">
+              <p className="font-extrabold">Enter your confirmation code</p>
               <p className="mt-1 text-sm leading-6 text-[#60758a]">
-                We sent a confirmation link to {data.community.emailMasked}.
+                We sent a six-digit code to {data.community.emailMasked}. It may
+                take a minute; check Spam or Promotions if it is not in your
+                inbox.
               </p>
-              <button
-                type="button"
-                onClick={() =>
-                  setData((current) =>
-                    current
-                      ? {
-                          ...current,
-                          community: {
-                            ...current.community,
-                            emailStatus: 'none',
-                          },
-                        }
-                      : current,
-                  )
-                }
-                className="mt-3 text-sm font-extrabold text-[#2577de]"
+              <form
+                className="mt-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void verifyEmailReminder();
+                }}
               >
-                Use another email
-              </button>
+                <label className="sr-only" htmlFor="follow-email-code">
+                  Six-digit confirmation code
+                </label>
+                <input
+                  id="follow-email-code"
+                  value={emailCode}
+                  onChange={(event) =>
+                    setEmailCode(
+                      event.target.value.replace(/\D/g, '').slice(0, 6),
+                    )
+                  }
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  placeholder="000000"
+                  aria-describedby="follow-email-code-help"
+                  className="h-14 w-full rounded-2xl border border-[#cbd7df] bg-white px-4 text-center text-2xl font-black tracking-[.3em] outline-none focus:border-[#2577de]"
+                />
+                <p id="follow-email-code-help" className="sr-only">
+                  The code expires after 30 minutes.
+                </p>
+                <Button
+                  type="submit"
+                  disabled={emailWorking || emailCode.length !== 6}
+                  className="mt-3 h-12 w-full rounded-full bg-[#2577de] font-extrabold text-white"
+                >
+                  {emailWorking ? 'Confirming…' : 'Confirm email'}
+                </Button>
+              </form>
+              <div className="mt-3 flex items-center justify-center gap-5 text-sm font-extrabold">
+                <button
+                  type="button"
+                  disabled={emailWorking}
+                  onClick={() =>
+                    void updateEmailReminder(true, { resend: true })
+                  }
+                  className="min-h-10 text-[#2577de] disabled:opacity-50"
+                >
+                  Send a new code
+                </button>
+                <span aria-hidden="true" className="text-[#cbd7df]">
+                  •
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailCode('');
+                    setData((current) =>
+                      current
+                        ? {
+                            ...current,
+                            community: {
+                              ...current.community,
+                              emailStatus: 'none',
+                            },
+                          }
+                        : current,
+                    );
+                  }}
+                  className="min-h-10 text-[#60758a]"
+                >
+                  Change email
+                </button>
+              </div>
             </div>
           ) : (
             <form

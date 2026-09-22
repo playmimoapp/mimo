@@ -6,7 +6,7 @@ import {
 } from '@/lib/email-reminders';
 import { hashToken, json, makeToken, readJson } from '@/lib/live-room';
 import { cleanCommunitySlug, getAccountBySession } from '@/lib/mimo-account';
-import { encryptSecret } from '@/lib/secret-box';
+import { decryptSecret, encryptSecret } from '@/lib/secret-box';
 import { getRuntimeVariable } from '@/lib/runtime-env';
 
 const VERIFY_MS = 30 * 60_000;
@@ -64,6 +64,7 @@ export async function POST(
   if (!body) return json({ error: 'Send a valid email request.' }, 400);
   const existing = await getD1()
     .prepare(`SELECT email_hash AS emailHash, email_mask AS emailMask, status,
+      email_ciphertext AS emailCiphertext, email_iv AS emailIv,
       last_verification_sent_at AS lastSentAt
       FROM account_email_contacts WHERE account_id = ? LIMIT 1`)
     .bind(found.account.id)
@@ -71,9 +72,18 @@ export async function POST(
       emailHash: string;
       emailMask: string;
       status: 'pending' | 'verified';
+      emailCiphertext: string;
+      emailIv: string;
       lastSentAt: number | null;
     }>();
-  const email = cleanEmail(body.email);
+  let email = cleanEmail(body.email);
+  if (!email && body.resend === true && existing?.status === 'pending') {
+    email = await decryptSecret(
+      existing.emailCiphertext,
+      existing.emailIv,
+      `mimo-email:${found.account.id}`,
+    );
+  }
   if (!email && existing?.status === 'verified') {
     await getD1()
       .prepare(`UPDATE community_follows SET email_reminders = 1
@@ -108,26 +118,36 @@ export async function POST(
     );
   }
   const verificationToken = makeToken();
+  const verificationCode = String(
+    crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000,
+  ).padStart(6, '0');
   const unsubscribeToken = makeToken();
-  const [verificationHash, unsubscribeHash, encryptedEmail, encryptedUnsub] =
-    await Promise.all([
-      hashToken(verificationToken),
-      hashToken(unsubscribeToken),
-      encryptSecret(email, `mimo-email:${found.account.id}`),
-      encryptSecret(
-        unsubscribeToken,
-        `mimo-email-unsubscribe:${found.account.id}`,
-      ),
-    ]);
+  const [
+    verificationHash,
+    verificationCodeHash,
+    unsubscribeHash,
+    encryptedEmail,
+    encryptedUnsub,
+  ] = await Promise.all([
+    hashToken(verificationToken),
+    hashToken(`email-code:${found.account.id}:${verificationCode}`),
+    hashToken(unsubscribeToken),
+    encryptSecret(email, `mimo-email:${found.account.id}`),
+    encryptSecret(
+      unsubscribeToken,
+      `mimo-email-unsubscribe:${found.account.id}`,
+    ),
+  ]);
   try {
     await getD1()
       .prepare(`INSERT INTO account_email_contacts
         (account_id, email_hash, email_ciphertext, email_iv, email_mask, status,
-          verification_token_hash, verification_expires_at, pending_community_id,
+          verification_token_hash, verification_code_hash, verification_attempts,
+          verification_expires_at, pending_community_id,
           unsubscribe_token_hash, unsubscribe_token_ciphertext,
           unsubscribe_token_iv, verified_at, last_verification_sent_at,
           created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           email_hash = excluded.email_hash,
           email_ciphertext = excluded.email_ciphertext,
@@ -135,6 +155,8 @@ export async function POST(
           email_mask = excluded.email_mask,
           status = 'pending',
           verification_token_hash = excluded.verification_token_hash,
+          verification_code_hash = excluded.verification_code_hash,
+          verification_attempts = 0,
           verification_expires_at = excluded.verification_expires_at,
           pending_community_id = excluded.pending_community_id,
           unsubscribe_token_hash = excluded.unsubscribe_token_hash,
@@ -150,6 +172,7 @@ export async function POST(
         encryptedEmail.iv,
         maskEmail(email),
         verificationHash,
+        verificationCodeHash,
         now + VERIFY_MS,
         found.community.id,
         unsubscribeHash,
@@ -172,9 +195,9 @@ export async function POST(
   try {
     await sendMimoEmail({
       to: email,
-      subject: `Confirm reminders for ${found.community.name}`,
-      text: `Confirm that Mimo may email you when ${found.community.name} publishes a new event: ${verifyUrl}\n\nThis link expires in 30 minutes. No NIM or wallet permission is involved.`,
-      html: `<div style="background:#f8f6f1;padding:32px 20px;color:#14283e;font-family:Arial,sans-serif"><div style="max-width:560px;margin:auto"><p style="color:#cf5845;font-size:12px;font-weight:800;letter-spacing:2px">MIMO REMINDERS</p><h1 style="font-size:30px;line-height:1.15">Confirm your email</h1><p style="color:#526a7c;font-size:17px;line-height:1.6">Get a short email when <strong>${escapeHtml(found.community.name)}</strong> publishes a new event.</p><a href="${verifyUrl}" style="display:inline-block;margin-top:14px;background:#2577de;color:white;padding:14px 22px;border-radius:999px;text-decoration:none;font-weight:800">Confirm reminders</a><p style="margin-top:28px;color:#718295;font-size:12px;line-height:1.6">Optional. This link expires in 30 minutes. No NIM moves and no wallet permission is granted.</p></div></div>`,
+      subject: `${verificationCode} is your Mimo confirmation code`,
+      text: `Enter ${verificationCode} in Mimo to confirm reminders for ${found.community.name}. You can also confirm with this link: ${verifyUrl}\n\nThe code and link expire in 30 minutes. If you did not request this, you can ignore this email.`,
+      html: `<div style="background:#f8f6f1;padding:32px 20px;color:#14283e;font-family:Arial,sans-serif"><div style="max-width:560px;margin:auto"><p style="color:#cf5845;font-size:12px;font-weight:800;letter-spacing:2px">MIMO REMINDERS</p><h1 style="font-size:30px;line-height:1.15">Confirm your email</h1><p style="color:#526a7c;font-size:17px;line-height:1.6">Enter this code in Mimo to receive reminders from <strong>${escapeHtml(found.community.name)}</strong>.</p><p style="margin:24px 0;font-size:38px;font-weight:900;letter-spacing:9px;color:#14283e">${verificationCode}</p><a href="${verifyUrl}" style="display:inline-block;background:#2577de;color:white;padding:14px 22px;border-radius:999px;text-decoration:none;font-weight:800">Confirm with one tap</a><p style="margin-top:28px;color:#718295;font-size:12px;line-height:1.6">The code and link expire in 30 minutes. If you did not request this, you can safely ignore this email. No NIM moves and no wallet permission is granted.</p></div></div>`,
     });
   } catch (error) {
     console.error('email_verification_send_failed', error);

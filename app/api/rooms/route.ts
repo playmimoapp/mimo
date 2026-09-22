@@ -6,10 +6,7 @@ import {
   makeToken,
   readJson,
 } from '@/lib/live-room';
-import {
-  getVaultConfig,
-  getVaultFundingQuote,
-} from '@/lib/reward-vault';
+import { getVaultConfig, getVaultFundingQuote } from '@/lib/reward-vault';
 import {
   cleanCommunitySlug,
   getAccountBySession,
@@ -20,6 +17,7 @@ import { getMainnetRewardConfig } from '@/lib/mainnet-reward';
 import { getRewardShares, nimToLuna } from '@/lib/reward-split';
 import { after } from 'next/server';
 import { announceDiscordEvent } from '@/lib/discord-announcements';
+import { sendCommunityEventEmails } from '@/lib/email-reminders';
 
 export async function POST(request: Request) {
   const body = await readJson(request);
@@ -127,11 +125,7 @@ export async function POST(request: Request) {
   const rewardAmountLuna =
     rewardMode === 'nim' ? nimToLuna(rewardAmount) : BigInt(0);
   let vaultQuote: ReturnType<typeof getVaultFundingQuote> | null = null;
-  if (
-    rewardCustody === 'mimo_vault' &&
-    vault &&
-    rewardAmountLuna !== null
-  ) {
+  if (rewardCustody === 'mimo_vault' && vault && rewardAmountLuna !== null) {
     try {
       vaultQuote = getVaultFundingQuote(
         vault,
@@ -444,8 +438,12 @@ export async function POST(request: Request) {
                 vaultQuote?.feeReserveLuna.toString() ?? null,
                 vaultQuote?.transactionFeeLuna.toString() ?? null,
                 vaultQuote?.feeSlots ?? null,
-                rewardCustody === 'mimo_vault' ? (vault?.address ?? null) : null,
-                rewardCustody === 'mimo_vault' ? (vault?.network ?? null) : null,
+                rewardCustody === 'mimo_vault'
+                  ? (vault?.address ?? null)
+                  : null,
+                rewardCustody === 'mimo_vault'
+                  ? (vault?.network ?? null)
+                  : null,
                 JSON.stringify({
                   type: rewardRule,
                   winners:
@@ -459,7 +457,7 @@ export async function POST(request: Request) {
                         ? 'ranked_split'
                         : rewardRule === 'skill' && rewardSplit === 'custom'
                           ? 'custom_split'
-                        : 'equal_split',
+                          : 'equal_split',
                   allocationsLuna:
                     rewardRule === 'skill' && rewardSplit === 'custom'
                       ? rewardAllocations.map((amount) => amount!.toString())
@@ -497,7 +495,10 @@ export async function POST(request: Request) {
 
   if (permanentCommunity && rewardMode === 'free') {
     after(async () => {
-      await announceDiscordEvent(eventId);
+      await Promise.all([
+        announceDiscordEvent(eventId),
+        sendCommunityEventEmails(eventId),
+      ]);
     });
   }
 

@@ -135,6 +135,7 @@ Automated simulations are engineering checks, not proof of real users or payment
 - Full wallet addresses are not exposed in public room data.
 - Wallet and Discord identifiers are stored as scoped hashes where raw identity is unnecessary.
 - Payout and refund addresses are encrypted at rest.
+- Reminder email addresses are optional, encrypted at rest and used only after verification. A player can disable one community or remove the saved address entirely.
 - Public rooms may be free and anonymous; wallet proof is requested only when the event requires it.
 - Random winner rewards, gambling, pay-to-win scoring and unrestricted chat are not supported.
 - Payment cancellation is a normal recoverable state, never presented as an application crash.

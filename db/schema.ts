@@ -501,3 +501,68 @@ export const eventAudit = sqliteTable(
   },
   (t) => [index('idx_event_audit_event_created').on(t.eventId, t.createdAt)],
 );
+
+export const accountEmailContacts = sqliteTable(
+  'account_email_contacts',
+  {
+    accountId: text('account_id')
+      .primaryKey()
+      .references(() => accounts.id),
+    emailHash: text('email_hash').notNull(),
+    emailCiphertext: text('email_ciphertext').notNull(),
+    emailIv: text('email_iv').notNull(),
+    emailMask: text('email_mask').notNull(),
+    status: text('status', { enum: ['pending', 'verified'] })
+      .notNull()
+      .default('pending'),
+    verificationTokenHash: text('verification_token_hash'),
+    verificationExpiresAt: integer('verification_expires_at', {
+      mode: 'timestamp_ms',
+    }),
+    pendingCommunityId: text('pending_community_id').references(
+      () => communities.id,
+    ),
+    unsubscribeTokenHash: text('unsubscribe_token_hash').notNull(),
+    unsubscribeTokenCiphertext: text('unsubscribe_token_ciphertext').notNull(),
+    unsubscribeTokenIv: text('unsubscribe_token_iv').notNull(),
+    verifiedAt: integer('verified_at', { mode: 'timestamp_ms' }),
+    lastVerificationSentAt: integer('last_verification_sent_at', {
+      mode: 'timestamp_ms',
+    }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_account_email_hash').on(t.emailHash),
+    uniqueIndex('idx_account_email_verification').on(t.verificationTokenHash),
+    uniqueIndex('idx_account_email_unsubscribe').on(t.unsubscribeTokenHash),
+  ],
+);
+
+export const emailDeliveries = sqliteTable(
+  'email_deliveries',
+  {
+    id: text('id').primaryKey(),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    kind: text('kind').notNull(),
+    state: text('state', {
+      enum: ['pending', 'sending', 'sent', 'failed'],
+    })
+      .notNull()
+      .default('pending'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    providerMessageId: text('provider_message_id'),
+    lastError: text('last_error'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('idx_email_delivery_once').on(t.eventId, t.accountId, t.kind),
+    index('idx_email_delivery_state').on(t.state, t.updatedAt),
+  ],
+);

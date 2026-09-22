@@ -5,6 +5,7 @@ import {
   getAccountBySession,
   getCommunityRole,
 } from '@/lib/mimo-account';
+import { emailRemindersAvailable } from '@/lib/email-reminders';
 
 export async function GET(
   request: Request,
@@ -113,17 +114,27 @@ export async function GET(
     .all();
   const follow = account
     ? await getD1()
-        .prepare(
-          'SELECT 1 AS found FROM community_follows WHERE community_id = ? AND account_id = ?',
-        )
+        .prepare(`SELECT f.email_reminders AS emailReminders,
+          ec.status AS emailStatus, ec.email_mask AS emailMasked
+          FROM community_follows f
+          LEFT JOIN account_email_contacts ec ON ec.account_id = f.account_id
+          WHERE f.community_id = ? AND f.account_id = ? LIMIT 1`)
         .bind(community.id, account.id)
-        .first()
+        .first<{
+          emailReminders: number;
+          emailStatus: 'pending' | 'verified' | null;
+          emailMasked: string | null;
+        }>()
     : null;
   return json({
     community: {
       ...community,
       hasAvatar: Boolean(community.hasAvatar),
       following: Boolean(follow),
+      emailReminders: Boolean(follow?.emailReminders),
+      emailStatus: follow?.emailStatus ?? 'none',
+      emailMasked: follow?.emailMasked ?? null,
+      emailAvailable: emailRemindersAvailable(),
     },
     events: events.results.map((event) => ({
       title: event.title,

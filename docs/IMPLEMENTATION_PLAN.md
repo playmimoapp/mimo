@@ -31,6 +31,7 @@ The product loop is `Create -> Host -> Play -> Prove -> Drop -> Return`.
 - Verified-payer refund registration for Nimiq Pay payments routed through HTLC transactions
 - Wallet-owned personal profiles and community roles
 - Public community pages, discovery, following, notifications and event history controls
+- Verified, opt-in email reminders for followed communities, with independent unsubscribe and account removal controls
 - Recurring schedules, seasons and standings
 - Community pictures stored in managed object storage
 - Discord interaction signature verification and replay protection
@@ -51,6 +52,8 @@ Discord connection code is implemented but is not considered complete until a re
 6. Run several real events with at least two hosts and more than 25 wallet-connected users; use the protected report to verify the target.
 7. Prepare the judging demo, builder story, Skool post, X launch material and a privacy-safe usage export.
 8. Add a limited X integration only after the core room, NIM settlement and Discord flow are reliable.
+
+Email reminders remain fail-closed until the production sender domain is verified and `MIMO_EMAIL_ENABLED=true` is deliberately configured.
 
 ## Trust boundaries
 

@@ -10,6 +10,7 @@ import {
 } from '@/lib/reward-vault';
 import { after } from 'next/server';
 import { announceDiscordEvent } from '@/lib/discord-announcements';
+import { sendCommunityEventEmails } from '@/lib/email-reminders';
 
 export async function POST(
   request: Request,
@@ -64,7 +65,10 @@ export async function POST(
   }
   if (reward.state === 'funded') {
     after(async () => {
-      await announceDiscordEvent(room.id);
+      await Promise.all([
+        announceDiscordEvent(room.id),
+        sendCommunityEventEmails(room.id),
+      ]);
     });
     return json({ state: 'funded', txHash: reward.fundingTxHash });
   }
@@ -171,7 +175,10 @@ export async function POST(
         ),
     ]);
     after(async () => {
-      await announceDiscordEvent(room.id);
+      await Promise.all([
+        announceDiscordEvent(room.id),
+        sendCommunityEventEmails(room.id),
+      ]);
     });
     return json({
       state: 'funded',

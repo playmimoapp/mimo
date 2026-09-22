@@ -14,6 +14,7 @@ import {
   Copy,
   ExternalLink,
   LogOut,
+  Mail,
   MessagesSquare,
   Plus,
   Repeat2,
@@ -55,6 +56,10 @@ type Community = {
   discordChannelName?: string | null;
   followerCount?: number;
   following?: boolean;
+  emailReminders?: boolean;
+  emailStatus?: 'none' | 'pending' | 'verified';
+  emailMasked?: string | null;
+  emailAvailable?: boolean;
 };
 
 type PersonalProfile = {
@@ -64,6 +69,8 @@ type PersonalProfile = {
   profileStyle: MimoProfileStyle;
   discord: { username: string; displayName: string } | null;
   x: { username: string; displayName: string } | null;
+  email: { masked: string; status: 'pending' | 'verified' } | null;
+  emailAvailable: boolean;
 };
 
 type MimoNotification = {
@@ -1192,6 +1199,7 @@ function ProfileEditor({
   const [saving, setSaving] = useState(false);
   const [discordWorking, setDiscordWorking] = useState(false);
   const [xWorking, setXWorking] = useState(false);
+  const [emailWorking, setEmailWorking] = useState(false);
   const [error, setError] = useState('');
   async function save() {
     setSaving(true);
@@ -1320,6 +1328,34 @@ function ProfileEditor({
       setXWorking(false);
     }
   }
+  async function removeEmail() {
+    if (emailWorking) return;
+    setEmailWorking(true);
+    setError('');
+    try {
+      const response = await fetch('/api/account/email', {
+        method: 'DELETE',
+        headers: { 'x-mimo-account': session },
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(
+          body.error || 'The reminder email could not be removed.',
+        );
+      }
+      const saved = { ...draft, email: null };
+      setDraft(saved);
+      onSaved(saved);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'The reminder email could not be removed.',
+      );
+    } finally {
+      setEmailWorking(false);
+    }
+  }
   return (
     <section className={standalone ? 'pt-5' : 'border-b border-[#d9e1e6] py-6'}>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -1409,6 +1445,29 @@ function ProfileEditor({
             className="min-h-10 shrink-0 px-2 text-sm font-extrabold text-[#1f72d2] disabled:opacity-50"
           >
             {xWorking ? 'Working…' : draft.x ? 'Disconnect' : 'Connect'}
+          </button>
+        </div>
+      )}
+      {!onboarding && draft.emailAvailable && draft.email && (
+        <div className="flex items-center justify-between gap-4 border-b border-[#d7e0e6] py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eaf3ff] text-[#2577de]">
+              <Mail size={18} />
+            </span>
+            <span className="min-w-0">
+              <strong className="block">Reminder email</strong>
+              <span className="block truncate text-sm text-[#607486]">
+                {draft.email.masked} · {draft.email.status}
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void removeEmail()}
+            disabled={emailWorking}
+            className="min-h-10 shrink-0 px-2 text-sm font-extrabold text-[#b24434] disabled:opacity-50"
+          >
+            {emailWorking ? 'Removing…' : 'Remove'}
           </button>
         </div>
       )}
@@ -2420,6 +2479,9 @@ export function PublicCommunity({
   const [accountSession, setAccountSession] = useState('');
   const [followWorking, setFollowWorking] = useState(false);
   const [followError, setFollowError] = useState('');
+  const [emailAddress, setEmailAddress] = useState('');
+  const [emailWorking, setEmailWorking] = useState(false);
+  const [emailNotice, setEmailNotice] = useState('');
   const [showAllHistory, setShowAllHistory] = useState(false);
   const primarySocial = data ? communityPrimarySocial(data.community) : null;
   useEffect(() => {
@@ -2458,6 +2520,16 @@ export function PublicCommunity({
         });
         setAccountSession(session);
         setFollowing(Boolean(body.community.following));
+        const emailResult = new URLSearchParams(window.location.search).get(
+          'emailReminder',
+        );
+        if (emailResult === 'verified') {
+          setEmailNotice('Email reminders are on.');
+        } else if (emailResult === 'expired') {
+          setEmailNotice('That email link expired. Request a new one below.');
+        } else if (emailResult === 'invalid') {
+          setEmailNotice('That email link is not valid.');
+        }
       })
       .catch((cause) =>
         setError(
@@ -2581,6 +2653,63 @@ export function PublicCommunity({
     link.click();
     URL.revokeObjectURL(url);
   };
+  const updateEmailReminder = async (enabled: boolean) => {
+    if (emailWorking || !accountSession) return;
+    setEmailWorking(true);
+    setEmailNotice('');
+    try {
+      const response = await fetch(`/api/communities/${slug}/follow/email`, {
+        method: enabled ? 'POST' : 'DELETE',
+        headers: enabled
+          ? {
+              'x-mimo-account': accountSession,
+              'Content-Type': 'application/json',
+            }
+          : { 'x-mimo-account': accountSession },
+        body: enabled
+          ? JSON.stringify({ email: emailAddress || undefined })
+          : undefined,
+      });
+      const body = (await response.json()) as {
+        emailReminders?: boolean;
+        emailStatus?: 'pending' | 'verified';
+        emailMasked?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error || 'Email reminders could not be updated.');
+      }
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              community: {
+                ...current.community,
+                emailReminders: Boolean(body.emailReminders),
+                emailStatus: body.emailStatus ?? current.community.emailStatus,
+                emailMasked: body.emailMasked ?? current.community.emailMasked,
+              },
+            }
+          : current,
+      );
+      setEmailAddress('');
+      setEmailNotice(
+        body.emailStatus === 'pending'
+          ? `Check ${body.emailMasked ?? 'your inbox'} to confirm.`
+          : body.emailReminders
+            ? 'Email reminders are on.'
+            : 'Email reminders are off.',
+      );
+    } catch (cause) {
+      setEmailNotice(
+        cause instanceof Error
+          ? cause.message
+          : 'Email reminders could not be updated.',
+      );
+    } finally {
+      setEmailWorking(false);
+    }
+  };
   return (
     <StudioShell>
       <section className="border-b border-[#d7dfe4] pb-8">
@@ -2655,6 +2784,108 @@ export function PublicCommunity({
               <p role="alert" className="mt-2 text-xs font-bold text-[#b53636]">
                 {followError}
               </p>
+            )}
+            {following && data.community.emailAvailable && (
+              <div className="mt-5 max-w-xl border-t border-[#d9e1e6] pt-4">
+                <div className="flex items-start gap-3">
+                  <Mail size={18} className="mt-0.5 shrink-0 text-[#2577de]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-extrabold">Event emails</p>
+                    <p className="mt-0.5 text-sm leading-6 text-[#60758a]">
+                      Optional. Get one short email when {data.community.name}{' '}
+                      publishes a new event.
+                    </p>
+                    {data.community.emailReminders ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <span className="text-sm font-extrabold text-[#19805b]">
+                          On for {data.community.emailMasked}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void updateEmailReminder(false)}
+                          disabled={emailWorking}
+                          className="text-sm font-extrabold text-[#526a7c] underline decoration-[#aebbc5] underline-offset-4"
+                        >
+                          Turn off email
+                        </button>
+                      </div>
+                    ) : data.community.emailStatus === 'verified' ? (
+                      <Button
+                        type="button"
+                        onClick={() => void updateEmailReminder(true)}
+                        disabled={emailWorking}
+                        variant="outline"
+                        className="mt-3 h-10 rounded-full bg-white px-4 font-extrabold"
+                      >
+                        {emailWorking
+                          ? 'Updating…'
+                          : `Email ${data.community.emailMasked}`}
+                      </Button>
+                    ) : data.community.emailStatus === 'pending' ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <span className="text-sm font-extrabold text-[#526a7c]">
+                          Check {data.community.emailMasked ?? 'your inbox'} to
+                          confirm.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setData((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    community: {
+                                      ...current.community,
+                                      emailStatus: 'none',
+                                    },
+                                  }
+                                : current,
+                            )
+                          }
+                          className="text-sm font-extrabold text-[#2577de]"
+                        >
+                          Use another email
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex max-w-md gap-2">
+                        <label className="sr-only" htmlFor="follow-email">
+                          Email for event reminders
+                        </label>
+                        <input
+                          id="follow-email"
+                          type="email"
+                          autoComplete="email"
+                          inputMode="email"
+                          value={emailAddress}
+                          onChange={(event) =>
+                            setEmailAddress(event.target.value)
+                          }
+                          placeholder="you@example.com"
+                          className="h-11 min-w-0 flex-1 rounded-full border border-[#cbd7df] bg-white px-4 text-sm font-bold outline-none focus:border-[#2577de]"
+                        />
+                        <Button
+                          type="button"
+                          onClick={() => void updateEmailReminder(true)}
+                          disabled={emailWorking || !emailAddress.trim()}
+                          className="h-11 shrink-0 rounded-full px-4 font-extrabold"
+                        >
+                          {emailWorking ? 'Sending…' : 'Email me'}
+                        </Button>
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs leading-5 text-[#718295]">
+                      We use this address only for Mimo reminders. Verify once
+                      and unsubscribe anytime.
+                    </p>
+                    {emailNotice && (
+                      <output className="mt-2 block text-xs font-extrabold text-[#526a7c]">
+                        {emailNotice}
+                      </output>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
           <div className="rounded-[24px] bg-[#f3f7fa] p-5">

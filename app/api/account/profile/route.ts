@@ -1,6 +1,7 @@
 import { getD1 } from '@/db';
 import { json, readJson } from '@/lib/live-room';
 import { getAccountBySession } from '@/lib/mimo-account';
+import { emailRemindersAvailable } from '@/lib/email-reminders';
 import { isMimoProfileStyle } from '@/lib/mimo-profile';
 
 function cleanHandle(value: unknown) {
@@ -14,7 +15,7 @@ function cleanHandle(value: unknown) {
 export async function GET(request: Request) {
   const account = await getAccountBySession(request);
   if (!account) return json({ error: 'Sign in to open your profile.' }, 401);
-  const [notifications, followed, discord, x] = await Promise.all([
+  const [notifications, followed, discord, x, email] = await Promise.all([
     getD1()
       .prepare(`SELECT n.id, n.kind, n.title, n.body, n.href,
         n.read_at AS readAt, n.created_at AS createdAt,
@@ -41,6 +42,11 @@ export async function GET(request: Request) {
         FROM account_x_connections WHERE account_id = ? LIMIT 1`)
       .bind(account.id)
       .first<{ username: string; displayName: string }>(),
+    getD1()
+      .prepare(`SELECT email_mask AS emailMasked, status
+        FROM account_email_contacts WHERE account_id = ? LIMIT 1`)
+      .bind(account.id)
+      .first<{ emailMasked: string; status: 'pending' | 'verified' }>(),
   ]);
   return json({
     profile: {
@@ -52,6 +58,8 @@ export async function GET(request: Request) {
         ? { username: discord.username, displayName: discord.displayName }
         : null,
       x: x ? { username: x.username, displayName: x.displayName } : null,
+      email: email ? { masked: email.emailMasked, status: email.status } : null,
+      emailAvailable: emailRemindersAvailable(),
     },
     notifications: notifications.results,
     followed: followed.results,
@@ -102,11 +110,18 @@ export async function PATCH(request: Request) {
       FROM account_discord_connections WHERE account_id = ? LIMIT 1`)
     .bind(account.id)
     .first<{ username: string; displayName: string }>();
-  const x = await getD1()
-    .prepare(`SELECT username, display_name AS displayName
-      FROM account_x_connections WHERE account_id = ? LIMIT 1`)
-    .bind(account.id)
-    .first<{ username: string; displayName: string }>();
+  const [x, email] = await Promise.all([
+    getD1()
+      .prepare(`SELECT username, display_name AS displayName
+        FROM account_x_connections WHERE account_id = ? LIMIT 1`)
+      .bind(account.id)
+      .first<{ username: string; displayName: string }>(),
+    getD1()
+      .prepare(`SELECT email_mask AS emailMasked, status
+        FROM account_email_contacts WHERE account_id = ? LIMIT 1`)
+      .bind(account.id)
+      .first<{ emailMasked: string; status: 'pending' | 'verified' }>(),
+  ]);
   return json({
     profile: {
       displayName,
@@ -117,6 +132,8 @@ export async function PATCH(request: Request) {
         ? { username: discord.username, displayName: discord.displayName }
         : null,
       x: x ? { username: x.username, displayName: x.displayName } : null,
+      email: email ? { masked: email.emailMasked, status: email.status } : null,
+      emailAvailable: emailRemindersAvailable(),
     },
   });
 }

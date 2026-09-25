@@ -3,6 +3,7 @@ import { json, readJson } from '@/lib/live-room';
 import { cleanCommunitySlug, getAccountBySession } from '@/lib/mimo-account';
 
 const ACCENTS = ['#2577de', '#d45f4a', '#19805b', '#8b5dc7', '#b47a05'];
+const RECURRENCES = ['none', 'weekly', 'fortnightly', 'monthly'] as const;
 
 export async function GET(request: Request) {
   const account = await getAccountBySession(request);
@@ -41,8 +42,24 @@ export async function POST(request: Request) {
   const accentColor = ACCENTS.includes(String(body?.accentColor))
     ? String(body?.accentColor)
     : ACCENTS[0];
+  const recurrence = RECURRENCES.includes(
+    String(body?.recurrence) as (typeof RECURRENCES)[number],
+  )
+    ? (String(body?.recurrence) as (typeof RECURRENCES)[number])
+    : 'none';
+  const requestedNextEventAt = Number(body?.nextEventAt);
+  const nextEventAt =
+    recurrence === 'none'
+      ? null
+      : Number.isFinite(requestedNextEventAt) &&
+          requestedNextEventAt > Date.now()
+        ? requestedNextEventAt
+        : null;
   if (name.length < 2 || slug.length < 2) {
     return json({ error: 'Add a community name and a clear handle.' }, 400);
+  }
+  if (recurrence !== 'none' && !nextEventAt) {
+    return json({ error: 'Choose a future date for the first event.' }, 400);
   }
   const existing = await getD1()
     .prepare(`SELECT id FROM communities WHERE slug = ? LIMIT 1`)
@@ -56,8 +73,8 @@ export async function POST(request: Request) {
     getD1()
       .prepare(`INSERT INTO communities
         (id, slug, name, description, owner_wallet_hash, avatar_key, accent_color,
-          season_started_at, updated_at, created_at)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
+          recurrence, next_event_at, season_started_at, updated_at, created_at)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`)
       .bind(
         id,
         slug,
@@ -65,6 +82,8 @@ export async function POST(request: Request) {
         description,
         account.walletHash,
         accentColor,
+        recurrence,
+        nextEventAt,
         now,
         now,
         now,
@@ -82,8 +101,8 @@ export async function POST(request: Request) {
         description,
         accentColor,
         hasAvatar: false,
-        recurrence: 'none',
-        nextEventAt: null,
+        recurrence,
+        nextEventAt,
         seasonName: 'Season 1',
         seasonStartedAt: now,
         createdAt: now,

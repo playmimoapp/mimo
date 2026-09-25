@@ -32,7 +32,7 @@ The product loop is `Create -> Host -> Play -> Prove -> Drop -> Return`.
 - Wallet-owned personal profiles and community roles
 - Public community pages, discovery, following, notifications and event history controls
 - Verified, opt-in email reminders for followed communities, with independent unsubscribe and account removal controls
-- Recurring schedules, seasons and standings
+- Recurring series that advance the next date and seed a fresh creator-reviewed edition, plus seasons and standings
 - Community pictures stored in managed object storage
 - Discord interaction signature verification and replay protection
 - Discord OAuth server selection, minimal-permission bot install, write-verified announcement-channel selection, one-use community-bound `/mimo` drafts, automatic event invitations and completion recaps
@@ -45,7 +45,7 @@ Discord connection code is implemented but is not considered complete until a re
 ## Next, in order
 
 1. Strengthen realtime recovery for server restarts, host loss and network interruption.
-2. Finish recurring event automation, reusable content and fast creator workflows.
+2. Keep simplifying recurring edition review and creator workflows.
 3. Activate and test Discord OAuth, installation, `/mimo`, announcements and disconnect behavior in a real server.
 4. Perform accessibility, performance and visual QA across every screen and payment state.
 5. Test inside Nimiq Pay on multiple physical iOS and Android devices.

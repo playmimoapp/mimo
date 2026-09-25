@@ -275,6 +275,7 @@ async function getRoomResponse(
     autoHostEnabled: Boolean(room.autoHostEnabled),
     adaptiveMode: reward.adaptiveMode,
     serverNow,
+    startsAt: room.startsAt,
     viewerParticipantId: viewerParticipant?.id ?? null,
     deadline,
     activeRoundId: room.activeRoundId,

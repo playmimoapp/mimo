@@ -166,12 +166,12 @@ export async function finalizePendingAnswers(room: RoomRecord) {
   return finalized;
 }
 
-export async function advanceCommunitySchedule(communityId: string) {
+export async function advanceCommunitySchedule(room: RoomRecord) {
   const db = getD1();
   const schedule = await db
     .prepare(`SELECT recurrence, next_event_at AS nextEventAt
       FROM communities WHERE id = ? LIMIT 1`)
-    .bind(communityId)
+    .bind(room.communityId)
     .first<{ recurrence: string; nextEventAt: number | null }>();
   if (!schedule?.nextEventAt || schedule.recurrence === 'none') return null;
 
@@ -193,7 +193,7 @@ export async function advanceCommunitySchedule(communityId: string) {
   const changed = await db
     .prepare(`UPDATE communities SET next_event_at = ?, updated_at = ?
       WHERE id = ? AND next_event_at = ?`)
-    .bind(followingEventAt, Date.now(), communityId, schedule.nextEventAt)
+    .bind(followingEventAt, Date.now(), room.communityId, schedule.nextEventAt)
     .run();
   return changed.meta.changes > 0 ? followingEventAt : null;
 }
@@ -442,7 +442,7 @@ export async function reconcileRoom(room: RoomRecord) {
         .bind(now, now, room.id)
         .run();
       if ((changed.meta.changes ?? 0) > 0) {
-        await advanceCommunitySchedule(room.communityId);
+        await advanceCommunitySchedule(room);
         if (roomConfig.custody === 'mimo_vault') {
           await db
             .prepare(`UPDATE rewards SET state = 'results_under_verification',

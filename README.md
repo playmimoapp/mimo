@@ -44,7 +44,7 @@ This is not a quiz with a payment button. It is participatory community entertai
 | Access       | Public rooms, invite-only rooms and independently configurable wallet verification                                                                  |
 | Nimiq Pay    | Account access, one-use signatures, native payment approval and honest cancellation/failure states                                                  |
 | NIM rewards  | Mainnet vault funding, automatic skill payouts, Community Unlocks, refunds and transaction proof                                                    |
-| Communities  | Public homes, roles, follows, verified email reminders, recurring schedules, seasons and standings                                                  |
+| Communities  | Public homes, roles, follows, verified email reminders, fresh creator-reviewed recurring editions, seasons and standings                            |
 | Discord      | OAuth connection, minimal-permission install, channel verification, admin-only creation, private draft handoff, event invitations and season points |
 | Operations   | Privacy-conscious real/QA classification, event recaps and a protected competition report                                                           |
 

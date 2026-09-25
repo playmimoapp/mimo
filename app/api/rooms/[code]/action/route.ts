@@ -251,7 +251,7 @@ async function handlePost(
       .run();
     applied = changed.meta.changes > 0;
     if (applied) {
-      await advanceCommunitySchedule(room.communityId);
+      await advanceCommunitySchedule(room);
       if (roomConfig.custody === 'mimo_vault') {
         await db
           .prepare(`UPDATE rewards SET state = 'results_under_verification',

@@ -97,6 +97,7 @@ type CommunityEventSummary = {
 };
 
 export type ReusableEventDraft = {
+  editionMode?: 'fresh' | 'exact';
   eventKind:
     | 'game_night'
     | 'community_vote'
@@ -276,6 +277,14 @@ export function CommunityStudio({
   const [description, setDescription] = useState('');
   const [accentColor, setAccentColor] = useState(ACCENTS[0]);
   const [avatar, setAvatar] = useState<File | null>(null);
+  const [communityRecurrence, setCommunityRecurrence] =
+    useState<Community['recurrence']>('none');
+  const [communityFirstEvent, setCommunityFirstEvent] = useState(() => {
+    const firstEvent = new Date();
+    firstEvent.setDate(firstEvent.getDate() + 7);
+    firstEvent.setHours(19, 0, 0, 0);
+    return toLocalDateTime(firstEvent.getTime());
+  });
   const [showCreate, setShowCreate] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -569,7 +578,17 @@ export function CommunityStudio({
           'Content-Type': 'application/json',
           'x-mimo-account': session,
         },
-        body: JSON.stringify({ name, slug, description, accentColor }),
+        body: JSON.stringify({
+          name,
+          slug,
+          description,
+          accentColor,
+          recurrence: communityRecurrence,
+          nextEventAt:
+            communityRecurrence === 'none'
+              ? null
+              : new Date(communityFirstEvent).getTime(),
+        }),
       });
       const body = (await response.json()) as {
         community?: Community;
@@ -598,6 +617,7 @@ export function CommunityStudio({
       setSlug('');
       setDescription('');
       setAvatar(null);
+      setCommunityRecurrence('none');
       setShowCreate(false);
       await loadCommunities(session);
     } catch (cause) {
@@ -1155,9 +1175,64 @@ export function CommunityStudio({
                 ))}
               </div>
             </div>
+            <fieldset className="mt-5 border-t border-[#d7dfe5] pt-5">
+              <legend className="text-sm font-extrabold">
+                How often will you meet?
+              </legend>
+              <p className="mt-1 text-sm leading-6 text-[#607486]">
+                Set a rhythm now, or schedule events whenever you need them.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(
+                  [
+                    ['none', 'No schedule'],
+                    ['weekly', 'Weekly'],
+                    ['fortnightly', 'Every 2 weeks'],
+                    ['monthly', 'Monthly'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCommunityRecurrence(value)}
+                    aria-pressed={communityRecurrence === value}
+                    className={`min-h-12 rounded-xl border px-3 text-sm font-extrabold transition-colors ${
+                      communityRecurrence === value
+                        ? 'border-[#2577de] bg-[#e9f3ff] text-[#165fae]'
+                        : 'border-[#cad4dd] bg-white text-[#53687c]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {communityRecurrence !== 'none' && (
+                <label className="mt-4 block text-sm font-extrabold">
+                  First event
+                  <input
+                    type="datetime-local"
+                    value={communityFirstEvent}
+                    onChange={(event) =>
+                      setCommunityFirstEvent(event.target.value)
+                    }
+                    className="mt-2 h-12 w-full rounded-xl border border-[#cad4dd] bg-white px-4 font-bold text-[#203752] outline-none focus:border-[#2577de]"
+                  />
+                </label>
+              )}
+              <p className="mt-3 text-xs font-bold leading-5 text-[#718295]">
+                The schedule reserves the date. After the first event, Mimo
+                drafts fresh questions for your review before each edition is
+                published.
+              </p>
+            </fieldset>
             <Button
               onClick={() => void createCommunity()}
-              disabled={working || name.trim().length < 2 || slug.length < 2}
+              disabled={
+                working ||
+                name.trim().length < 2 ||
+                slug.length < 2 ||
+                (communityRecurrence !== 'none' && !communityFirstEvent)
+              }
               className="mt-6 h-12 w-full rounded-xl bg-[#2577de] text-base font-extrabold text-white"
             >
               {working ? 'Creating…' : 'Create community'} <ArrowRight />
@@ -1685,7 +1760,7 @@ function CommunityCard({
   });
   const path = `/?community=${community.slug}`;
   useEffect(() => {
-    if (!initiallyManaging || community.role === 'host') return;
+    if (!initiallyManaging) return;
     const controller = new AbortController();
     void fetch(`/api/communities/${community.slug}?manage=1`, {
       headers: { 'x-mimo-account': session },
@@ -1951,7 +2026,10 @@ function CommunityCard({
       setSavingSchedule(false);
     }
   }
-  async function reuseEvent(eventId: string) {
+  async function reuseEvent(
+    eventId: string,
+    editionMode: 'fresh' | 'exact' = 'fresh',
+  ) {
     setSavingSchedule(true);
     setScheduleError('');
     try {
@@ -1975,7 +2053,7 @@ function CommunityCard({
           recurrence: community.recurrence,
           nextEventAt: community.nextEventAt,
         },
-        body.draft,
+        { ...body.draft, editionMode },
       );
     } catch (cause) {
       setScheduleError(
@@ -1985,6 +2063,21 @@ function CommunityCard({
       );
       setSavingSchedule(false);
     }
+  }
+  function prepareNextEvent() {
+    const latestCompleted = managedEvents.find(
+      (event) => event.status === 'complete',
+    );
+    if (community.recurrence !== 'none' && historyLoaded && latestCompleted) {
+      void reuseEvent(latestCompleted.id);
+      return;
+    }
+    createEvent({
+      name: community.name,
+      slug: community.slug,
+      recurrence: community.recurrence,
+      nextEventAt: community.nextEventAt,
+    });
   }
   return (
     <motion.article
@@ -2041,6 +2134,11 @@ function CommunityCard({
         </div>
         {editingSchedule && (
           <div className="mt-3 rounded-[18px] bg-[#f3f7fa] p-4">
+            <p className="mb-3 text-xs font-bold leading-5 text-[#607486]">
+              This sets the community rhythm. Mimo can draft fresh questions
+              from the previous edition, but you approve the content and any NIM
+              reward before publishing.
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-extrabold text-[#53687c]">
                 Repeats
@@ -2120,17 +2218,19 @@ function CommunityCard({
         )}
         <div className="mt-5 flex flex-wrap gap-2">
           <Button
-            onClick={() =>
-              createEvent({
-                name: community.name,
-                slug: community.slug,
-                recurrence: community.recurrence,
-                nextEventAt: community.nextEventAt,
-              })
+            onClick={prepareNextEvent}
+            disabled={
+              savingSchedule ||
+              (community.recurrence !== 'none' && !historyLoaded)
             }
             className="h-11 rounded-xl bg-[#172f49] px-4 font-extrabold text-white"
           >
-            <CalendarDays /> Host next event
+            <CalendarDays />
+            {community.recurrence === 'none'
+              ? 'Host an event'
+              : managedEvents.some((event) => event.status === 'complete')
+                ? 'Prepare fresh edition'
+                : 'Prepare first event'}
           </Button>
           <Button
             onClick={() => void copyLink()}
@@ -2313,26 +2413,42 @@ function CommunityCard({
                                 : 'Hidden from community page'}
                             </p>
                           </div>
-                          <div className="flex shrink-0 items-center gap-3">
+                          <div className="flex shrink-0 items-center gap-2">
                             <button
-                              onClick={() => void reuseEvent(event.id)}
+                              onClick={() => void reuseEvent(event.id, 'fresh')}
                               disabled={savingSchedule}
                               className="text-xs font-extrabold text-[#19805b] disabled:opacity-50"
                             >
-                              New edition
+                              Fresh edition
                             </button>
-                            <button
-                              onClick={() =>
-                                void changeEventVisibility(
-                                  event.id,
-                                  !event.publicVisible,
-                                )
-                              }
-                              disabled={savingSchedule}
-                              className="text-xs font-extrabold text-[#2577de] disabled:opacity-50"
-                            >
-                              {event.publicVisible ? 'Hide' : 'Show'}
-                            </button>
+                            <details className="group relative">
+                              <summary className="cursor-pointer list-none text-xs font-extrabold text-[#607486]">
+                                More
+                              </summary>
+                              <div className="absolute right-0 top-7 z-20 grid min-w-36 overflow-hidden rounded-xl border border-[#d7e0e6] bg-white p-1 shadow-xl">
+                                <button
+                                  onClick={() =>
+                                    void reuseEvent(event.id, 'exact')
+                                  }
+                                  disabled={savingSchedule}
+                                  className="rounded-lg px-3 py-2 text-left text-xs font-extrabold text-[#53687c] hover:bg-[#f1f5f8] disabled:opacity-50"
+                                >
+                                  Repeat exactly
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    void changeEventVisibility(
+                                      event.id,
+                                      !event.publicVisible,
+                                    )
+                                  }
+                                  disabled={savingSchedule}
+                                  className="rounded-lg px-3 py-2 text-left text-xs font-extrabold text-[#2577de] hover:bg-[#eef6ff] disabled:opacity-50"
+                                >
+                                  {event.publicVisible ? 'Hide' : 'Show'}
+                                </button>
+                              </div>
+                            </details>
                           </div>
                         </div>
                       ))}

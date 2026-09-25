@@ -726,7 +726,9 @@ export function MimoApp() {
               error?: string;
             };
             if (!response.ok || !body.draft) {
-              throw new Error(body.error || 'This Discord draft could not open.');
+              throw new Error(
+                body.error || 'This Discord draft could not open.',
+              );
             }
             if (body.sessionToken) {
               window.localStorage.setItem(
@@ -756,10 +758,7 @@ export function MimoApp() {
             const recurrence = ['weekly', 'fortnightly', 'monthly'].includes(
               String(body.draft.recurrence),
             )
-              ? (body.draft.recurrence as
-                  | 'weekly'
-                  | 'fortnightly'
-                  | 'monthly')
+              ? (body.draft.recurrence as 'weekly' | 'fortnightly' | 'monthly')
               : 'none';
             setEvent((current) => ({
               ...current,
@@ -893,7 +892,9 @@ export function MimoApp() {
               error?: string;
             };
             if (!response.ok || !body.hostKey) {
-              throw new Error(body.error || 'Host access could not be restored.');
+              throw new Error(
+                body.error || 'Host access could not be restored.',
+              );
             }
             setHostKey(body.hostKey);
             window.sessionStorage.setItem(`mimo:${code}:host`, body.hostKey);
@@ -1505,18 +1506,28 @@ export function MimoApp() {
             <CommunityStudio
               createEvent={(community, reusableDraft?: ReusableEventDraft) => {
                 if (reusableDraft) {
-                  reusableTemplate.current = reusableDraft;
-                  setEvent(reusableDraft);
+                  const { editionMode = 'fresh', ...eventDraft } =
+                    reusableDraft;
+                  setEvent(eventDraft);
+                  if (editionMode === 'exact') {
+                    reusableTemplate.current = null;
+                    setScreen('create');
+                    return;
+                  }
+                  reusableTemplate.current = eventDraft;
                   setAssistantBrief({
-                    eventKind: reusableDraft.eventKind,
+                    eventKind: eventDraft.eventKind,
                     hostingMode: 'community',
                     recurrence: community.recurrence,
                     community: community.name,
-                    topic: `Create ${reusableDraft.rounds.length} new questions for a fresh edition of ${reusableDraft.title}.`,
+                    topic: `Create ${eventDraft.rounds.length} new questions for a fresh edition of ${eventDraft.title}. Keep the same subject and purpose as these earlier questions without repeating them: ${eventDraft.rounds
+                      .slice(0, 4)
+                      .map((round) => round.question)
+                      .join(' | ')}`,
                     audience: 'community',
                     difficulty: 'balanced',
                     source: '',
-                    avoidQuestions: reusableDraft.rounds.map(
+                    avoidQuestions: eventDraft.rounds.map(
                       (round) => round.question,
                     ),
                   });
@@ -2172,9 +2183,7 @@ function AssistedCreate({
   }, [autoStart, makeDraft, ready, working]);
 
   if (autoStart) {
-    const format = EVENT_FORMATS.find(
-      (item) => item.id === brief.eventKind,
-    );
+    const format = EVENT_FORMATS.find((item) => item.id === brief.eventKind);
     return (
       <section className="mobile-page app-frame grid min-h-[calc(100svh-150px)] place-items-center py-10">
         <div className="mx-auto w-full max-w-[620px] text-center">
@@ -2206,7 +2215,11 @@ function AssistedCreate({
             <motion.span
               className="block h-full w-1/2 rounded-full bg-[#2577de]"
               animate={reduceMotion ? undefined : { x: ['-100%', '200%'] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+              transition={{
+                duration: 1.2,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
             />
           </div>
           <p className="sr-only" aria-live="polite">
@@ -3602,7 +3615,11 @@ function CreateEvent({
                             [
                               ['equal', 'Equal', 'Same amount each'],
                               ['ranked', 'By rank', 'Higher places earn more'],
-                              ['custom', 'Set amounts', 'You choose every prize'],
+                              [
+                                'custom',
+                                'Set amounts',
+                                'You choose every prize',
+                              ],
                             ] as const
                           ).map(([split, label, detail]) => (
                             <button

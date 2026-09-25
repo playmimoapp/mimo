@@ -72,6 +72,29 @@ function clean(value: unknown, max: number) {
   return (typeof value === 'string' ? value : '').trim().slice(0, max);
 }
 
+function questionWords(value: string) {
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((word) => word.length > 2),
+  );
+}
+
+function questionsAreTooSimilar(left: string, right: string) {
+  const a = questionWords(left);
+  const b = questionWords(right);
+  if (!a.size || !b.size)
+    return left.trim().toLowerCase() === right.trim().toLowerCase();
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared += 1;
+  const union = new Set([...a, ...b]).size;
+  const jaccard = shared / union;
+  const containment = shared / Math.min(a.size, b.size);
+  return jaccard >= 0.68 || containment >= 0.84;
+}
+
 function requestedMomentCount(brief: string) {
   const numeric = brief.match(
     /\b(\d{1,2})\s+(?:questions?|polls?|votes?|moments?|rounds?|challenges?)\b/i,
@@ -310,6 +333,20 @@ Return only the requested JSON.`;
     const draft = JSON.parse(extractText(payload)) as unknown;
     if (!validDraft(draft, momentRange.minimum, momentRange.maximum)) {
       throw new Error('invalid_draft');
+    }
+    const generatedQuestions = draft.rounds.map((round) => round.question);
+    const repeatsPrevious = generatedQuestions.some((question) =>
+      avoidQuestions.some((previous) =>
+        questionsAreTooSimilar(question, previous),
+      ),
+    );
+    const repeatsItself = generatedQuestions.some((question, index) =>
+      generatedQuestions
+        .slice(0, index)
+        .some((previous) => questionsAreTooSimilar(question, previous)),
+    );
+    if (repeatsPrevious || repeatsItself) {
+      throw new Error('repeated_question');
     }
 
     const approvedRounds = draft.rounds.filter(

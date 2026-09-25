@@ -137,6 +137,16 @@ async function getError(response: Response) {
   return body?.error || 'Something went wrong. Try again.';
 }
 
+function formatStartsIn(milliseconds: number) {
+  const totalMinutes = Math.max(0, Math.ceil(milliseconds / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
 export function LiveRoom({
   code,
   mode,
@@ -710,6 +720,9 @@ export function LiveRoom({
   }
 
   const answered = answeredCount;
+  const scheduledLobby = Boolean(
+    room.status === 'lobby' && room.startsAt && room.startsAt > now,
+  );
   const usesTeams = room.playMode === 'teams' || room.playMode === 'hybrid';
   const playModeLabel =
     room.playMode === 'individual'
@@ -736,9 +749,11 @@ export function LiveRoom({
       : 'Free room · no wallet needed';
   const fallbackMimoLine =
     room.status === 'lobby'
-      ? room.players.length === 0
-        ? 'The room is ready. Bring your people in.'
-        : `${room.players.length} ${room.players.length === 1 ? 'player is' : 'players are'} here. ${usesTeams ? 'I’m balancing the teams.' : room.playMode === 'together' ? 'The shared challenge is taking shape.' : 'The room is ready to play.'}`
+      ? scheduledLobby
+        ? `We start in ${formatStartsIn((room.startsAt ?? now) - now)}. Everyone can arrive early.`
+        : room.players.length === 0
+          ? 'The room is ready. Bring your people in.'
+          : `${room.players.length} ${room.players.length === 1 ? 'player is' : 'players are'} here. ${usesTeams ? 'I’m balancing the teams.' : room.playMode === 'together' ? 'The shared challenge is taking shape.' : 'The room is ready to play.'}`
       : room.status === 'live'
         ? allAnswered
           ? 'Everyone is locked in. Let’s reveal it.'
@@ -770,7 +785,11 @@ export function LiveRoom({
             ) : (
               <Radio size={15} />
             )}{' '}
-            {room.accessMode === 'private' ? 'Private room' : 'Live room'}
+            {scheduledLobby
+              ? 'Scheduled room'
+              : room.accessMode === 'private'
+                ? 'Private room'
+                : 'Live room'}
           </span>
           <strong
             className={`font-display text-xl tracking-[.12em] ${room.status === 'lobby' ? 'max-sm:hidden' : ''}`}
@@ -1009,6 +1028,7 @@ export function LiveRoom({
               {room.status === 'lobby' && (
                 <LobbyState
                   room={room}
+                  now={now}
                   isHost={mode === 'host'}
                   currentPlayer={me}
                   mimoLine={mimoLine}
@@ -1713,6 +1733,7 @@ function RewardFundingPanel({
 
 function LobbyState({
   room,
+  now,
   isHost,
   currentPlayer,
   mimoLine,
@@ -1726,6 +1747,7 @@ function LobbyState({
   onCancel,
 }: {
   room: LiveRoomState;
+  now: number;
   isHost: boolean;
   currentPlayer?: LiveRoomState['players'][number];
   mimoLine: string;
@@ -1742,6 +1764,16 @@ function LobbyState({
     (player) => player.walletVerified,
   ).length;
   const usesTeams = room.playMode === 'teams' || room.playMode === 'hybrid';
+  const scheduled = Boolean(room.startsAt && room.startsAt > now);
+  const scheduledDate = room.startsAt
+    ? new Date(room.startsAt).toLocaleString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : '';
   const arrivalLabel =
     room.players.length === 0
       ? 'No one here yet'
@@ -1756,7 +1788,9 @@ function LobbyState({
             {room.title}
           </p>
           <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#607486]">
-            Room code
+            {scheduled
+              ? `Starts in ${formatStartsIn((room.startsAt ?? now) - now)}`
+              : 'Room code'}
           </p>
           <strong className="font-display mt-1 text-4xl font-extrabold tracking-[.1em] text-[#172f49]">
             {room.code}
@@ -1838,7 +1872,7 @@ function LobbyState({
           <span className="pulse-dot absolute right-7 top-9 h-2 w-2 rounded-full bg-[#e66c58] [animation-delay:260ms]" />
           <div className="relative z-10 max-w-[58%] self-center">
             <p className="text-xs font-extrabold uppercase tracking-[.14em] text-[#1f72d2]">
-              Mimo is warming up
+              {scheduled ? `Starts ${scheduledDate}` : 'Mimo is warming up'}
             </p>
             <motion.p
               key={mimoLine}
@@ -2022,12 +2056,16 @@ function LobbyState({
         >
           {room.rewardCustody === 'mimo_vault' && room.rewardState !== 'funded'
             ? 'Fund reward to start'
-            : 'Start the show'}
+            : scheduled
+              ? 'Start early'
+              : 'Start the show'}
         </Button>
       ) : (
         <p className="flex items-center gap-2 border-t border-[#d1d5d5] pt-5 font-bold text-[#526a7e]">
           <Clock3 size={18} />
-          Waiting for the host to begin
+          {scheduled
+            ? `Mimo starts automatically in ${formatStartsIn((room.startsAt ?? now) - now)}`
+            : 'Waiting for the host to begin'}
         </p>
       )}
     </div>
